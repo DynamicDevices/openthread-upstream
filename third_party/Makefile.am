@@ -44,7 +44,7 @@ DIST_SUBDIRS                            = \
     paho                                  \
     $(NULL)
 
-SUBDIRS =                               = \
+SUBDIRS                                 = \
     paho                                  \
     $(NULL)
 
