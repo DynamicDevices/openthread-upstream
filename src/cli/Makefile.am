@@ -158,7 +158,7 @@ SOURCES_COMMON =                      \
     cli_dataset.cpp                   \
     cli_joiner.cpp                    \
     cli_mqtt.cpp                      \
-    cli_server.cpp                    \
+    cli_network_data.cpp              \
     cli_uart.cpp                      \
     cli_udp.cpp                       \
     $(NULL)
@@ -180,8 +180,8 @@ noinst_HEADERS                      = \
     cli_console.hpp                   \
     cli_dataset.hpp                   \
     cli_joiner.hpp                    \
+    cli_network_data.hpp              \
     cli_mqtt.hpp                      \
-    cli_server.hpp                    \
     cli_uart.hpp                      \
     cli_udp.hpp                       \
     x509_cert_key.hpp                 \

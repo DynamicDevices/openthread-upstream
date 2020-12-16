@@ -47,6 +47,9 @@
 #endif
 #include <openthread/message.h>
 #include <openthread/ncp.h>
+#if OPENTHREAD_CONFIG_MULTI_RADIO
+#include <openthread/multi_radio.h>
+#endif
 
 #include "changed_props_set.hpp"
 #include "common/instance.hpp"
@@ -55,7 +58,6 @@
 #include "lib/spinel/spinel_buffer.hpp"
 #include "lib/spinel/spinel_decoder.hpp"
 #include "lib/spinel/spinel_encoder.hpp"
-#include "utils/static_assert.hpp"
 
 namespace ot {
 namespace Ncp {
@@ -92,7 +94,7 @@ public:
      * @param[in]  aStreamId  A numeric identifier for the stream to write to.
      *                        If set to '0', will default to the debug stream.
      * @param[in]  aDataPtr   A pointer to the data to send on the stream.
-     *                        If aDataLen is non-zero, this param MUST NOT be NULL.
+     *                        If aDataLen is non-zero, this param MUST NOT be nullptr.
      * @param[in]  aDataLen   The number of bytes of data from aDataPtr to send.
      *
      * @retval OT_ERROR_NONE         The data was queued for delivery to the host.
@@ -267,6 +269,7 @@ protected:
     otError DecodeChannelMask(uint32_t &aChannelMask);
 
 #if OPENTHREAD_RADIO || OPENTHREAD_CONFIG_LINK_RAW_ENABLE
+    otError PackRadioFrame(otRadioFrame *aFrame, otError aError);
 
     static void LinkRawReceiveDone(otInstance *aInstance, otRadioFrame *aFrame, otError aError);
     void        LinkRawReceiveDone(otRadioFrame *aFrame, otError aError);
@@ -334,12 +337,15 @@ protected:
     otError EncodeOperationalDataset(const otOperationalDataset &aDataset);
 
     otError DecodeOperationalDataset(otOperationalDataset &aDataset,
-                                     const uint8_t **      aTlvs             = NULL,
-                                     uint8_t *             aTlvsLength       = NULL,
-                                     const otIp6Address ** aDestIpAddress    = NULL,
+                                     const uint8_t **      aTlvs             = nullptr,
+                                     uint8_t *             aTlvsLength       = nullptr,
+                                     const otIp6Address ** aDestIpAddress    = nullptr,
                                      bool                  aAllowEmptyValues = false);
 
     otError EncodeNeighborInfo(const otNeighborInfo &aNeighborInfo);
+#if OPENTHREAD_CONFIG_MULTI_RADIO
+    otError EncodeNeighborMultiRadioInfo(uint32_t aSpinelRadioLink, const otRadioLinkInfo &aInfo);
+#endif
 
 #if OPENTHREAD_FTD
     otError EncodeChildInfo(const otChildInfo &aChildInfo);
@@ -415,9 +421,9 @@ protected:
     otError HandlePropertySet_SPINEL_PROP_HOST_POWER_STATE(uint8_t aHeader);
 
 #if OPENTHREAD_CONFIG_DIAG_ENABLE
-    OT_STATIC_ASSERT(OPENTHREAD_CONFIG_DIAG_OUTPUT_BUFFER_SIZE <=
-                         OPENTHREAD_CONFIG_NCP_TX_BUFFER_SIZE - kSpinelCmdHeaderSize - kSpinelPropIdSize,
-                     "diag output buffer should be smaller than NCP UART tx buffer");
+    static_assert(OPENTHREAD_CONFIG_DIAG_OUTPUT_BUFFER_SIZE <=
+                      OPENTHREAD_CONFIG_NCP_TX_BUFFER_SIZE - kSpinelCmdHeaderSize - kSpinelPropIdSize,
+                  "diag output buffer should be smaller than NCP UART tx buffer");
 
     otError HandlePropertySet_SPINEL_PROP_NEST_STREAM_MFG(uint8_t aHeader);
 #endif
@@ -514,10 +520,7 @@ protected:
 protected:
     static NcpBase *       sNcpInstance;
     static spinel_status_t ThreadErrorToSpinelStatus(otError aError);
-    static uint8_t         LinkFlagsToFlagByte(bool aRxOnWhenIdle,
-                                               bool aSecureDataRequests,
-                                               bool aDeviceType,
-                                               bool aNetworkData);
+    static uint8_t         LinkFlagsToFlagByte(bool aRxOnWhenIdle, bool aDeviceType, bool aNetworkData);
     Instance *             mInstance;
     Spinel::Buffer         mTxFrameBuffer;
     Spinel::Encoder        mEncoder;
@@ -605,6 +608,10 @@ protected:
     uint32_t mTxSpinelFrameCounter;         // Number of sent (outbound) spinel frames.
 
     bool mDidInitialUpdates;
+
+#if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
+    bool mTrelTestModeEnable;
+#endif
 
     uint64_t mLogTimestampBase; // Timestamp base used for logging
 };

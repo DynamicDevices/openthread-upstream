@@ -35,6 +35,7 @@
 
 #include "common/encoding.hpp"
 #include "common/locator.hpp"
+#include "common/non_copyable.hpp"
 #include "mac/mac_types.hpp"
 #include "thread/mle_types.hpp"
 #include "thread/thread_tlvs.hpp"
@@ -42,8 +43,11 @@
 
 namespace ot {
 
-class RouterTable : public InstanceLocator
+class RouterTable : public InstanceLocator, private NonCopyable
 {
+    friend class NeighborTable;
+    class IteratorBuilder;
+
 public:
     /**
      * This class represents an iterator for iterating through entries in the router table.
@@ -51,6 +55,8 @@ public:
      */
     class Iterator : public InstanceLocator
     {
+        friend class IteratorBuilder;
+
     public:
         /**
          * This constructor initializes an `Iterator` instance to start from beginning of the router table.
@@ -61,34 +67,19 @@ public:
         explicit Iterator(Instance &aInstance);
 
         /**
-         * This method resets the iterator to start over.
-         *
-         */
-        void Reset(void);
-
-        /**
-         * This method indicates if the iterator has reached the end of the list.
+         * This method indicates if the iterator has reached the end of the list, i.e., iterator is empty.
          *
          * @retval TRUE   The iterator has reached the end of the list.
          * @retval FALSE  The iterator currently points to a valid entry.
          *
          */
-        bool IsDone(void) const { return (mRouter == NULL); }
-
-        /**
-         * This method advances the iterator.
-         *
-         * The iterator is moved to point to the next entry.  If there are no more entries matching the iterator
-         * becomes empty (i.e., `GetRouter()` returns `NULL` and `IsDone()` returns `true`).
-         *
-         */
-        void Advance(void);
+        bool IsDone(void) const { return (mRouter == nullptr); }
 
         /**
          * This method overloads `++` operator (pre-increment) to advance the iterator.
          *
          * The iterator is moved to point to the next entry.  If there are no more entries matching the iterator
-         * becomes empty (i.e., `GetRouter()` returns `NULL` and `IsDone()` returns `true`).
+         * becomes empty (i.e., `IsDone()` returns `true`).
          *
          */
         void operator++(void) { Advance(); }
@@ -97,20 +88,70 @@ public:
          * This method overloads `++` operator (post-increment) to advance the iterator.
          *
          * The iterator is moved to point to the next entry.  If there are no more entries matching the iterator
-         * becomes empty (i.e., `GetRouter()` returns `NULL` and `IsDone()` returns `true`).
+         * becomes empty (i.e., `IsDone()` returns `true`).
          *
          */
         void operator++(int) { Advance(); }
 
         /**
-         * This method gets the entry to which the iterator is currently pointing.
+         * This method overloads the `*` dereference operator and gets a reference to `Router` entry to which the
+         * iterator is currently pointing.
          *
-         * @returns A pointer to the current entry, or `NULL` if the iterator is done/empty.
+         * This method MUST be used when the iterator is not empty/finished (i.e., `IsDone()` returns `false`).
+         *
+         * @returns A reference to the `Router` entry currently pointed by the iterator.
          *
          */
-        Router *GetRouter(void) { return mRouter; }
+        Router &operator*(void) { return *mRouter; }
+
+        /**
+         * This method overloads the `->` dereference operator and gets a pointer to `Router` entry to which the
+         * iterator is currently pointing.
+         *
+         * @returns A pointer to the `Router` entry associated with the iterator, or `nullptr` if iterator is
+         * empty/done.
+         *
+         */
+        Router *operator->(void) { return mRouter; }
+
+        /**
+         * This method overloads operator `==` to evaluate whether or not two `Iterator` instances point to the same
+         * router entry.
+         *
+         * @param[in]  aOther  The other `Iterator` to compare with.
+         *
+         * @retval TRUE   If the two `Iterator` objects point to the same router entry or both are done.
+         * @retval FALSE  If the two `Iterator` objects do not point to the same router entry.
+         *
+         */
+        bool operator==(const Iterator &aOther) { return mRouter == aOther.mRouter; }
+
+        /**
+         * This method overloads operator `!=` to evaluate whether or not two `Iterator` instances point to the same
+         * router entry.
+         *
+         * @param[in]  aOther  The other `Iterator` to compare with.
+         *
+         * @retval TRUE   If the two `Iterator` objects do not point to the same router entry.
+         * @retval FALSE  If the two `Iterator` objects point to the same router entry or both are done.
+         *
+         */
+        bool operator!=(const Iterator &aOther) { return mRouter != aOther.mRouter; }
 
     private:
+        enum IteratorType
+        {
+            kEndIterator,
+        };
+
+        Iterator(Instance &aInstance, IteratorType)
+            : InstanceLocator(aInstance)
+            , mRouter(nullptr)
+        {
+        }
+
+        void Advance(void);
+
         Router *mRouter;
     };
 
@@ -137,7 +178,7 @@ public:
     /**
      * This method allocates a router with a random router id.
      *
-     * @returns A pointer to the allocated router or NULL if a router ID is not available.
+     * @returns A pointer to the allocated router or nullptr if a router ID is not available.
      *
      */
     Router *Allocate(void);
@@ -145,7 +186,7 @@ public:
     /**
      * This method allocates a router with a specified router id.
      *
-     * @returns A pointer to the allocated router or NULL if the router id could not be allocated.
+     * @returns A pointer to the allocated router or nullptr if the router id could not be allocated.
      *
      */
     Router *Allocate(uint8_t aRouterId);
@@ -217,7 +258,7 @@ public:
      *
      * @param[in]  aRloc16  The RLOC16 value.
      *
-     * @returns A pointer to the router or NULL if the router could not be found.
+     * @returns A pointer to the router or nullptr if the router could not be found.
      *
      */
     Router *GetNeighbor(uint16_t aRloc16);
@@ -227,17 +268,27 @@ public:
      *
      * @param[in]  aExtAddress  A reference to the IEEE Extended Address.
      *
-     * @returns A pointer to the router or NULL if the router could not be found.
+     * @returns A pointer to the router or nullptr if the router could not be found.
      *
      */
     Router *GetNeighbor(const Mac::ExtAddress &aExtAddress);
+
+    /**
+     * This method returns the neighbor for a given MAC address.
+     *
+     * @param[in]  aMacAddress  A MAC address
+     *
+     * @returns A pointer to the router or nullptr if the router could not be found.
+     *
+     */
+    Router *GetNeighbor(const Mac::Address &aMacAddress);
 
     /**
      * This method returns the router for a given router id.
      *
      * @param[in]  aRouterId  The router id.
      *
-     * @returns A pointer to the router or NULL if the router could not be found.
+     * @returns A pointer to the router or nullptr if the router could not be found.
      *
      */
     Router *GetRouter(uint8_t aRouterId)
@@ -250,7 +301,7 @@ public:
      *
      * @param[in]  aRouterId  The router id.
      *
-     * @returns A pointer to the router or NULL if the router could not be found.
+     * @returns A pointer to the router or nullptr if the router could not be found.
      *
      */
     const Router *GetRouter(uint8_t aRouterId) const;
@@ -260,10 +311,26 @@ public:
      *
      * @param[in]  aExtAddress  A reference to the IEEE Extended Address.
      *
-     * @returns A pointer to the router or NULL if the router could not be found.
+     * @returns A pointer to the router or nullptr if the router could not be found.
      *
      */
     Router *GetRouter(const Mac::ExtAddress &aExtAddress);
+
+    /**
+     * This method returns if the router table contains a given `Neighbor` instance.
+     *
+     * @param[in]  aNeighbor  A reference to a `Neighbor`.
+     *
+     * @retval TRUE  if @p aNeighbor is a `Router` in the router table.
+     * @retval FALSE if @p aNeighbor is not a `Router` in the router table
+     *               (i.e. mParent, mParentCandidate, a `Child` of the child table).
+     *
+     */
+    bool Contains(const Neighbor &aNeighbor) const
+    {
+        return mRouters <= &static_cast<const Router &>(aNeighbor) &&
+               &static_cast<const Router &>(aNeighbor) < mRouters + Mle::kMaxRouters;
+    }
 
     /**
      * This method retains diagnostic information for a given router.
@@ -276,7 +343,7 @@ public:
      * @retval OT_ERROR_NOT_FOUND     No router entry with the given id.
      *
      */
-    otError GetRouterInfo(uint16_t aRouterId, otRouterInfo &aRouterInfo);
+    otError GetRouterInfo(uint16_t aRouterId, Router::Info &aRouterInfo);
 
     /**
      * This method returns the Router ID Sequence.
@@ -332,9 +399,33 @@ public:
      * This method updates the router table and must be called with a one second period.
      *
      */
-    void ProcessTimerTick(void);
+    void HandleTimeTick(void);
+
+    /**
+     * This method enables range-based `for` loop iteration over all Router entries in the Router table.
+     *
+     * This method should be used as follows:
+     *
+     *     for (Router &router : Get<RouterTable>().Iterate()) { ... }
+     *
+     * @returns An `IteratorBuilder` instance.
+     *
+     */
+    IteratorBuilder Iterate(void) { return IteratorBuilder(GetInstance()); }
 
 private:
+    class IteratorBuilder : public InstanceLocator
+    {
+    public:
+        explicit IteratorBuilder(Instance &aInstance)
+            : InstanceLocator(aInstance)
+        {
+        }
+
+        Iterator begin(void) { return Iterator(GetInstance()); }
+        Iterator end(void) { return Iterator(GetInstance(), Iterator::kEndIterator); }
+    };
+
     void          UpdateAllocation(void);
     const Router *GetFirstEntry(void) const;
     const Router *GetNextEntry(const Router *aRouter) const;
@@ -342,6 +433,12 @@ private:
     Router *GetNextEntry(Router *aRouter)
     {
         return const_cast<Router *>(const_cast<const RouterTable *>(this)->GetNextEntry(aRouter));
+    }
+
+    const Router *FindRouter(const Router::AddressMatcher &aMatcher) const;
+    Router *      FindRouter(const Router::AddressMatcher &aMatcher)
+    {
+        return const_cast<Router *>(const_cast<const RouterTable *>(this)->FindRouter(aMatcher));
     }
 
     Router           mRouters[Mle::kMaxRouters];

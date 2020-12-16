@@ -36,15 +36,15 @@
 namespace ot {
 namespace Crypto {
 
-HmacSha256::HmacSha256()
+HmacSha256::HmacSha256(void)
 {
-    const mbedtls_md_info_t *mdInfo = NULL;
+    const mbedtls_md_info_t *mdInfo = nullptr;
     mbedtls_md_init(&mContext);
     mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     mbedtls_md_setup(&mContext, mdInfo, 1);
 }
 
-HmacSha256::~HmacSha256()
+HmacSha256::~HmacSha256(void)
 {
     mbedtls_md_free(&mContext);
 }
@@ -59,9 +59,9 @@ void HmacSha256::Update(const uint8_t *aBuf, uint16_t aBufLength)
     mbedtls_md_hmac_update(&mContext, aBuf, aBufLength);
 }
 
-void HmacSha256::Finish(uint8_t aHash[kHashSize])
+void HmacSha256::Finish(Hash &aHash)
 {
-    mbedtls_md_hmac_finish(&mContext, aHash);
+    mbedtls_md_hmac_finish(&mContext, aHash.m8);
 }
 
 } // namespace Crypto

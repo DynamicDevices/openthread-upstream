@@ -36,12 +36,12 @@
 namespace ot {
 namespace Crypto {
 
-Sha256::Sha256()
+Sha256::Sha256(void)
 {
     mbedtls_sha256_init(&mContext);
 }
 
-Sha256::~Sha256()
+Sha256::~Sha256(void)
 {
     mbedtls_sha256_free(&mContext);
 }
@@ -56,9 +56,9 @@ void Sha256::Update(const uint8_t *aBuf, uint16_t aBufLength)
     mbedtls_sha256_update_ret(&mContext, aBuf, aBufLength);
 }
 
-void Sha256::Finish(uint8_t aHash[kHashSize])
+void Sha256::Finish(Hash &aHash)
 {
-    mbedtls_sha256_finish_ret(&mContext, aHash);
+    mbedtls_sha256_finish_ret(&mContext, aHash.m8);
 }
 
 } // namespace Crypto

@@ -40,6 +40,14 @@
 #endif
 
 /**
+ * @def OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE
+ *
+ * Define to 1 to enable Thread Test Harness reference device support.
+ *
+ */
+#define OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE 1
+
+/**
  * @def OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
  *
  * Define to 1 to enable Border Router support.
@@ -54,6 +62,22 @@
  *
  */
 #define OPENTHREAD_CONFIG_COMMISSIONER_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_COMMISSIONER_MAX_JOINER_ENTRIES
+ *
+ * The maximum number of Joiner entries maintained by the Commissioner.
+ *
+ */
+#define OPENTHREAD_CONFIG_COMMISSIONER_MAX_JOINER_ENTRIES 4
+
+/**
+ * @def OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE
+ *
+ * Define to 1 to enable Border Agent support.
+ *
+ */
+#define OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE 1
 
 /**
  * @def OPENTHREAD_CONFIG_DIAG_ENABLE
@@ -102,6 +126,14 @@
  *
  */
 #define OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS 256
+
+/**
+ * @def OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE
+ *
+ * Whether use heap allocator for message buffers.
+ *
+ */
+#define OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE 0
 
 /**
  * @def OPENTHREAD_CONFIG_TMF_ADDRESS_CACHE_ENTRIES
@@ -222,7 +254,7 @@
  * Selects if, and where the LOG output goes to.
  *
  */
-#define OPENTHREAD_CONFIG_LOG_OUTPUT OPENTHREAD_CONFIG_LOG_OUTPUT_NCP_SPINEL
+#define OPENTHREAD_CONFIG_LOG_OUTPUT OPENTHREAD_CONFIG_LOG_OUTPUT_APP
 
 /**
  * @def OPENTHREAD_CONFIG_LOG_LEVEL
@@ -422,28 +454,60 @@
  */
 #define OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE 1
 
+/**
+ * @def OPENTHREAD_CONFIG_DNS_CLIENT_ENABLE
+ *
+ * Define to 1 to enable DNS Client support.
+ *
+ */
+#define OPENTHREAD_CONFIG_DNS_CLIENT_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_POSIX_APP_TREL_INTERFACE_NAME
+ *
+ * Defines the default interface name used for TREL UDP6 platform.
+ *
+ */
+#define OPENTHREAD_CONFIG_POSIX_APP_TREL_INTERFACE_NAME "trel"
+
 #if OPENTHREAD_RADIO
 /**
- * @def OPENTHREAD_CONFIG_SOFTWARE_ACK_TIMEOUT_ENABLE
+ * @def OPENTHREAD_CONFIG_MAC_SOFTWARE_ACK_TIMEOUT_ENABLE
  *
  * Define to 1 if you want to enable software ACK timeout logic.
  *
  */
-#define OPENTHREAD_CONFIG_SOFTWARE_ACK_TIMEOUT_ENABLE 1
+#define OPENTHREAD_CONFIG_MAC_SOFTWARE_ACK_TIMEOUT_ENABLE 1
 
 /**
- * @def OPENTHREAD_CONFIG_SOFTWARE_RETRANSMIT_ENABLE
+ * @def OPENTHREAD_CONFIG_MAC_SOFTWARE_RETRANSMIT_ENABLE
  *
  * Define to 1 if you want to enable software retransmission logic.
  *
  */
-#define OPENTHREAD_CONFIG_SOFTWARE_RETRANSMIT_ENABLE 1
+#define OPENTHREAD_CONFIG_MAC_SOFTWARE_RETRANSMIT_ENABLE 1
 
 /**
- * @def OPENTHREAD_CONFIG_SOFTWARE_CSMA_BACKOFF_ENABLE
+ * @def OPENTHREAD_CONFIG_MAC_SOFTWARE_CSMA_BACKOFF_ENABLE
  *
  * Define to 1 if you want to enable software CSMA-CA backoff logic.
  *
  */
-#define OPENTHREAD_CONFIG_SOFTWARE_CSMA_BACKOFF_ENABLE 1
+#define OPENTHREAD_CONFIG_MAC_SOFTWARE_CSMA_BACKOFF_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_SECURITY_ENABLE
+ *
+ * Define to 1 if you want to enable software transmission security logic.
+ *
+ */
+#define OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_SECURITY_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_TIMING_ENABLE
+ *
+ * Define to 1 to enable software transmission target time logic.
+ *
+ */
+#define OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_TIMING_ENABLE 1
 #endif // OPENTHREAD_RADIO

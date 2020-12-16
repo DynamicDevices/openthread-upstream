@@ -36,10 +36,10 @@
 
 #include "openthread-core-config.h"
 
-#include "coap/coap.hpp"
 #include "coap/coap_secure.hpp"
 #include "mqttsn/mqttsn_client.hpp"
 #include "mac/mac.hpp"
+#include "thread/tmf.hpp"
 
 #if OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE
 #include "meshcop/border_agent.hpp"
@@ -49,13 +49,19 @@
 #endif // OPENTHREAD_CONFIG_COMMISSIONER_ENABLE && OPENTHREAD_FTD
 
 #if (OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2)
-#include "backbone_router/leader.hpp"
+#include "backbone_router/bbr_leader.hpp"
 #endif
 #if OPENTHREAD_FTD && OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-#include "backbone_router/local.hpp"
+#include "backbone_router/backbone_tmf.hpp"
+#include "backbone_router/bbr_local.hpp"
+#include "backbone_router/bbr_manager.hpp"
 #endif
 
-#if OPENTHREAD_CONFIG_DUA_ENABLE
+#if OPENTHREAD_CONFIG_MLR_ENABLE || (OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE)
+#include "thread/mlr_manager.hpp"
+#endif
+
+#if OPENTHREAD_CONFIG_DUA_ENABLE || (OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_DUA_ENABLE)
 #include "thread/dua_manager.hpp"
 #endif
 
@@ -76,8 +82,10 @@
 #include "net/sntp_client.hpp"
 #include "thread/address_resolver.hpp"
 #include "thread/announce_begin_server.hpp"
+#include "thread/discover_scanner.hpp"
 #include "thread/energy_scan_server.hpp"
 #include "thread/key_manager.hpp"
+#include "thread/link_metrics.hpp"
 #include "thread/mesh_forwarder.hpp"
 #include "thread/mle.hpp"
 #include "thread/mle_router.hpp"
@@ -85,6 +93,7 @@
 #include "thread/network_data_notifier.hpp"
 #include "thread/network_diagnostic.hpp"
 #include "thread/panid_query_server.hpp"
+#include "thread/radio_selector.hpp"
 #include "thread/time_sync_service.hpp"
 #include "utils/child_supervision.hpp"
 
@@ -165,23 +174,23 @@ public:
     otError RouteLookup(const Ip6::Address &aSource, const Ip6::Address &aDestination, uint8_t *aPrefixMatch);
 
     /**
-     * This method returns whether Thread Management Framework Addressing Rules are met.
+     * This method indicates whether @p aAddress matches an on-mesh prefix.
      *
-     * @retval TRUE   if Thread Management Framework Addressing Rules are met.
-     * @retval FALSE  if Thread Management Framework Addressing Rules are not met.
+     * @param[in]  aAddress  The IPv6 address.
+     *
+     * @retval TRUE   If @p aAddress matches an on-mesh prefix.
+     * @retval FALSE  If @p aAddress does not match an on-mesh prefix.
      *
      */
-    bool IsTmfMessage(const Ip6::MessageInfo &aMessageInfo);
+    bool IsOnMesh(const Ip6::Address &aAddress) const;
 
 private:
-    static otError TmfFilter(const Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo, void *aContext);
-
-    Coap::Coap mCoap;
+    Tmf::TmfAgent mTmfAgent;
 #if OPENTHREAD_CONFIG_DHCP6_CLIENT_ENABLE
-    Dhcp6::Dhcp6Client mDhcp6Client;
+    Dhcp6::Client mDhcp6Client;
 #endif // OPENTHREAD_CONFIG_DHCP6_CLIENT_ENABLE
 #if OPENTHREAD_CONFIG_DHCP6_SERVER_ENABLE
-    Dhcp6::Dhcp6Server mDhcp6Server;
+    Dhcp6::Server mDhcp6Server;
 #endif // OPENTHREAD_CONFIG_DHCP6_SERVER_ENABLE
 #if OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE
     Utils::Slaac mSlaac;
@@ -200,6 +209,10 @@ private:
     Mac::Mac                mMac;
     MeshForwarder           mMeshForwarder;
     Mle::MleRouter          mMleRouter;
+    Mle::DiscoverScanner    mDiscoverScanner;
+#if OPENTHREAD_CONFIG_MULTI_RADIO
+    RadioSelector mRadioSelector;
+#endif
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE || OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
     NetworkData::Local mNetworkDataLocal;
 #endif // OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE || OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
@@ -241,9 +254,13 @@ private:
     BackboneRouter::Leader mBackboneRouterLeader;
 #endif
 #if OPENTHREAD_FTD && OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    BackboneRouter::Local mBackboneRouterLocal;
+    BackboneRouter::Local   mBackboneRouterLocal;
+    BackboneRouter::Manager mBackboneRouterManager;
 #endif
-#if OPENTHREAD_CONFIG_DUA_ENABLE
+#if OPENTHREAD_CONFIG_MLR_ENABLE || (OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE)
+    MlrManager mMlrManager;
+#endif
+#if OPENTHREAD_CONFIG_DUA_ENABLE || (OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_DUA_ENABLE)
     DuaManager mDuaManager;
 #endif
     Utils::ChildSupervisor     mChildSupervisor;
@@ -255,9 +272,12 @@ private:
 #if OPENTHREAD_CONFIG_TIME_SYNC_ENABLE
     TimeSync mTimeSync;
 #endif
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+    LinkMetrics mLinkMetrics;
 
+#endif
 #if OPENTHREAD_CONFIG_MQTTSN_ENABLE
-    Mqttsn::MqttsnClient       mMqttsnClient;
+    Mqttsn::MqttsnClient mMqttsnClient;
 #endif
 };
 

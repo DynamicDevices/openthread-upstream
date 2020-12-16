@@ -51,29 +51,22 @@ OT_DEFINE_ALIGNED_VAR(gInstanceRaw, sizeof(Instance), uint64_t);
 
 #if OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
 
-otHeapFreeFn   ot::Instance::mFree   = NULL;
-otHeapCAllocFn ot::Instance::mCAlloc = NULL;
+otHeapFreeFn   ot::Instance::mFree   = nullptr;
+otHeapCAllocFn ot::Instance::mCAlloc = nullptr;
 
 #endif // OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
 
 #endif // OPENTHREAD_MTD || OPENTHREAD_FTD
 
 Instance::Instance(void)
-    : mTaskletScheduler()
-    , mTimerMilliScheduler(*this)
+    : mTimerMilliScheduler(*this)
 #if OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE
     , mTimerMicroScheduler(*this)
 #endif
-#if OPENTHREAD_MTD || OPENTHREAD_FTD
-#if !OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE && !OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
-    , mHeap()
-#endif
-    , mMbedTls()
-#endif // #if OPENTHREAD_MTD || OPENTHREAD_FTD
-    , mRandomManager()
     , mRadio(*this)
 #if OPENTHREAD_MTD || OPENTHREAD_FTD
     , mNotifier(*this)
+    , mTimeTicker(*this)
     , mSettings(*this)
     , mSettingsDriver(*this)
     , mMessagePool(*this)
@@ -88,8 +81,11 @@ Instance::Instance(void)
 #if OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE
     , mChannelMonitor(*this)
 #endif
-#if OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE
+#if OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE && OPENTHREAD_FTD
     , mChannelManager(*this)
+#endif
+#if (OPENTHREAD_CONFIG_DATASET_UPDATER_ENABLE || OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE) && OPENTHREAD_FTD
+    , mDatasetUpdater(*this)
 #endif
 #if OPENTHREAD_CONFIG_ANNOUNCE_SENDER_ENABLE
     , mAnnounceSender(*this)
@@ -120,7 +116,7 @@ Instance &Instance::InitSingle(void)
 {
     Instance *instance = &Get();
 
-    VerifyOrExit(!instance->mIsInitialized, OT_NOOP);
+    VerifyOrExit(!instance->mIsInitialized);
 
     instance = new (&gInstanceRaw) Instance();
 
@@ -141,14 +137,14 @@ Instance &Instance::Get(void)
 
 Instance *Instance::Init(void *aBuffer, size_t *aBufferSize)
 {
-    Instance *instance = NULL;
+    Instance *instance = nullptr;
 
-    VerifyOrExit(aBufferSize != NULL, OT_NOOP);
+    VerifyOrExit(aBufferSize != nullptr);
 
     // Make sure the input buffer is big enough
     VerifyOrExit(sizeof(Instance) <= *aBufferSize, *aBufferSize = sizeof(Instance));
 
-    VerifyOrExit(aBuffer != NULL, OT_NOOP);
+    VerifyOrExit(aBuffer != nullptr);
 
     instance = new (aBuffer) Instance();
 
@@ -184,7 +180,7 @@ void Instance::AfterInit(void)
 
 void Instance::Finalize(void)
 {
-    VerifyOrExit(mIsInitialized, OT_NOOP);
+    VerifyOrExit(mIsInitialized);
 
     mIsInitialized = false;
 

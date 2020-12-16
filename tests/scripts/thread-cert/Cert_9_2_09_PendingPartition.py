@@ -44,16 +44,18 @@ ROUTER2 = 4
 
 
 class Cert_9_2_09_PendingPartition(thread_cert.TestCase):
-    topology = {
+    SUPPORT_NCP = False
+
+    TOPOLOGY = {
         COMMISSIONER: {
             'active_dataset': {
                 'timestamp': 10,
                 'panid': PANID_INIT,
                 'channel': CHANNEL_INIT
             },
-            'mode': 'rsdn',
+            'mode': 'rdn',
             'router_selection_jitter': 1,
-            'whitelist': [LEADER]
+            'allowlist': [LEADER]
         },
         LEADER: {
             'active_dataset': {
@@ -61,10 +63,10 @@ class Cert_9_2_09_PendingPartition(thread_cert.TestCase):
                 'panid': PANID_INIT,
                 'channel': CHANNEL_INIT
             },
-            'mode': 'rsdn',
+            'mode': 'rdn',
             'partition_id': 0xffffffff,
             'router_selection_jitter': 1,
-            'whitelist': [COMMISSIONER, ROUTER1]
+            'allowlist': [COMMISSIONER, ROUTER1]
         },
         ROUTER1: {
             'active_dataset': {
@@ -72,9 +74,9 @@ class Cert_9_2_09_PendingPartition(thread_cert.TestCase):
                 'panid': PANID_INIT,
                 'channel': CHANNEL_INIT
             },
-            'mode': 'rsdn',
+            'mode': 'rdn',
             'router_selection_jitter': 1,
-            'whitelist': [LEADER, ROUTER2]
+            'allowlist': [LEADER, ROUTER2]
         },
         ROUTER2: {
             'active_dataset': {
@@ -82,10 +84,10 @@ class Cert_9_2_09_PendingPartition(thread_cert.TestCase):
                 'panid': PANID_INIT,
                 'channel': CHANNEL_INIT
             },
-            'mode': 'rsdn',
+            'mode': 'rdn',
             'network_id_timeout': 100,
             'router_selection_jitter': 1,
-            'whitelist': [ROUTER1]
+            'allowlist': [ROUTER1]
         },
     }
 
@@ -117,8 +119,8 @@ class Cert_9_2_09_PendingPartition(thread_cert.TestCase):
         )
         self.simulator.go(5)
 
-        self.nodes[LEADER].remove_whitelist(self.nodes[ROUTER1].get_addr64())
-        self.nodes[ROUTER1].remove_whitelist(self.nodes[LEADER].get_addr64())
+        self.nodes[LEADER].remove_allowlist(self.nodes[ROUTER1].get_addr64())
+        self.nodes[ROUTER1].remove_allowlist(self.nodes[LEADER].get_addr64())
         self.simulator.go(140)
 
         self.assertEqual(self.nodes[ROUTER1].get_state(), 'router')
@@ -133,8 +135,8 @@ class Cert_9_2_09_PendingPartition(thread_cert.TestCase):
         )
         self.simulator.go(5)
 
-        self.nodes[LEADER].add_whitelist(self.nodes[ROUTER1].get_addr64())
-        self.nodes[ROUTER1].add_whitelist(self.nodes[LEADER].get_addr64())
+        self.nodes[LEADER].add_allowlist(self.nodes[ROUTER1].get_addr64())
+        self.nodes[ROUTER1].add_allowlist(self.nodes[LEADER].get_addr64())
         self.simulator.go(200)
 
         self.assertEqual(self.nodes[ROUTER1].get_state(), 'router')

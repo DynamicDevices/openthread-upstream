@@ -40,6 +40,8 @@
 
 #include <mbedtls/md.h>
 
+#include "crypto/sha256.hpp"
+
 namespace ot {
 namespace Crypto {
 
@@ -57,22 +59,23 @@ namespace Crypto {
 class HmacSha256
 {
 public:
-    enum
-    {
-        kHashSize = 32, ///< SHA-256 hash size (bytes)
-    };
+    /**
+     * This type represents a HMAC SHA-256 hash.
+     *
+     */
+    typedef Sha256::Hash Hash;
 
     /**
      * Constructor for initialization of mbedtls_md_context_t.
      *
      */
-    HmacSha256();
+    HmacSha256(void);
 
     /**
      * Destructor for freeing of mbedtls_md_context_t.
      *
      */
-    ~HmacSha256();
+    ~HmacSha256(void);
 
     /**
      * This method sets the key.
@@ -95,10 +98,10 @@ public:
     /**
      * This method finalizes the hash computation.
      *
-     * @param[out]  aHash  A pointer to the output buffer.
+     * @param[out]  aHash  A reference to a `Hash` to output the calculated hash.
      *
      */
-    void Finish(uint8_t aHash[kHashSize]);
+    void Finish(Hash &aHash);
 
 private:
     mbedtls_md_context_t mContext;
