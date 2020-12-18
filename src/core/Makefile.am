@@ -405,6 +405,7 @@ HEADERS_COMMON                                  = \
     config/logging.h                              \
     config/mac.h                                  \
     config/mle.h                                  \
+    config/mqttsn.h                               \
     config/openthread-core-config-check.h         \
     config/openthread-core-default-config.h       \
     config/parent_search.h                        \

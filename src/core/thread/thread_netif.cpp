@@ -133,7 +133,7 @@ ThreadNetif::ThreadNetif(Instance &aInstance)
     , mLinkMetrics(aInstance)
 #endif
 #if OPENTHREAD_CONFIG_MQTTSN_ENABLE
-    , mMqttsnClient(aIn
+    , mMqttsnClient(aInstance)
 #endif
 {
 }

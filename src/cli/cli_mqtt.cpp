@@ -26,13 +26,21 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "openthread-core-config.h"
+
 #if OPENTHREAD_CONFIG_MQTTSN_ENABLE
 
+#include <ctype.h>
+
 #include "cli/cli.hpp"
-#include "cli/cli_server.hpp"
 #include "common/code_utils.hpp"
+#include "utils/parse_cmdline.hpp"
 
 #include <openthread/mqttsn.h>
+
+using ot::Utils::CmdLineParser::ParseAsUint8;
+using ot::Utils::CmdLineParser::ParseAsUint16;
+using ot::Utils::CmdLineParser::ParseAsUint32;
 
 namespace ot {
 namespace Cli {
@@ -85,7 +93,7 @@ otError Mqtt::ProcessHelp(uint8_t aArgsLength, char *aArgs[])
 
     for (size_t i = 0; i < OT_ARRAY_LENGTH(sCommands); i++)
     {
-        mInterpreter.mServer->OutputFormat("%s\r\n", sCommands[i].mName);
+        mInterpreter.OutputFormat("%s\r\n", sCommands[i].mName);
     }
 
     return OT_ERROR_NONE;
@@ -96,18 +104,18 @@ otError Mqtt::ProcessStart(uint8_t aArgsLength, char *aArgs[])
     OT_UNUSED_VARIABLE(aArgsLength);
     OT_UNUSED_VARIABLE(aArgs);
     otError error;
-    long port = OT_MQTTSN_DEFAULT_PORT;
+    uint16_t port = OPENTHREAD_CONFIG_MQTTSN_DEFAULT_PORT;
     if (aArgsLength > 2)
     {
         ExitNow(error = OT_ERROR_INVALID_ARGS);
     }
     if (aArgsLength == 2)
     {
-        SuccessOrExit(error = mInterpreter.ParseLong(aArgs[1], port));
+        SuccessOrExit(error = ParseAsUint16(aArgs[1], port));
     }
 
     SuccessOrExit(error = otMqttsnSetPublishReceivedHandler(mInterpreter.mInstance, &Mqtt::HandlePublishReceived, this));
-    SuccessOrExit(error = otMqttsnStart(mInterpreter.mInstance, (uint16_t)port));
+    SuccessOrExit(error = otMqttsnStart(mInterpreter.mInstance, port));
 exit:
     return error;
 }
@@ -124,21 +132,17 @@ otError Mqtt::ProcessConnect(uint8_t aArgsLength, char *aArgs[])
 {
 	otError error;
 	otIp6Address destinationIp;
-	long destinationPort;
+	uint16_t destinationPort;
 
     if (aArgsLength != 3)
     {
     	ExitNow(error = OT_ERROR_INVALID_ARGS);
     }
     SuccessOrExit(error = otIp6AddressFromString(aArgs[1], &destinationIp));
-    SuccessOrExit(error = mInterpreter.ParseLong(aArgs[2], destinationPort));
-    if (destinationPort < 1 || destinationPort > 65535)
-    {
-    	ExitNow(error = OT_ERROR_INVALID_ARGS);
-    }
+    SuccessOrExit(error = ParseAsUint16(aArgs[2], destinationPort));
     SuccessOrExit(error = otMqttsnSetConnectedHandler(mInterpreter.mInstance, &Mqtt::HandleConnected, this));
     SuccessOrExit(error = otMqttsnSetDisconnectedHandler(mInterpreter.mInstance, &Mqtt::HandleDisconnected, this));
-    SuccessOrExit(error = otMqttsnConnectDefault(mInterpreter.mInstance, &destinationIp, (uint16_t)destinationPort));
+    SuccessOrExit(error = otMqttsnConnectDefault(mInterpreter.mInstance, &destinationIp, destinationPort));
 
 exit:
 	return error;
@@ -181,7 +185,7 @@ otError Mqtt::ProcessState(uint8_t aArgsLength, char *aArgs[])
     const char *clientStateString;
     clientState = otMqttsnGetState(mInterpreter.mInstance);
     SuccessOrExit(error = otMqttsnClientStateToString(clientState, &clientStateString));
-    mInterpreter.mServer->OutputFormat("%s\r\n", clientStateString);
+    mInterpreter.OutputFormat("%s\r\n", clientStateString);
 exit:
     return error;
 }
@@ -203,7 +207,7 @@ exit:
 otError Mqtt::ParseTopic(char *aValue, otMqttsnTopic *aTopic)
 {
     otError error = OT_ERROR_NONE;
-    long topicId = 0;
+    uint16_t topicId = 0;
 
     // Parse topic
     // If string starts with '@' it will be considered as normal topic ID
@@ -211,12 +215,12 @@ otError Mqtt::ParseTopic(char *aValue, otMqttsnTopic *aTopic)
     // Otherwise it is short topic name
     if (aValue[0] == '@')
     {
-        SuccessOrExit(error = mInterpreter.ParseLong(&aValue[1], topicId));
+        SuccessOrExit(error = ParseAsUint16(&aValue[1], topicId));
         *aTopic = otMqttsnCreateTopicId((otMqttsnTopicId)topicId);
     }
     else if (aValue[0] == '$')
     {
-        SuccessOrExit(error = mInterpreter.ParseLong(&aValue[1], topicId));
+        SuccessOrExit(error = ParseAsUint16(&aValue[1], topicId));
         *aTopic = otMqttsnCreatePredefinedTopicId((otMqttsnTopicId)topicId);
     }
     else
@@ -257,7 +261,7 @@ otError Mqtt::ProcessPublishm1(uint8_t aArgsLength, char *aArgs[])
 {
     otError error;
     otIp6Address destinationIp;
-    long destinationPort;
+    uint16_t destinationPort;
     const char* data = "";
     int32_t length = 0;
     otMqttsnTopic topic;
@@ -268,7 +272,7 @@ otError Mqtt::ProcessPublishm1(uint8_t aArgsLength, char *aArgs[])
     }
 
     SuccessOrExit(error = otIp6AddressFromString(aArgs[1], &destinationIp));
-    SuccessOrExit(error = mInterpreter.ParseLong(aArgs[2], destinationPort));
+    SuccessOrExit(error = ParseAsUint16(aArgs[2], destinationPort));
     SuccessOrExit(error = ParseTopic(aArgs[3], &topic));
     if (aArgsLength > 4)
     {
@@ -309,14 +313,14 @@ otError Mqtt::ProcessDisconnect(uint8_t aArgsLength, char *aArgs[])
 otError Mqtt::ProcessSleep(uint8_t aArgsLength, char *aArgs[])
 {
     otError error;
-    long duration;
+    uint16_t duration;
 
     if (aArgsLength != 2)
     {
         ExitNow(error = OT_ERROR_INVALID_ARGS);
     }
-    SuccessOrExit(error = mInterpreter.ParseLong(aArgs[1], duration));
-    SuccessOrExit(error = otMqttsnSleep(mInterpreter.mInstance, (uint16_t)duration));
+    SuccessOrExit(error = ParseAsUint16(aArgs[1], duration));
+    SuccessOrExit(error = otMqttsnSleep(mInterpreter.mInstance, duration));
 exit:
     return error;
 }
@@ -324,14 +328,14 @@ exit:
 otError Mqtt::ProcessAwake(uint8_t aArgsLength, char *aArgs[])
 {
     otError error;
-    long timeout;
+    uint32_t timeout;
 
     if (aArgsLength != 2)
     {
         ExitNow(error = OT_ERROR_INVALID_ARGS);
     }
-    SuccessOrExit(error = mInterpreter.ParseLong(aArgs[1], timeout));
-    SuccessOrExit(error = otMqttsnAwake(mInterpreter.mInstance, (uint32_t)timeout));
+    SuccessOrExit(error = ParseAsUint32(aArgs[1], timeout));
+    SuccessOrExit(error = otMqttsnAwake(mInterpreter.mInstance, timeout));
 exit:
     return error;
 }
@@ -340,18 +344,18 @@ otError Mqtt::ProcessSearchgw(uint8_t aArgsLength, char *aArgs[])
 {
     otError error;
     otIp6Address multicastAddress;
-    long port;
-    long radius;
+    uint16_t port;
+    uint8_t radius;
 
     if (aArgsLength != 4)
     {
         ExitNow(error = OT_ERROR_INVALID_ARGS);
     }
     SuccessOrExit(error = otIp6AddressFromString(aArgs[1], &multicastAddress));
-    SuccessOrExit(error = mInterpreter.ParseLong(aArgs[2], port));
-    SuccessOrExit(error = mInterpreter.ParseLong(aArgs[3], radius));
+    SuccessOrExit(error = ParseAsUint16(aArgs[2], port));
+    SuccessOrExit(error = ParseAsUint8(aArgs[3], radius));
     SuccessOrExit(error = otMqttsnSetSearchgwHandler(mInterpreter.mInstance, &Mqtt::HandleSearchgwResponse, this));
-    SuccessOrExit(error = otMqttsnSearchGateway(mInterpreter.mInstance, &multicastAddress, (uint16_t)port, (uint8_t)radius));
+    SuccessOrExit(error = otMqttsnSearchGateway(mInterpreter.mInstance, &multicastAddress, port, radius));
 exit:
     return error;
 }
@@ -367,9 +371,9 @@ otError Mqtt::ProcessGateways(uint8_t aArgsLength, char *aArgs[])
     for (uint16_t i = 0; i < gatewayCount; i++)
     {
         otMqttsnGatewayInfo &info = gateways[i];
-        mInterpreter.mServer->OutputFormat("gateway ");
+        mInterpreter.OutputFormat("gateway ");
         mInterpreter.OutputIp6Address(*static_cast<Ip6::Address *>(&info.mGatewayAddress));
-        mInterpreter.mServer->OutputFormat(": gateway_id=%d\r\n", (uint32_t)info.mGatewayId);
+        mInterpreter.OutputFormat(": gateway_id=%d\r\n", (uint32_t)info.mGatewayId);
     }
     return OT_ERROR_NONE;
 }
@@ -383,7 +387,7 @@ void Mqtt::HandleConnected(otMqttsnReturnCode aCode)
 {
 	if (aCode == kCodeAccepted)
 	{
-		mInterpreter.mServer->OutputFormat("connected\r\n");
+		mInterpreter.OutputFormat("connected\r\n");
 	}
 	else
 	{
@@ -401,10 +405,10 @@ void Mqtt::HandleSubscribed(otMqttsnReturnCode aCode, const otMqttsnTopic *aTopi
     OT_UNUSED_VARIABLE(aQos);
     if (aCode == kCodeAccepted)
     {
-        mInterpreter.mServer->OutputFormat("subscribed topic id:");
+        mInterpreter.OutputFormat("subscribed topic id:");
         if (aTopic != NULL)
         {
-            mInterpreter.mServer->OutputFormat("%u\r\n", otMqttsnGetTopicId(aTopic));
+            mInterpreter.OutputFormat("%u\r\n", otMqttsnGetTopicId(aTopic));
         }
     }
     else
@@ -422,7 +426,7 @@ void Mqtt::HandleRegistered(otMqttsnReturnCode aCode, const otMqttsnTopic *aTopi
 {
     if (aCode == kCodeAccepted)
     {
-        mInterpreter.mServer->OutputFormat("registered topic id:%u\r\n", otMqttsnGetTopicId(aTopic));
+        mInterpreter.OutputFormat("registered topic id:%u\r\n", otMqttsnGetTopicId(aTopic));
     }
     else
     {
@@ -439,7 +443,7 @@ void Mqtt::HandlePublished(otMqttsnReturnCode aCode)
 {
     if (aCode == kCodeAccepted)
     {
-        mInterpreter.mServer->OutputFormat("published\r\n");
+        mInterpreter.OutputFormat("published\r\n");
     }
     else
     {
@@ -456,7 +460,7 @@ void Mqtt::HandleUnsubscribed(otMqttsnReturnCode aCode)
 {
     if (aCode == kCodeAccepted)
     {
-        mInterpreter.mServer->OutputFormat("unsubscribed\r\n");
+        mInterpreter.OutputFormat("unsubscribed\r\n");
     }
     else
     {
@@ -473,13 +477,13 @@ otMqttsnReturnCode Mqtt::HandlePublishReceived(const uint8_t* aPayload, int32_t 
 {
     if (aTopic->mType == kTopicId)
     {
-        mInterpreter.mServer->OutputFormat("received publish from topic id %u:\r\n", otMqttsnGetTopicId(aTopic));
+        mInterpreter.OutputFormat("received publish from topic id %u:\r\n", otMqttsnGetTopicId(aTopic));
     }
     else if (aTopic->mType == kShortTopicName)
     {
-        mInterpreter.mServer->OutputFormat("received publish from topic %s:\r\n", otMqttsnGetTopicName(aTopic));
+        mInterpreter.OutputFormat("received publish from topic %s:\r\n", otMqttsnGetTopicName(aTopic));
     }
-    mInterpreter.mServer->OutputFormat("%.*s\r\n", aPayloadLength, aPayload);
+    mInterpreter.OutputFormat("%.*s\r\n", aPayloadLength, aPayload);
     return kCodeAccepted;
 }
 
@@ -493,11 +497,11 @@ void Mqtt::HandleDisconnected(otMqttsnDisconnectType aType)
     const char* disconnectTypeText;
     if (otMqttsnDisconnectTypeToString(aType, &disconnectTypeText) == OT_ERROR_NONE)
     {
-        mInterpreter.mServer->OutputFormat("disconnected reason: %s\r\n", disconnectTypeText);
+        mInterpreter.OutputFormat("disconnected reason: %s\r\n", disconnectTypeText);
     }
     else
     {
-        mInterpreter.mServer->OutputFormat("disconnected with unknown reason: %d\r\n", aType);
+        mInterpreter.OutputFormat("disconnected with unknown reason: %d\r\n", aType);
     }
 }
 
@@ -508,9 +512,9 @@ void Mqtt::HandleSearchgwResponse(const otIp6Address* aAddress, uint8_t aGateway
 
 void Mqtt::HandleSearchgwResponse(const otIp6Address* aAddress, uint8_t aGatewayId)
 {
-    mInterpreter.mServer->OutputFormat("searchgw response from ");
+    mInterpreter.OutputFormat("searchgw response from ");
     mInterpreter.OutputIp6Address(*static_cast<const Ip6::Address *>(aAddress));
-    mInterpreter.mServer->OutputFormat(": gateway_id=%u\r\n", (unsigned int)aGatewayId);
+    mInterpreter.OutputFormat(": gateway_id=%u\r\n", (unsigned int)aGatewayId);
 }
 
 void Mqtt::PrintFailedWithCode(const char *aCommandName, otMqttsnReturnCode aCode)
@@ -518,11 +522,11 @@ void Mqtt::PrintFailedWithCode(const char *aCommandName, otMqttsnReturnCode aCod
     const char* codeText;
     if (otMqttsnReturnCodeToString(aCode, &codeText) == OT_ERROR_NONE)
     {
-        mInterpreter.mServer->OutputFormat("%s failed: %s\r\n", aCommandName, codeText);
+        mInterpreter.OutputFormat("%s failed: %s\r\n", aCommandName, codeText);
     }
     else
     {
-        mInterpreter.mServer->OutputFormat("%s failed with unknown code: %d\r\n", aCommandName, aCode);
+        mInterpreter.OutputFormat("%s failed with unknown code: %d\r\n", aCommandName, aCode);
     }
 }
 

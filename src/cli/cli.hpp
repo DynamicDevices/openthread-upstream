@@ -399,7 +399,7 @@ private:
     otError ParseLinkMetricsFlags(otLinkMetrics &aLinkMetrics, char *aFlags);
 #endif
 #if OPENTHREAD_CONFIG_MQTTSN_ENABLE
-    void ProcessMqtt(uint8_t aArgsLength, char *aArgs[]);
+    otError ProcessMqtt(uint8_t aArgsLength, char *aArgs[]);
 #endif
 #if OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE && OPENTHREAD_CONFIG_COMMISSIONER_ENABLE
     otError ProcessMlr(uint8_t aArgsLength, char *aArgs[]);
@@ -695,6 +695,9 @@ private:
         {"mlr", &Interpreter::ProcessMlr},
 #endif
         {"mode", &Interpreter::ProcessMode},
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+        {"mqtt", &Interpreter::ProcessMqtt},
+#endif
 #if OPENTHREAD_FTD
         {"neighbor", &Interpreter::ProcessNeighbor},
 #endif

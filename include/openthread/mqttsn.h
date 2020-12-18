@@ -36,12 +36,6 @@
 extern "C" {
 #endif
 
-#define OT_MQTTSN_DEFAULT_PORT 10000
-
-#ifndef OPENTHREAD_CONFIG_MQTTSN_ENABLE
-#define OPENTHREAD_CONFIG_MQTTSN_ENABLE 0
-#endif
-
 /**
  * @addtogroup api-mqttsn
  *

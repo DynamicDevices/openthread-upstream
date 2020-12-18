@@ -26,6 +26,8 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "openthread-core-config.h"
+
 #include <string.h>
 #include <stddef.h>
 #include "mqttsn_client.hpp"
@@ -165,20 +167,20 @@ MessageMetadata<CallbackType>::MessageMetadata(
 template <typename CallbackType>
 otError MessageMetadata<CallbackType>::AppendTo(Message &aMessage) const
 {
-    return aMessage.Append(this, sizeof(*this));
+    return aMessage.Append(*this);
 }
 
 template <typename CallbackType>
 otError MessageMetadata<CallbackType>::UpdateIn(Message &aMessage) const
 {
-    aMessage.Write(aMessage.GetLength() - sizeof(*this), sizeof(*this), this);
+    aMessage.Write(aMessage.GetLength() - sizeof(*this), *this);
     return OT_ERROR_NONE;
 }
 
 template <typename CallbackType>
 uint16_t MessageMetadata<CallbackType>::ReadFrom(Message &aMessage)
 {
-    return aMessage.Read(aMessage.GetLength() - sizeof(*this), sizeof(*this), this);
+    return aMessage.Read(aMessage.GetLength() - sizeof(*this), *this);
 }
 
 template <typename CallbackType>
@@ -218,7 +220,7 @@ otError WaitingMessagesQueue<CallbackType>::EnqueueCopy(const Message &aMessage,
 
     VerifyOrExit((messageCopy = aMessage.Clone(aLength)) != NULL, error = OT_ERROR_NO_BUFS);
     SuccessOrExit(error = aMetadata.AppendTo(*messageCopy));
-    SuccessOrExit(error = mQueue.Enqueue(*messageCopy));
+    mQueue.Enqueue(*messageCopy);
 
 exit:
     return error;
@@ -227,9 +229,9 @@ exit:
 template <typename CallbackType>
 otError WaitingMessagesQueue<CallbackType>::Dequeue(Message &aMessage)
 {
-    otError error = mQueue.Dequeue(aMessage);
+    mQueue.Dequeue(aMessage);
     aMessage.Free();
-    return error;
+    return OT_ERROR_NONE;
 }
 
 template <typename CallbackType>
@@ -318,7 +320,7 @@ bool WaitingMessagesQueue<CallbackType>::IsEmpty()
 
 MqttsnClient::MqttsnClient(Instance& instance)
     : InstanceLocator(instance)
-    , mSocket(GetInstance().Get<Ip6::Udp>())
+    , mSocket(GetInstance())
     , mConfig()
     , mMessageId(0)
     , mPingReqTime(0)
@@ -328,7 +330,7 @@ MqttsnClient::MqttsnClient(Instance& instance)
     , mClientState(kStateDisconnected)
     , mIsRunning(false)
     , mActiveGateways()
-    , mProcessTask(instance, &MqttsnClient::HandleProcessTask, this)
+    , mProcessTask(instance, MqttsnClient::HandleProcessTask, this)
     , mSubscribeQueue(HandleSubscribeTimeout, this, HandleSubscribeRetransmission, this)
     , mRegisterQueue(HandleRegisterTimeout, this, HandleMessageRetransmission, this)
     , mUnsubscribeQueue(HandleUnsubscribeTimeout, this, HandleMessageRetransmission, this)
@@ -382,7 +384,7 @@ void MqttsnClient::HandleUdpReceive(void *aContext, otMessage *aMessage, const o
     {
         return;
     }
-    message.Read(offset, length, data);
+    message.ReadBytes(offset, data, length);
 
     otLogDebgMqttsn("UDP message received:");
     otDumpDebgMqttsn("received", data, length);
@@ -1127,7 +1129,7 @@ otError MqttsnClient::Start(uint16_t aPort)
     SuccessOrExit(error = mSocket.Bind(sockaddr));
 
     // Enqueue process task which will handle message queues etc.
-    SuccessOrExit(error = mProcessTask.Post());
+    mProcessTask.Post();
     mIsRunning = true;
 exit:
     return error;
@@ -1160,7 +1162,7 @@ otError MqttsnClient::Process()
     if (mIsRunning)
     {
         // Enqueue again if client running
-        SuccessOrExit(error = mProcessTask.Post());
+        mProcessTask.Post();
     }
 
     // Process keep alive and send periodical PINGREQ message
@@ -1567,7 +1569,7 @@ otError MqttsnClient::NewMessage(Message **aMessage, unsigned char* aBuffer, int
     Message *message = NULL;
 
     VerifyOrExit((message = mSocket.NewMessage(0)) != NULL, error = OT_ERROR_NO_BUFS);
-    SuccessOrExit(error = message->Append(aBuffer, aLength));
+    SuccessOrExit(error = message->AppendBytes(aBuffer, aLength));
     *aMessage = message;
 
 exit:
@@ -1654,7 +1656,7 @@ otError MqttsnClient::PingGateway(uint32_t aRetransmissionTimeout, uint8_t aRetr
     }
 
     // There is already pingreq message waiting
-    VerifyOrExit(mPingreqQueue.IsEmpty(), OT_NOOP);
+    VerifyOrExit(mPingreqQueue.IsEmpty());
 
     // Serialize and send PINGREQ message
     SuccessOrExit(error = pingreqMessage.Serialize(buffer, MAX_PACKET_SIZE, &length));
@@ -1825,7 +1827,7 @@ void MqttsnClient::HandlePublishRetransmission(const Message &aMessage, const Ip
     {
         return;
     }
-    aMessage.Read(offset, length, buffer);
+    aMessage.ReadBytes(offset, buffer, length);
     if (publishMessage.Deserialize(buffer, length) != OT_ERROR_NONE)
     {
         return;
@@ -1861,7 +1863,7 @@ void MqttsnClient::HandleSubscribeRetransmission(const Message &aMessage, const 
     {
         return;
     }
-    aMessage.Read(offset, length, data);
+    aMessage.Read(offset, data, length);
     if (subscribeMessage.Deserialize(buffer, length) != OT_ERROR_NONE)
     {
         return;

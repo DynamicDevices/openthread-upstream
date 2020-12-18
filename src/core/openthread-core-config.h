@@ -72,6 +72,7 @@
 #include "config/logging.h"
 #include "config/mac.h"
 #include "config/mle.h"
+#include "config/mqttsn.h"
 #include "config/parent_search.h"
 #include "config/platform.h"
 #include "config/radio_link.h"

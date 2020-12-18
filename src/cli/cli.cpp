@@ -108,9 +108,6 @@ namespace Cli {
 constexpr Interpreter::Command Interpreter::sCommands[];
 
 Interpreter *Interpreter::sInterpreter = nullptr;
-#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
-	{"mqtt", &Interpreter::ProcessMqtt},
-#endif
 
 Interpreter::Interpreter(Instance *aInstance)
     : mUserCommands(nullptr)
@@ -2502,11 +2499,9 @@ exit:
 }
 
 #if OPENTHREAD_CONFIG_MQTTSN_ENABLE
-void Interpreter::ProcessMqtt(uint8_t aArgsLength, char *aArgs[])
+otError Interpreter::ProcessMqtt(uint8_t aArgsLength, char *aArgs[])
 {
-	otError error;
-	error = mMqtt.Process(aArgsLength, aArgs);
-	AppendResult(error);
+	return mMqtt.Process(aArgsLength, aArgs);
 }
 #endif
 

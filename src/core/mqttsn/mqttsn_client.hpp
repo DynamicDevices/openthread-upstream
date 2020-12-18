@@ -480,7 +480,7 @@ public:
      */
     MqttsnConfig(void)
         : mAddress()
-        , mPort(OT_MQTTSN_DEFAULT_PORT)
+        , mPort(OPENTHREAD_CONFIG_MQTTSN_DEFAULT_PORT)
         , mClientId()
         , mKeepAlive(30)
         , mCleanSession()
@@ -1092,7 +1092,7 @@ private:
     static void HandleSubscribeRetransmission(const Message &aMessage, const Ip6::Address &aAddress, uint16_t aPort, void* aContext);
     static void HandlePingreqRetransmission(const Message &aMessage, const Ip6::Address &aAddress, uint16_t aPort, void* aContext);
 
-    Ip6::UdpSocket mSocket;
+    Ip6::Udp::Socket mSocket;
     MqttsnConfig mConfig;
     uint16_t mMessageId;
     uint32_t mPingReqTime;

@@ -65,6 +65,7 @@ openthread_headers                      = \
     openthread/link_raw.h                 \
     openthread/logging.h                  \
     openthread/message.h                  \
+    openthread/mqttsn.h                   \
     openthread/multi_radio.h              \
     openthread/ncp.h                      \
     openthread/netdata.h                  \

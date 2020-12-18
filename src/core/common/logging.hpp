@@ -1187,21 +1187,17 @@ void otLogCertMeshCoP(const char *aFormat, ...);
 #endif
 
 #if OPENTHREAD_CONFIG_LOG_MQTTSN == 1
-#define otLogCritMqttsn(aFormat, ...) otLogCrit(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX aFormat, ##__VA_ARGS__)
-#define otLogWarnMqttsn(aFormat, ...) otLogWarn(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX aFormat, ##__VA_ARGS__)
-#define otLogNoteMqttsn(aFormat, ...) otLogNote(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX aFormat, ##__VA_ARGS__)
-#define otLogInfoMqttsn(aFormat, ...) otLogInfo(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX aFormat, ##__VA_ARGS__)
-#define otLogInfoMqttsnErr(aError, aFormat, ...)                                                                \
-    otLogInfo(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX "Error %s: " aFormat, otThreadErrorToString(aError), \
-              ##__VA_ARGS__)
-#define otLogDebgMqttsn(aFormat, ...) otLogDebg(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX aFormat, ##__VA_ARGS__)
+#define otLogCritMqttsn(...) otLogCrit(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX, __VA_ARGS__)
+#define otLogWarnMqttsn(...) otLogWarn(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX, __VA_ARGS__)
+#define otLogNoteMqttsn(...) otLogNote(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX, __VA_ARGS__)
+#define otLogInfoMqttsn(...) otLogInfo(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX, __VA_ARGS__)
+#define otLogDebgMqttsn(...) otLogDebg(OT_LOG_REGION_MQTTSN, _OT_REGION_MQTTSN_PREFIX, __VA_ARGS__)
 #else
-#define otLogCritMqttsn(aFormat, ...)
-#define otLogWarnMqttsn(aFormat, ...)
-#define otLogNoteMqttsn(aFormat, ...)
-#define otLogInfoMqttsn(aFormat, ...)
-#define otLogInfoMqttsnErr(aError, aFormat, ...)
-#define otLogDebgMqttsn(aFormat, ...)
+#define otLogCritMqttsn(...)
+#define otLogWarnMqttsn(...)
+#define otLogNoteMqttsn(...)
+#define otLogInfoMqttsn(...)
+#define otLogDebgMqttsn(...)
 #endif
 
 /**

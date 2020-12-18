@@ -136,8 +136,8 @@ typedef enum otLogRegion
     OT_LOG_REGION_UTIL     = 16, ///< Utility module
     OT_LOG_REGION_BBR      = 17, ///< Backbone Router (available since Thread 1.2)
     OT_LOG_REGION_MLR      = 18, ///< Multicast Listener Registration (available since Thread 1.2)
-    OT_LOG_REGION_MQTTSN   = 18, ///< MQTT-SN module
     OT_LOG_REGION_DUA      = 19, ///< Domain Unicast Address (available since Thread 1.2)
+    OT_LOG_REGION_MQTTSN   = 30, ///< MQTT-SN module
 } otLogRegion;
 
 /**
