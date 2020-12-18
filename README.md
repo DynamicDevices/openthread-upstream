@@ -6,7 +6,7 @@
   * [About MQTT-SN](#About-MQTT-SN)<br>
 * [Trying MQTT-SN client with CLI application example](#Trying-MQTT-SN-client-with-CLI-application-example)<br>
   * [Requirements](#Requirements)<br>
-  * [Build and flash NCP](#Build-and-flash-NCP)<br>
+  * [Build and flash RCP](#Build-and-flash-RCP)<br>
   * [Install border router with MQTT-SN gateway](#Install-border-router-with-MQTT-SN-gateway)
   * [Build CLI example](#Build-CLI-example)
   * [Connect to the broker](#Connect-to-the-broker)
@@ -51,15 +51,15 @@ OpenThread released by Google is an open-source implementation of the Thread net
 * 2 Thread devices compatible with OpenThread - check [here](https://openthread.io/platforms)
 * Environment for building firmware with [GNU Arm Embedded Toolchain](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-rm)
 
-### Build and flash NCP
+### Build and flash RCP
 
-OpenThread Border Router runs on an NCP design. First clone openthread MQTT-SN repository:
+OpenThread Border Router runs on an RCP design. First clone openthread MQTT-SN repository:
 
 ```
 git clone https://github.com/kyberpunk/openthread.git --recursive
 ```
 
-Select a supported OpenThread platform to use as an NCP and follow the [official building instructions](https://openthread.io/guides/border-router/build). For example for KW41Z platform run following commands:
+Select a supported OpenThread platform to use as an RCP and follow the [official building instructions](https://openthread.io/guides/border-router/build). For example for KW41Z platform run following commands:
 
 ```
 cd openthread
@@ -72,10 +72,10 @@ After a successful build, the elf files are found in output/kw41z/bin. You can c
 
 ```
 cd /output/kw41z/bin
-arm-none-eabi-objcopy -O binary ot-ncp-ftd ot-ncp-ftd.bin
+arm-none-eabi-objcopy -O binary ot-rcp ot-rcp.bin
 ```
 
-Then flash the binary and connect NCP device to border router device.
+Then flash the binary and connect RCP device to border router device.
 
 ### Install border router with MQTT-SN gateway
 
@@ -99,10 +99,11 @@ Run new OTBR container from official image:
 sudo docker run -d --name otbr --sysctl "net.ipv6.conf.all.disable_ipv6=0 \
         net.ipv4.conf.all.forwarding=1 net.ipv6.conf.all.forwarding=1" -p 8080:80 \
         --dns=127.0.0.1 -v /dev/ttyACM0:/dev/ttyACM0 --net test --ip 172.18.0.6 \
-        --privileged openthread/otbr --ncp-path /dev/ttyACM0 --nat64-prefix "2018:ff9b::/96"
+        --privileged openthread/otbr --radio-url spinel+hdlc+uart:///dev/ttyACM0 \
+        --nat64-prefix "2018:ff9b::/96"
 ```
 
-Container will use `test` network with static IP address 172.18.0.6. If needed replace `/dev/ttyACM0` in `-v` and `--ncp-path` parameter with name under which appear NCP device in your system (`/dev/ttyS0`, `/dev/ttyUSB0` etc.). NAT-64 prefix is set to `2018:ff9b::/96`. It allows address translation and routing to local addresses. Border Router web GUI is bound to port 8080.
+Container will use `test` network with static IP address 172.18.0.6. If needed replace `/dev/ttyACM0` in `-v` and `--radio-url` parameter with name under which appear RCP device in your system (`/dev/ttyS0`, `/dev/ttyUSB0` etc.). NAT-64 prefix is set to `2018:ff9b::/96`. It allows address translation and routing to local addresses. Border Router web GUI is bound to port 8080.
 
 Next step is to run Mosquitto container as MQTT broker for sample test. Broker IP address in `test` network will be 172.18.0.7:
 
