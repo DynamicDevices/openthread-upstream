@@ -1,7 +1,7 @@
 # OpenThread with MQTT-SN client support
 
 * [OpenThread with MQTT-SN client support](#OpenThread-with-MQTT-SN-client-support)<br>
-  * [Contents](#Contents)<br>
+  * [Overview](#Overview)<br>
   * [About OpenThread](#About-OpenThread)<br>
   * [About MQTT-SN](#About-MQTT-SN)<br>
 * [Trying MQTT-SN client with CLI application example](#Trying-MQTT-SN-client-with-CLI-application-example)<br>
