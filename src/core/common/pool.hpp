@@ -99,7 +99,8 @@ public:
     /**
      * This method allocates a new object from the pool.
      *
-     * @returns A pointer to the newly allocated object, or nullptr if all entries from the pool are already allocated.
+     * @returns A pointer to the newly allocated object, or `nullptr` if all entries from the pool are already
+     *          allocated.
      *
      */
     Type *Allocate(void) { return mFreeList.Pop(); }
@@ -114,6 +115,20 @@ public:
      *
      */
     void Free(Type &aEntry) { mFreeList.Push(aEntry); }
+
+    /**
+     * This method frees all previously allocated objects.
+     *
+     */
+    void FreeAll(void)
+    {
+        mFreeList.Clear();
+
+        for (Type &entry : mPool)
+        {
+            mFreeList.Push(entry);
+        }
+    }
 
     /**
      * This method returns the pool size.

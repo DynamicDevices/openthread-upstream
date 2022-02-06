@@ -28,18 +28,9 @@
 
 add_library(openthread-cli-ftd)
 
-set_target_properties(
-    openthread-cli-ftd
-    PROPERTIES
-        C_STANDARD 99
-        CXX_STANDARD 11
-)
-
 target_compile_definitions(openthread-cli-ftd
     PRIVATE
         OPENTHREAD_FTD=1
-    PUBLIC
-        "OPENTHREAD_CONFIG_CLI_TRANSPORT=OT_CLI_TRANSPORT_${OT_CLI_TRANSPORT}"
 )
 
 target_compile_options(openthread-cli-ftd PRIVATE

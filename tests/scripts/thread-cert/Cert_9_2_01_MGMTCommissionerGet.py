@@ -56,20 +56,17 @@ LEADER = 2
 
 class Cert_9_2_01_MGMTCommissionerGet(thread_cert.TestCase):
     SUPPORT_NCP = False
+    USE_MESSAGE_FACTORY = True
 
     TOPOLOGY = {
         COMMISSIONER: {
             'name': 'COMMISSIONER',
             'mode': 'rdn',
-            'panid': 0xface,
-            'router_selection_jitter': 1,
             'allowlist': [LEADER]
         },
         LEADER: {
             'name': 'LEADER',
             'mode': 'rdn',
-            'panid': 0xface,
-            'router_selection_jitter': 1,
             'allowlist': [COMMISSIONER]
         },
     }
@@ -82,7 +79,6 @@ class Cert_9_2_01_MGMTCommissionerGet(thread_cert.TestCase):
         self.nodes[COMMISSIONER].start()
         self.simulator.go(5)
         self.assertEqual(self.nodes[COMMISSIONER].get_state(), 'router')
-        self.simulator.get_messages_sent_by(LEADER)
 
         self.collect_leader_aloc(LEADER)
         self.collect_rlocs()
@@ -143,7 +139,7 @@ class Cert_9_2_01_MGMTCommissionerGet(thread_cert.TestCase):
         #             Border Agent Locator TLV
         #             Commissioner Session ID TLV
         #             Steering Data TLV
-        pkts.filter_ipv6_src_dst(LEADER_RLOC, COMMISSIONER_RLOC).\
+        pkts.filter_ipv6_src_dst(_pkt.ipv6.dst, COMMISSIONER_RLOC).\
             filter_coap_ack(MGMT_COMMISSIONER_GET_URI).\
             filter(lambda p: {
                               NM_COMMISSIONER_SESSION_ID_TLV,
@@ -163,7 +159,7 @@ class Cert_9_2_01_MGMTCommissionerGet(thread_cert.TestCase):
         #         CoAP Payload
         #             Commissioner Session ID TLV
         #             Steering Data TLV
-        pkts.filter_wpan_src64(COMMISSIONER).\
+        _mgmt_get_pkt = pkts.filter_wpan_src64(COMMISSIONER).\
             filter_ipv6_2dsts(LEADER_ALOC, LEADER_RLOC).\
             filter_coap_request(MGMT_COMMISSIONER_GET_URI).\
             filter(lambda p: {
@@ -181,7 +177,7 @@ class Cert_9_2_01_MGMTCommissionerGet(thread_cert.TestCase):
         #         Encoded values for the requested Commissioner Dataset parameters
         #             Commissioner Session ID TLV
         #             Steering Data TLV
-        pkts.filter_ipv6_src_dst(LEADER_RLOC, COMMISSIONER_RLOC).\
+        pkts.filter_ipv6_src_dst(_mgmt_get_pkt.ipv6.dst, COMMISSIONER_RLOC).\
             filter_coap_ack(MGMT_COMMISSIONER_GET_URI).\
             filter(lambda p: {
                               NM_COMMISSIONER_SESSION_ID_TLV,
@@ -199,7 +195,7 @@ class Cert_9_2_01_MGMTCommissionerGet(thread_cert.TestCase):
         #         CoAP Payload
         #             Commissioner Session ID TLV
         #             PAN ID TLV
-        pkts.filter_wpan_src64(COMMISSIONER).\
+        _mgmt_get_pkt = pkts.filter_wpan_src64(COMMISSIONER).\
             filter_ipv6_2dsts(LEADER_ALOC, LEADER_RLOC).\
             filter_coap_request(MGMT_COMMISSIONER_GET_URI).\
             filter(lambda p: {
@@ -217,7 +213,7 @@ class Cert_9_2_01_MGMTCommissionerGet(thread_cert.TestCase):
         #         Encoded values for the requested Commissioner Dataset parameters
         #             Commissioner Session ID TLV
         #             (PAN ID TLV in Get TLV is ignored)
-        pkts.filter_ipv6_src_dst(LEADER_RLOC, COMMISSIONER_RLOC).\
+        pkts.filter_ipv6_src_dst(_mgmt_get_pkt.ipv6.dst, COMMISSIONER_RLOC).\
             filter_coap_ack(MGMT_COMMISSIONER_GET_URI).\
             filter(lambda p: {
                               NM_COMMISSIONER_SESSION_ID_TLV
@@ -234,7 +230,7 @@ class Cert_9_2_01_MGMTCommissionerGet(thread_cert.TestCase):
         #         CoAP Payload
         #             Border Agent Locator TLV
         #             Network Name TLV
-        pkts.filter_wpan_src64(COMMISSIONER).\
+        _mgmt_get_pkt = pkts.filter_wpan_src64(COMMISSIONER).\
             filter_ipv6_2dsts(LEADER_ALOC, LEADER_RLOC).\
             filter_coap_request(MGMT_COMMISSIONER_GET_URI).\
             filter(lambda p: {
@@ -252,7 +248,7 @@ class Cert_9_2_01_MGMTCommissionerGet(thread_cert.TestCase):
         #         Encoded values for the requested Commissioner Dataset parameters
         #             Border Agent Locator TLV
         #             (Network Name TLV in Get TLV is ignored)
-        pkts.filter_ipv6_src_dst(LEADER_RLOC, COMMISSIONER_RLOC).\
+        pkts.filter_ipv6_src_dst(_mgmt_get_pkt.ipv6.dst, COMMISSIONER_RLOC).\
             filter_coap_ack(MGMT_COMMISSIONER_GET_URI).\
             filter(lambda p: {
                               NM_BORDER_AGENT_LOCATOR_TLV

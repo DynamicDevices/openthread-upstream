@@ -38,14 +38,18 @@
 
 #include <openthread/thread_ftd.h>
 
+#include "common/as_core_type.hpp"
 #include "common/clearable.hpp"
+#include "common/equatable.hpp"
 #include "common/linked_list.hpp"
 #include "common/locator.hpp"
 #include "common/message.hpp"
 #include "common/random.hpp"
+#include "common/serial_number.hpp"
 #include "common/timer.hpp"
 #include "mac/mac_types.hpp"
 #include "net/ip6.hpp"
+#include "radio/radio.hpp"
 #include "radio/trel_link.hpp"
 #include "thread/csl_tx_scheduler.hpp"
 #include "thread/indirect_sender.hpp"
@@ -53,13 +57,10 @@
 #include "thread/link_quality.hpp"
 #include "thread/mle_tlvs.hpp"
 #include "thread/mle_types.hpp"
+#include "thread/network_data_types.hpp"
 #include "thread/radio_selector.hpp"
 
 namespace ot {
-
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
-class LinkMetricsSeriesInfo; ///< Forward declaration for including each other with `link_metrics.hpp`
-#endif
 
 /**
  * This class represents a Thread neighbor.
@@ -80,7 +81,7 @@ public:
      * Neighbor link states.
      *
      */
-    enum State
+    enum State : uint8_t
     {
         kStateInvalid,            ///< Neighbor link is invalid
         kStateRestored,           ///< Neighbor is restored from non-volatile memory
@@ -98,7 +99,7 @@ public:
      * Each filter definition accepts a subset of `State` values.
      *
      */
-    enum StateFilter
+    enum StateFilter : uint8_t
     {
         kInStateValid,                     ///< Accept neighbor only in `kStateValid`.
         kInStateValidOrRestoring,          ///< Accept neighbor with `IsStateValidOrRestoring()` being `true`.
@@ -354,12 +355,12 @@ public:
     bool IsFullThreadDevice(void) const { return GetDeviceMode().IsFullThreadDevice(); }
 
     /**
-     * This method indicates whether or not the device requests Full Network Data.
+     * This method gets the Network Data type (full set or stable subset) that the device requests.
      *
-     * @returns TRUE if requests Full Network Data, FALSE otherwise.
+     * @returns The Network Data type.
      *
      */
-    bool IsFullNetworkData(void) const { return GetDeviceMode().IsFullNetworkData(); }
+    NetworkData::Type GetNetworkDataType(void) const { return GetDeviceMode().GetNetworkDataType(); }
 
     /**
      * This method sets all bytes of the Extended Address to zero.
@@ -546,7 +547,7 @@ public:
      * before @p aTag.
      *
      */
-    bool IsLastRxFragmentTagAfter(uint16_t aTag) const { return ((aTag - mLastRxFragmentTag) & (1U << 15)) != 0; }
+    bool IsLastRxFragmentTagAfter(uint16_t aTag) const { return SerialNumber::IsGreater(mLastRxFragmentTag, aTag); }
 
 #endif // OPENTHREAD_CONFIG_MULTI_RADIO
 
@@ -565,6 +566,14 @@ public:
      *
      */
     bool IsThreadVersion1p2(void) const { return mState != kStateInvalid && mVersion == OT_THREAD_VERSION_1_2; }
+
+    /**
+     * This method indicates whether Thread version supports CSL.
+     *
+     * @returns TRUE if CSL is supported, FALSE otherwise.
+     *
+     */
+    bool IsThreadVersionCslCapable(void) const { return IsThreadVersion1p2() && !IsRxOnWhenIdle(); }
 
     /**
      * This method indicates whether Enhanced Keep-Alive is supported or not.
@@ -667,11 +676,11 @@ public:
     void SetTimeSyncEnabled(bool aEnabled) { mTimeSyncEnabled = aEnabled; }
 #endif
 
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE || OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
     /**
      * This method aggregates the Link Metrics data into all the series that is running for this neighbor.
      *
-     * If a series wants to account frames of @p aFrameType, it would add count by 1 and aggregrate @p aLqi and
+     * If a series wants to account frames of @p aFrameType, it would add count by 1 and aggregate @p aLqi and
      * @p aRss into its averagers.
      *
      * @param[in] aSeriesId     Series ID for Link Probe. Should be `0` if this method is not called by Link Probe.
@@ -683,32 +692,32 @@ public:
     void AggregateLinkMetrics(uint8_t aSeriesId, uint8_t aFrameType, uint8_t aLqi, int8_t aRss);
 
     /**
-     * This method adds a new LinkMetricsSeriesInfo to the neighbor's list.
+     * This method adds a new LinkMetrics::SeriesInfo to the neighbor's list.
      *
-     * @param[in]    A reference to the new LinkMetricsSeriesInfo.
+     * @param[in]    A reference to the new SeriesInfo.
      *
      */
-    void AddForwardTrackingSeriesInfo(LinkMetricsSeriesInfo &aLinkMetricsSeriesInfo);
+    void AddForwardTrackingSeriesInfo(LinkMetrics::SeriesInfo &aSeriesInfo);
 
     /**
-     * This method finds a specific LinkMetricsSeriesInfo by Series ID.
+     * This method finds a specific LinkMetrics::SeriesInfo by Series ID.
      *
      * @param[in] aSeriesId    A reference to the Series ID.
      *
-     * @returns The pointer to the LinkMetricsSeriesInfo. `nullptr` if not found.
+     * @returns The pointer to the LinkMetrics::SeriesInfo. `nullptr` if not found.
      *
      */
-    LinkMetricsSeriesInfo *GetForwardTrackingSeriesInfo(const uint8_t &aSeriesId);
+    LinkMetrics::SeriesInfo *GetForwardTrackingSeriesInfo(const uint8_t &aSeriesId);
 
     /**
-     * This method removes a specific LinkMetricsSeriesInfo by Series ID.
+     * This method removes a specific LinkMetrics::SeriesInfo by Series ID.
      *
      * @param[in] aSeriesId    A reference to the Series ID to remove.
      *
-     * @returns The pointer to the LinkMetricsSeriesInfo. `nullptr` if not found.
+     * @returns The pointer to the LinkMetrics::SeriesInfo. `nullptr` if not found.
      *
      */
-    LinkMetricsSeriesInfo *RemoveForwardTrackingSeriesInfo(const uint8_t &aSeriesId);
+    LinkMetrics::SeriesInfo *RemoveForwardTrackingSeriesInfo(const uint8_t &aSeriesId);
 
     /**
      * This method removes all the Series and return the data structures to the Pool.
@@ -722,7 +731,7 @@ public:
      * @returns Enh-ACK Probing metrics configured.
      *
      */
-    const otLinkMetrics &GetEnhAckProbingMetrics(void) const { return mEnhAckProbingMetrics; }
+    const LinkMetrics::Metrics &GetEnhAckProbingMetrics(void) const { return mEnhAckProbingMetrics; }
 
     /**
      * This method sets the Enh-ACK Probing metrics (this `Neighbor` object is the Probing Subject).
@@ -730,7 +739,7 @@ public:
      * @param[in]  aEnhAckProbingMetrics  The metrics value to set.
      *
      */
-    void SetEnhAckProbingMetrics(const otLinkMetrics &aEnhAckProbingMetrics)
+    void SetEnhAckProbingMetrics(const LinkMetrics::Metrics &aEnhAckProbingMetrics)
     {
         mEnhAckProbingMetrics = aEnhAckProbingMetrics;
     }
@@ -747,7 +756,7 @@ public:
         return (mEnhAckProbingMetrics.mLqi != 0) || (mEnhAckProbingMetrics.mLinkMargin != 0) ||
                (mEnhAckProbingMetrics.mRssi != 0);
     }
-#endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE || OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
 
     /**
      * This method converts a given `State` to a human-readable string.
@@ -803,16 +812,20 @@ private:
 #endif
     uint8_t         mVersion;  ///< The MLE version
     LinkQualityInfo mLinkInfo; ///< Link quality info (contains average RSS, link margin and link quality)
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
-    LinkedList<LinkMetricsSeriesInfo> mLinkMetricsSeriesInfoList; ///< A list of Link Metrics Forward Tracking Series
-                                                                  ///< that is being tracked for this neighbor. Note
-                                                                  ///< that this device is the Subject and this
-                                                                  ///< this neighbor is the Initiator.
-    otLinkMetrics mEnhAckProbingMetrics; ///< Metrics configured for Enh-ACK Based Probing at the Probing Subject
-                                         ///< (this neighbor). Note that this device is the Initiator and this neighbor
-                                         ///< is the Subject.
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE || OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
+    // A list of Link Metrics Forward Tracking Series that is being
+    // tracked for this neighbor. Note that this device is the
+    // Subject and this neighbor is the Initiator.
+    LinkedList<LinkMetrics::SeriesInfo> mLinkMetricsSeriesInfoList;
+
+    // Metrics configured for Enh-ACK Based Probing at the Probing
+    // Subject (this neighbor). Note that this device is the Initiator
+    // and this neighbor is the Subject.
+    LinkMetrics::Metrics mEnhAckProbingMetrics;
 #endif
 };
+
+#if OPENTHREAD_FTD
 
 /**
  * This class represents a Thread Child.
@@ -821,7 +834,7 @@ private:
 class Child : public Neighbor,
               public IndirectSender::ChildInfo,
               public DataPollHandler::ChildInfo
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
     ,
               public CslTxScheduler::ChildInfo
 #endif
@@ -829,10 +842,7 @@ class Child : public Neighbor,
     class AddressIteratorBuilder;
 
 public:
-    enum
-    {
-        kMaxRequestTlvs = 5,
-    };
+    static constexpr uint8_t kMaxRequestTlvs = 5;
 
     /**
      * This class represents diagnostic information for a Thread Child.
@@ -854,7 +864,7 @@ public:
      * This class defines an iterator used to go through IPv6 address entries of a child.
      *
      */
-    class AddressIterator
+    class AddressIterator : public Unequatable<AddressIterator>
     {
         friend class AddressIteratorBuilder;
 
@@ -913,7 +923,7 @@ public:
         /**
          * This method gets the current `Child` IPv6 Address to which the iterator is pointing.
          *
-         * @returns  A pointer to the associated IPv6 Address, or nullptr if iterator is done.
+         * @returns  A pointer to the associated IPv6 Address, or `nullptr` if iterator is done.
          *
          */
         const Ip6::Address *GetAddress(void) const;
@@ -969,29 +979,13 @@ public:
          */
         bool operator==(const AddressIterator &aOther) const { return (mIndex == aOther.mIndex); }
 
-        /**
-         * This method overloads operator `!=` to evaluate whether or not two `Iterator` instances are unequal.
-         *
-         * This method MUST be used when the two iterators are associated with the same `Child` entry.
-         *
-         * @param[in]  aOther  The other `Iterator` to compare with.
-         *
-         * @retval TRUE   If the two `Iterator` objects are unequal.
-         * @retval FALSE  If the two `Iterator` objects are not unequal.
-         *
-         */
-        bool operator!=(const AddressIterator &aOther) const { return !(*this == aOther); }
-
     private:
         enum IteratorType : uint8_t
         {
             kEndIterator,
         };
 
-        enum : uint16_t
-        {
-            kMaxIndex = OPENTHREAD_CONFIG_MLE_IP_ADDRS_PER_CHILD,
-        };
+        static constexpr uint16_t kMaxIndex = OPENTHREAD_CONFIG_MLE_IP_ADDRS_PER_CHILD;
 
         AddressIterator(const Child &aChild, IteratorType)
             : mChild(aChild)
@@ -1028,15 +1022,23 @@ public:
     void ClearIp6Addresses(void);
 
     /**
+     * This method sets the device mode flags.
+     *
+     * @param[in]  aMode  The device mode flags.
+     *
+     */
+    void SetDeviceMode(Mle::DeviceMode aMode);
+
+    /**
      * This method gets the mesh-local IPv6 address.
      *
      * @param[out]   aAddress            A reference to an IPv6 address to provide address (if any).
      *
-     * @retval       OT_ERROR_NONE       Successfully found the mesh-local address and updated @p aAddress.
-     * @retval       OT_ERROR_NOT_FOUND  No mesh-local IPv6 address in the IPv6 address list.
+     * @retval kErrorNone      Successfully found the mesh-local address and updated @p aAddress.
+     * @retval kErrorNotFound  No mesh-local IPv6 address in the IPv6 address list.
      *
      */
-    otError GetMeshLocalIp6Address(Ip6::Address &aAddress) const;
+    Error GetMeshLocalIp6Address(Ip6::Address &aAddress) const;
 
     /**
      * This method returns the Mesh Local Interface Identifier.
@@ -1073,25 +1075,25 @@ public:
      *
      * @param[in]  aAddress           A reference to IPv6 address to be added.
      *
-     * @retval OT_ERROR_NONE          Successfully added the new address.
-     * @retval OT_ERROR_ALREADY       Address is already in the list.
-     * @retval OT_ERROR_NO_BUFS       Already at maximum number of addresses. No entry available to add the new address.
-     * @retval OT_ERROR_INVALID_ARGS  Address is invalid (it is the Unspecified Address).
+     * @retval kErrorNone          Successfully added the new address.
+     * @retval kErrorAlready       Address is already in the list.
+     * @retval kErrorNoBufs        Already at maximum number of addresses. No entry available to add the new address.
+     * @retval kErrorInvalidArgs   Address is invalid (it is the Unspecified Address).
      *
      */
-    otError AddIp6Address(const Ip6::Address &aAddress);
+    Error AddIp6Address(const Ip6::Address &aAddress);
 
     /**
      * This method removes an IPv6 address from the list.
      *
      * @param[in]  aAddress               A reference to IPv6 address to be removed.
      *
-     * @retval OT_ERROR_NONE              Successfully removed the address.
-     * @retval OT_ERROR_NOT_FOUND         Address was not found in the list.
-     * @retval OT_ERROR_INVALID_ARGS      Address is invalid (it is the Unspecified Address).
+     * @retval kErrorNone             Successfully removed the address.
+     * @retval kErrorNotFound         Address was not found in the list.
+     * @retval kErrorInvalidArgs      Address is invalid (it is the Unspecified Address).
      *
      */
-    otError RemoveIp6Address(const Ip6::Address &aAddress);
+    Error RemoveIp6Address(const Ip6::Address &aAddress);
 
     /**
      * This method indicates whether an IPv6 address is in the list of IPv6 addresses of the child.
@@ -1219,53 +1221,53 @@ public:
 
 #if OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE
     /**
-     * This method returns MLR state of an Ip6 multicast address.
+     * This method returns MLR state of an IPv6 multicast address.
      *
      * @note The @p aAdddress reference MUST be from `IterateIp6Addresses()` or `AddressIterator`.
      *
-     * @param[in] aAddress  The Ip6 multicast address.
+     * @param[in] aAddress  The IPv6 multicast address.
      *
-     * @returns MLR state of the Ip6 multicast address.
+     * @returns MLR state of the IPv6 multicast address.
      *
      */
     MlrState GetAddressMlrState(const Ip6::Address &aAddress) const;
 
     /**
-     * This method sets MLR state of an Ip6 multicast address.
+     * This method sets MLR state of an IPv6 multicast address.
      *
      * @note The @p aAdddress reference MUST be from `IterateIp6Addresses()` or `AddressIterator`.
      *
-     * @param[in] aAddress  The Ip6 multicast address.
+     * @param[in] aAddress  The IPv6 multicast address.
      * @param[in] aState    The target MLR state.
      *
      */
     void SetAddressMlrState(const Ip6::Address &aAddress, MlrState aState);
 
     /**
-     * This method returns if the Child has Ip6 address @p aAddress of MLR state `kMlrStateRegistered`.
+     * This method returns if the Child has IPv6 address @p aAddress of MLR state `kMlrStateRegistered`.
      *
-     * @param[in] aAddress  The Ip6 address.
+     * @param[in] aAddress  The IPv6 address.
      *
-     * @retval true   If the Child has Ip6 address @p aAddress of MLR state `kMlrStateRegistered`.
-     * @retval false  If the Child does not have Ip6 address @p aAddress of MLR state `kMlrStateRegistered`.
+     * @retval true   If the Child has IPv6 address @p aAddress of MLR state `kMlrStateRegistered`.
+     * @retval false  If the Child does not have IPv6 address @p aAddress of MLR state `kMlrStateRegistered`.
      *
      */
     bool HasMlrRegisteredAddress(const Ip6::Address &aAddress) const;
 
     /**
-     * This method returns if the Child has any Ip6 address of MLR state `kMlrStateRegistered`.
+     * This method returns if the Child has any IPv6 address of MLR state `kMlrStateRegistered`.
      *
-     * @retval true   If the Child has any Ip6 address of MLR state `kMlrStateRegistered`.
-     * @retval false  If the Child does not have any Ip6 address of MLR state `kMlrStateRegistered`.
+     * @retval true   If the Child has any IPv6 address of MLR state `kMlrStateRegistered`.
+     * @retval false  If the Child does not have any IPv6 address of MLR state `kMlrStateRegistered`.
      *
      */
     bool HasAnyMlrRegisteredAddress(void) const { return mMlrRegisteredMask.HasAny(); }
 
     /**
-     * This method returns if the Child has any Ip6 address of MLR state `kMlrStateToRegister`.
+     * This method returns if the Child has any IPv6 address of MLR state `kMlrStateToRegister`.
      *
-     * @retval true   If the Child has any Ip6 address of MLR state `kMlrStateToRegister`.
-     * @retval false  If the Child does not have any Ip6 address of MLR state `kMlrStateToRegister`.
+     * @retval true   If the Child has any IPv6 address of MLR state `kMlrStateToRegister`.
+     * @retval false  If the Child does not have any IPv6 address of MLR state `kMlrStateToRegister`.
      *
      */
     bool HasAnyMlrToRegisterAddress(void) const { return mMlrToRegisterMask.HasAny(); }
@@ -1276,10 +1278,7 @@ private:
 #error OPENTHREAD_CONFIG_MLE_IP_ADDRS_PER_CHILD should be at least set to 2.
 #endif
 
-    enum
-    {
-        kNumIp6Addresses = OPENTHREAD_CONFIG_MLE_IP_ADDRS_PER_CHILD - 1,
-    };
+    static constexpr uint16_t kNumIp6Addresses = OPENTHREAD_CONFIG_MLE_IP_ADDRS_PER_CHILD - 1;
 
     typedef BitVector<kNumIp6Addresses> ChildIp6AddressMask;
 
@@ -1324,6 +1323,8 @@ private:
     static_assert(OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS < 8192, "mQueuedMessageCount cannot fit max required!");
 };
 
+#endif // OPENTHREAD_FTD
+
 /**
  * This class represents a Thread Router
  *
@@ -1353,7 +1354,14 @@ public:
      * @param[in] aInstance  A reference to OpenThread instance.
      *
      */
-    void Init(Instance &aInstance) { Neighbor::Init(aInstance); }
+    void Init(Instance &aInstance)
+    {
+        Neighbor::Init(aInstance);
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+        SetCslClockAccuracy(kCslWorstCrystalPpm);
+        SetCslClockUncertainty(kCslWorstUncertainty);
+#endif
+    }
 
     /**
      * This method clears the router entry.
@@ -1409,6 +1417,40 @@ public:
      */
     void SetCost(uint8_t aCost) { mCost = aCost; }
 
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+    /**
+     * This method get the CSL clock accuracy of this router.
+     *
+     * @returns The CSL clock accuracy of this router.
+     *
+     */
+    uint8_t GetCslClockAccuracy(void) const { return mCslClockAccuracy; }
+
+    /**
+     * This method sets the CSL clock accuracy of this router.
+     *
+     * @param[in]  aCost  The CSL clock accuracy of this router.
+     *
+     */
+    void SetCslClockAccuracy(uint8_t aCslClockAccuracy) { mCslClockAccuracy = aCslClockAccuracy; }
+
+    /**
+     * This method get the CSL clock uncertainty of this router.
+     *
+     * @returns The CSL clock uncertainty of this router.
+     *
+     */
+    uint8_t GetCslClockUncertainty(void) const { return mCslClockUncertainty; }
+
+    /**
+     * This method sets the CSL clock uncertainty of this router.
+     *
+     * @param[in]  aCost  The CSL clock uncertainty of this router.
+     *
+     */
+    void SetCslClockUncertainty(uint8_t aCslClockUncertainty) { mCslClockUncertainty = aCslClockUncertainty; }
+#endif
+
 private:
     uint8_t mNextHop;            ///< The next hop towards this router
     uint8_t mLinkQualityOut : 2; ///< The link quality out for this router
@@ -1418,7 +1460,17 @@ private:
 #else
     uint8_t mCost : 4;     ///< The cost to this router via neighbor router
 #endif
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+    uint8_t mCslClockAccuracy;    ///< Crystal accuracy, in units of ± ppm.
+    uint8_t mCslClockUncertainty; ///< Scheduling uncertainty, in units of 10 us.
+#endif
 };
+
+DefineCoreType(otNeighborInfo, Neighbor::Info);
+#if OPENTHREAD_FTD
+DefineCoreType(otChildInfo, Child::Info);
+#endif
+DefineCoreType(otRouterInfo, Router::Info);
 
 } // namespace ot
 

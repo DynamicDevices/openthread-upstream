@@ -36,6 +36,8 @@
 
 #include "openthread-core-config.h"
 
+#if OPENTHREAD_CONFIG_MULTI_RADIO
+
 #include <openthread/multi_radio.h>
 
 #include "common/locator.hpp"
@@ -43,8 +45,6 @@
 #include "mac/mac_frame.hpp"
 #include "mac/mac_links.hpp"
 #include "mac/mac_types.hpp"
-
-#if OPENTHREAD_CONFIG_MULTI_RADIO
 
 namespace ot {
 
@@ -114,7 +114,7 @@ public:
      * @param[in]  aInstance     A reference to the OpenThread instance.
      *
      */
-    RadioSelector(Instance &aInstance);
+    explicit RadioSelector(Instance &aInstance);
 
     /**
      * This method updates the neighbor info (for multi radio support) on a received frame event.
@@ -140,7 +140,7 @@ public:
      * @param[in] aTxError   The transmission error.
      *
      */
-    void UpdateOnSendDone(Mac::TxFrame &aFrame, otError aTxError);
+    void UpdateOnSendDone(Mac::TxFrame &aFrame, Error aTxError);
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     /**
@@ -149,11 +149,11 @@ public:
      * The deferred ack model is used by TREL radio link.
      *
      * @param[in]  aNeighbor              The neighbor from which ack was expected
-     * @param[in]  aError                 The deferred ack status (`OT_ERROR_NONE` indicates ack was received).
+     * @param[in]  aError                 The deferred ack status (`kErrorNone` indicates ack was received).
      * @param[out] aAllowNeighborRemove   Boolean variable to output whether the neighbor is allowed to be removed.
      *
      */
-    void UpdateOnDeferredAck(Neighbor &aNeighbor, otError aTxError, bool &aAllowNeighborRemove);
+    void UpdateOnDeferredAck(Neighbor &aNeighbor, Error aTxError, bool &aAllowNeighborRemove);
 #endif
 
     /**
@@ -173,30 +173,30 @@ public:
      * The `aTxFrames` will also be updated to indicate which radio links are to be used.
      *
      * @param[inout] aMessage   The message to send.
-     * @param[in]    aDest      The MAC destination address.
+     * @param[in]    aMacDest   The MAC destination address.
      * @param[inout] aTxFrames  The set of TxFrames for all radio links.
      *
      * @returns  A reference to `mTxFrame` to use when preparing the frame for tx.
      *
      */
-    Mac::TxFrame &SelectRadio(Message &aMessage, const Mac::Address &aDest, Mac::TxFrames &aTxFrames);
+    Mac::TxFrame &SelectRadio(Message &aMessage, const Mac::Address &aMacDest, Mac::TxFrames &aTxFrames);
 
 private:
-    enum
-    {
-        kPreferenceChangeOnTxError            = -35,  // Preference change on a tx error on a radio link.
-        kPreferenceChangeOnTxSuccess          = 25,   // Preference change on tx success on a radio link.
-        kPreferenceChangeOnDeferredAckSuccess = 25,   // Preference change on deferred ack success.
-        kPreferenceChangeOnDeferredAckTimeout = -100, // Preference change on deferred ack timeout.
-        kPreferenceChangeOnRx                 = 15,   // Preference change on new (secure) frame/msg rx on a radio link.
-        kPreferenceChangeOnRxDuplicate        = 15,   // Preference change on new (secure) duplicate frame/msg rx.
-        kMinPreference                        = 0,    // Minimum preference value.
-        kMaxPreference                        = 255,  // Maximum preference value.
-        kInitPreference                       = 200,  // Initial preference value
-        kHighPreference                       = 220,  // High preference.
-        kTrelProbeProbability                 = 25,   // Probability percentage to probe on TREL link
-        kRadioPreferenceStringSize            = 75,
-    };
+    static constexpr int16_t kPreferenceChangeOnTxError            = -35;  // Change on a tx error on a radio link.
+    static constexpr int16_t kPreferenceChangeOnTxSuccess          = 25;   // Change on tx success on a radio link.
+    static constexpr int16_t kPreferenceChangeOnDeferredAckSuccess = 25;   // Change on deferred ack success.
+    static constexpr int16_t kPreferenceChangeOnDeferredAckTimeout = -100; // Change on deferred ack timeout.
+    static constexpr int16_t kPreferenceChangeOnRx                 = 15;   // Change on new (secure) rx.
+    static constexpr int16_t kPreferenceChangeOnRxDuplicate        = 15;   // Change on new (secure) duplicate rx.
+
+    static constexpr uint8_t kMinPreference  = 0;   // Minimum preference value.
+    static constexpr uint8_t kMaxPreference  = 255; // Maximum preference value.
+    static constexpr uint8_t kInitPreference = 200; // Initial preference value
+    static constexpr uint8_t kHighPreference = 220; // High preference.
+
+    static constexpr uint8_t kTrelProbeProbability = 25; // Probability percentage to probe on TREL link
+
+    static constexpr uint16_t kRadioPreferenceStringSize = 75;
 
     otLogLevel     UpdatePreference(Neighbor &aNeighbor, Mac::RadioType aRadioType, int16_t aDifference);
     Mac::RadioType Select(Mac::RadioTypes aRadioOptions, const Neighbor &aNeighbor);

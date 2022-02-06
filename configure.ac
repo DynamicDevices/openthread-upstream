@@ -543,6 +543,30 @@ AC_MSG_RESULT(${enable_radio_only})
 AM_CONDITIONAL([OPENTHREAD_ENABLE_RADIO_ONLY], [test "${enable_radio_only}" = "yes"])
 
 #
+# Radio Cli Library
+#
+
+AC_MSG_CHECKING([whether to build radio-cli library])
+AC_ARG_ENABLE(radio-cli,
+    [AS_HELP_STRING([--enable-radio-cli], [Build radio-cli library @<:@default=no@:>@.])],
+    [
+        case "${enableval}" in
+
+        no|yes)
+            enable_radio_cli=${enableval}
+            ;;
+
+        *)
+            AC_MSG_ERROR([Invalid value ${enable_radio_cli} for --enable-radio-cli])
+            ;;
+        esac
+    ],
+    [enable_radio_cli=no])
+
+AC_MSG_RESULT(${enable_radio_cli})
+AM_CONDITIONAL([OPENTHREAD_ENABLE_RADIO_CLI], [test "${enable_radio_cli}" = "yes"])
+
+#
 # whether to build executables
 #
 
@@ -780,15 +804,14 @@ AC_MSG_CHECKING([whether to build examples])
 
 AC_ARG_WITH(examples,
     [AS_HELP_STRING([--with-examples=TARGET],
-        [Build example applications for one of: simulation, cc1352, cc2538, cc2650, cc2652, efr32mg1, efr32mg12, efr32mg13, efr32mg21,
-         gp712, jn5189, k32w061, kw41z, nrf52811, nrf52833, nrf52840, qpg6095, samr21 @<:@default=no@:>@.
+        [Build example applications for one of: simulation, cc2538 @<:@default=no@:>@.
          Note that building example applications also builds the associated OpenThread platform libraries
          and any third_party libraries needed to support the examples.])],
     [
         case "${with_examples}" in
         no)
             ;;
-        simulation|cc1352|cc2538|cc2650|cc2652|efr32mg1|efr32mg12|efr32mg13|efr32mg21|gp712|jn5189|k32w061|kw41z|nrf52811|nrf52833|nrf52840|qpg6095|samr21)
+        simulation|cc2538)
             ;;
         *)
             AC_MSG_RESULT(ERROR)
@@ -801,28 +824,9 @@ AC_ARG_WITH(examples,
 AM_CONDITIONAL([OPENTHREAD_ENABLE_EXAMPLES], [test ${with_examples} != "no"])
 
 AM_CONDITIONAL([OPENTHREAD_EXAMPLES_SIMULATION],[test "${with_examples}" = "simulation"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_CC1352],    [test "${with_examples}" = "cc1352"])
 AM_CONDITIONAL([OPENTHREAD_EXAMPLES_CC2538],    [test "${with_examples}" = "cc2538"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_CC2650],    [test "${with_examples}" = "cc2650"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_CC2652],    [test "${with_examples}" = "cc2652"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_EFR32MG1],  [test "${with_examples}" = "efr32mg1"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_EFR32MG12], [test "${with_examples}" = "efr32mg12"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_EFR32MG13], [test "${with_examples}" = "efr32mg13"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_EFR32MG21], [test "${with_examples}" = "efr32mg21"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_GP712],     [test "${with_examples}" = "gp712"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_JN5189],    [test "${with_examples}" = "jn5189"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_K32W061],   [test "${with_examples}" = "k32w061"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_KW41Z],     [test "${with_examples}" = "kw41z"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_NRF52811],  [test "${with_examples}" = "nrf52811"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_NRF52833],  [test "${with_examples}" = "nrf52833"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_NRF52840],  [test "${with_examples}" = "nrf52840"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_QPG6095],   [test "${with_examples}" = "qpg6095"])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_SAMR21],    [test "${with_examples}" = "samr21"])
 
 AM_COND_IF([OPENTHREAD_EXAMPLES_SIMULATION], CPPFLAGS="${CPPFLAGS} -DOPENTHREAD_EXAMPLES_SIMULATION=1", CPPFLAGS="${CPPFLAGS} -DOPENTHREAD_EXAMPLES_SIMULATION=0")
-
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_NRF528XX], [test OPENTHREAD_EXAMPLES_NRF52811 || test OPENTHREAD_EXAMPLES_NRF52833 || test OPENTHREAD_EXAMPLES_NRF52840])
-AM_CONDITIONAL([OPENTHREAD_EXAMPLES_EFR32], [test "${with_examples}" = "efr32mg1" -o "${with_examples}" = "efr32mg12" -o "${with_examples}" = "efr32mg13" -o "${with_examples}" = "efr32mg21"])
 
 case ${with_examples} in
     no)
@@ -841,12 +845,11 @@ AC_MSG_CHECKING([whether to build platform libraries])
 
 AC_ARG_WITH(platform,
     [AS_HELP_STRING([--with-platform=TARGET],
-        [Build OpenThread platform libraries for one of: cc1352, cc2538, cc2650, cc2652,
-         efr32mg1, efr32mg12, efr32mg13, efr32mg21, gp712, jn5189, kw41z, nrf52811, nrf52833, nrf52840, posix, qpg6095, samr21, simulation @<:@default=simulation@:>@.])],
+        [Build OpenThread platform libraries for one of: cc2538, posix, simulation @<:@default=simulation@:>@.])],
     [
         # Make sure the given target is valid.
         case "${with_platform}" in
-        no|cc1352|cc2538|cc2650|cc2652|efr32mg1|efr32mg12|efr32mg13|efr32mg21|gp712|jn5189|kw41z|nrf52811|nrf52833|nrf52840|posix|qpg6095|samr21|simulation)
+        no|cc2538|posix|simulation)
             ;;
         *)
             AC_MSG_RESULT(ERROR)
@@ -877,28 +880,9 @@ AM_CONDITIONAL([OPENTHREAD_ENABLE_PLATFORM], [test ${with_platform} != "no"])
 
 OPENTHREAD_ENABLE_PLATFORM=${with_platform}
 
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_CC1352],    [test "${with_platform}" = "cc1352"])
 AM_CONDITIONAL([OPENTHREAD_PLATFORM_CC2538],    [test "${with_platform}" = "cc2538"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_CC2650],    [test "${with_platform}" = "cc2650"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_CC2652],    [test "${with_platform}" = "cc2652"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_EFR32MG1],  [test "${with_platform}" = "efr32mg1"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_EFR32MG12], [test "${with_platform}" = "efr32mg12"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_EFR32MG13], [test "${with_platform}" = "efr32mg13"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_EFR32MG21], [test "${with_platform}" = "efr32mg21"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_GP712],     [test "${with_platform}" = "gp712"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_JN5189],    [test "${with_platform}" = "jn5189"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_KW41Z],     [test "${with_platform}" = "kw41z"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_NRF52811],  [test "${with_platform}" = "nrf52811"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_NRF52833],  [test "${with_platform}" = "nrf52833"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_NRF52840],  [test "${with_platform}" = "nrf52840"])
 AM_CONDITIONAL([OPENTHREAD_PLATFORM_POSIX],     [test "${with_platform}" = "posix"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_QPG6095],   [test "${with_platform}" = "qpg6095"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_SAMR21],    [test "${with_platform}" = "samr21"])
 AM_CONDITIONAL([OPENTHREAD_PLATFORM_SIMULATION],[test "${with_platform}" = "simulation"])
-
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_NRF528XX], [test OPENTHREAD_PLATFORM_NRF52811 || test OPENTHREAD_PLATFORM_NRF52833 || test OPENTHREAD_PLATFORM_NRF52840])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_EFR32], [test "${with_platform}" = "efr32mg1" -o "${with_platform}" = "efr32mg12" -o "${with_platform}" = "efr32mg13" -o "${with_platform}" = "efr32mg21"])
-AM_CONDITIONAL([OPENTHREAD_PLATFORM_K32W], [test OPENTHREAD_PLATFORM_K32W061 || test OPENTHREAD_PLATFORM_JN5189])
 
 AM_COND_IF([OPENTHREAD_PLATFORM_POSIX], CPPFLAGS="${CPPFLAGS} -DOPENTHREAD_PLATFORM_POSIX=1", CPPFLAGS="${CPPFLAGS} -DOPENTHREAD_PLATFORM_POSIX=0")
 
@@ -948,6 +932,8 @@ NL_ENABLE_DOCS([auto],[NO])
 AM_CONDITIONAL(OPENTHREAD_BUILD_DOCS, [test "${nl_cv_build_docs}" = "yes"])
 
 AM_CONDITIONAL(OPENTHREAD_POSIX, [test "${with_platform}" = "posix" -o "${with_examples}" = "simulation"])
+
+AM_CONDITIONAL([OPENTHREAD_ENABLE_SPINEL_RCP], [test OPENTHREAD_PLATFORM_POSIX || test OPENTHREAD_ENABLE_RADIO_ONLY])
 
 #
 # Checks for libraries and packages.
@@ -1030,28 +1016,14 @@ src/lib/url/Makefile
 third_party/Makefile
 third_party/jlink/Makefile
 third_party/mbedtls/Makefile
-third_party/NordicSemiconductor/Makefile
+third_party/tcplp/Makefile
 third_party/paho/Makefile
-third_party/silabs/Makefile
 examples/Makefile
 examples/apps/Makefile
 examples/apps/cli/Makefile
 examples/apps/ncp/Makefile
 examples/platforms/Makefile
-examples/platforms/cc1352/Makefile
 examples/platforms/cc2538/Makefile
-examples/platforms/cc2650/Makefile
-examples/platforms/cc2652/Makefile
-examples/platforms/efr32/Makefile
-examples/platforms/efr32/sleepy-demo/Makefile
-examples/platforms/efr32/sleepy-demo/sleepy-demo-mtd/Makefile
-examples/platforms/efr32/sleepy-demo/sleepy-demo-ftd/Makefile
-examples/platforms/gp712/Makefile
-examples/platforms/k32w/Makefile
-examples/platforms/kw41z/Makefile
-examples/platforms/nrf528xx/Makefile
-examples/platforms/qpg6095/Makefile
-examples/platforms/samr21/Makefile
 examples/platforms/simulation/Makefile
 examples/platforms/utils/Makefile
 tools/Makefile

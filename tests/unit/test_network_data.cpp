@@ -30,24 +30,15 @@
 
 #include "common/code_utils.hpp"
 #include "common/instance.hpp"
+#include "thread/network_data_leader.hpp"
 #include "thread/network_data_local.hpp"
+#include "thread/network_data_service.hpp"
 
 #include "test_platform.h"
 #include "test_util.hpp"
 
 namespace ot {
 namespace NetworkData {
-
-class TestNetworkData : public NetworkData::NetworkData
-{
-public:
-    TestNetworkData(ot::Instance *aInstance, const uint8_t *aTlvs, uint8_t aTlvsLength)
-        : NetworkData::NetworkData(*aInstance, kTypeLeader)
-    {
-        memcpy(mTlvs, aTlvs, aTlvsLength);
-        mLength = aTlvsLength;
-    }
-};
 
 void PrintExternalRouteConfig(const ExternalRouteConfig &aConfig)
 {
@@ -58,8 +49,8 @@ void PrintExternalRouteConfig(const ExternalRouteConfig &aConfig)
         printf("%02x", b);
     }
 
-    printf(", length:%d, rloc16:%04x, preference:%d, stable:%d, nexthop:%d", aConfig.mPrefix.mLength, aConfig.mRloc16,
-           aConfig.mPreference, aConfig.mStable, aConfig.mNextHopIsThisDevice);
+    printf(", length:%d, rloc16:%04x, preference:%d, nat64:%d, stable:%d, nexthop:%d", aConfig.mPrefix.mLength,
+           aConfig.mRloc16, aConfig.mPreference, aConfig.mNat64, aConfig.mStable, aConfig.mNextHopIsThisDevice);
 }
 
 // Returns true if the two given ExternalRouteConfig match (intentionally ignoring mNextHopIsThisDevice).
@@ -78,32 +69,42 @@ void TestNetworkDataIterator(void)
     ExternalRouteConfig config;
 
     instance = testInitInstance();
-    VerifyOrQuit(instance != nullptr, "Null OpenThread instance\n");
+    VerifyOrQuit(instance != nullptr);
 
     {
-        const uint8_t kNetworkData[] = {0x08, 0x04, 0x0B, 0x02, 0x00, 0x00, 0x03, 0x14, 0x00, 0x40,
-                                        0xFD, 0x00, 0x12, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
-                                        0xC8, 0x00, 0x40, 0x01, 0x03, 0x54, 0x00, 0x00};
+        const uint8_t kNetworkData[] = {
+            0x08, 0x04, 0x0B, 0x02, 0x00, 0x00, 0x03, 0x14, 0x00, 0x40, 0xFD, 0x00, 0x12, 0x34,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xC8, 0x00, 0x40, 0x01, 0x03, 0x54, 0x00, 0x00,
+        };
 
         otExternalRouteConfig routes[] = {
             {
-                {{{{0xfd, 0x00, 0x12, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}}},
-                 64},
-                0xc800,
-                1,
-                false,
-                false,
+                {
+                    {{{0xfd, 0x00, 0x12, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                       0x00}}},
+                    64,
+                },
+                0xc800, // mRloc16
+                1,      // mPreference
+                false,  // mNat64
+                false,  // mStable
+                false,  // mNextHopIsThisDevice
             },
             {
-                {{{{0xfd, 0x00, 0x12, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}}},
-                 64},
-                0x5400,
-                0,
-                true,
-                false,
-            }};
+                {
+                    {{{0xfd, 0x00, 0x12, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                       0x00}}},
+                    64,
+                },
+                0x5400, // mRloc16
+                0,      // mPreference
+                false,  // mNat64
+                true,   // mStable
+                false,  // mNextHopIsThisDevice
+            },
+        };
 
-        TestNetworkData netData(instance, kNetworkData, sizeof(kNetworkData));
+        NetworkData netData(*instance, kNetworkData, sizeof(kNetworkData));
 
         iter = OT_NETWORK_DATA_ITERATOR_INIT;
 
@@ -112,10 +113,9 @@ void TestNetworkDataIterator(void)
 
         for (const auto &route : routes)
         {
-            SuccessOrQuit(netData.GetNextExternalRoute(iter, config), "GetNextExternalRoute() failed");
+            SuccessOrQuit(netData.GetNextExternalRoute(iter, config));
             PrintExternalRouteConfig(config);
-            VerifyOrQuit(CompareExternalRouteConfig(config, route) == true,
-                         "external route config does not match expectation");
+            VerifyOrQuit(CompareExternalRouteConfig(config, route));
         }
     }
 
@@ -124,36 +124,73 @@ void TestNetworkDataIterator(void)
             0x08, 0x04, 0x0B, 0x02, 0x00, 0x00, 0x03, 0x1E, 0x00, 0x40, 0xFD, 0x00, 0x12, 0x34, 0x56, 0x78, 0x00, 0x00,
             0x07, 0x02, 0x11, 0x40, 0x00, 0x03, 0x10, 0x00, 0x40, 0x01, 0x03, 0x54, 0x00, 0x00, 0x05, 0x04, 0x54, 0x00,
             0x31, 0x00, 0x02, 0x0F, 0x00, 0x40, 0xFD, 0x00, 0xAB, 0xBA, 0xCD, 0xDC, 0x00, 0x00, 0x00, 0x03, 0x10, 0x00,
-            0x00, 0x03, 0x0E, 0x00, 0x20, 0xFD, 0x00, 0xAB, 0xBA, 0x01, 0x06, 0x54, 0x00, 0x00, 0x04, 0x00, 0x00};
+            0x20, 0x03, 0x0E, 0x00, 0x20, 0xFD, 0x00, 0xAB, 0xBA, 0x01, 0x06, 0x54, 0x00, 0x00, 0x04, 0x00, 0x00,
+        };
 
         otExternalRouteConfig routes[] = {
-            {{{{{0xfd, 0x00, 0x12, 0x34, 0x56, 0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}}}, 64},
-             0x1000,
-             1,
-             false,
-             false},
-            {{{{{0xfd, 0x00, 0x12, 0x34, 0x56, 0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}}}, 64},
-             0x5400,
-             0,
-             true,
-             false},
-            {{{{{0xfd, 0x00, 0xab, 0xba, 0xcd, 0xdc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}}}, 64},
-             0x1000,
-             0,
-             false,
-             false},
-            {{{{{0xfd, 0x00, 0xab, 0xba, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}}}, 32},
-             0x5400,
-             0,
-             true,
-             false},
-            {{{{{0xfd, 0x00, 0xab, 0xba, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}}}, 32},
-             0x0400,
-             0,
-             true,
-             false}};
+            {
+                {
+                    {{{0xfd, 0x00, 0x12, 0x34, 0x56, 0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                       0x00}}},
+                    64,
+                },
+                0x1000, // mRloc16
+                1,      // mPreference
+                false,  // mNat64
+                false,  // mStable
+                false,  // mNextHopIsThisDevice
+            },
+            {
+                {
+                    {{{0xfd, 0x00, 0x12, 0x34, 0x56, 0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                       0x00}}},
+                    64,
+                },
+                0x5400, // mRloc16
+                0,      // mPreference
+                false,  // mNat64
+                true,   // mStable
+                false,  // mNextHopIsThisDevice
+            },
+            {
+                {
+                    {{{0xfd, 0x00, 0xab, 0xba, 0xcd, 0xdc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                       0x00}}},
+                    64,
+                },
+                0x1000, // mRloc16
+                0,      // mPreference
+                true,   // mNat64
+                false,  // mStable
+                false,  // mNextHopIsThisDevice
+            },
+            {
+                {
+                    {{{0xfd, 0x00, 0xab, 0xba, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                       0x00}}},
+                    32,
+                },
+                0x5400, // mRloc16
+                0,      // mPreference
+                false,  // mNat64
+                true,   // mStable
+                false,  // mNextHopIsThisDevice
+            },
+            {
+                {
+                    {{{0xfd, 0x00, 0xab, 0xba, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                       0x00}}},
+                    32,
+                },
+                0x0400, // mRloc16
+                0,      // mPreference
+                false,  // mNat64
+                true,   // mStable
+                false,  // mNextHopIsThisDevice
+            },
+        };
 
-        TestNetworkData netData(instance, kNetworkData, sizeof(kNetworkData));
+        NetworkData netData(*instance, kNetworkData, sizeof(kNetworkData));
 
         iter = OT_NETWORK_DATA_ITERATOR_INIT;
 
@@ -162,11 +199,252 @@ void TestNetworkDataIterator(void)
 
         for (const auto &route : routes)
         {
-            SuccessOrQuit(netData.GetNextExternalRoute(iter, config), "GetNextExternalRoute() failed");
+            SuccessOrQuit(netData.GetNextExternalRoute(iter, config));
             PrintExternalRouteConfig(config);
-            VerifyOrQuit(CompareExternalRouteConfig(config, route) == true,
-                         "external route config does not match expectation");
+            VerifyOrQuit(CompareExternalRouteConfig(config, route));
         }
+    }
+
+    testFreeInstance(instance);
+}
+
+#if OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
+
+class TestNetworkData : public Local
+{
+public:
+    explicit TestNetworkData(ot::Instance &aInstance)
+        : Local(aInstance)
+    {
+    }
+
+    Error AddService(const ServiceData &aServiceData)
+    {
+        return Local::AddService(ServiceTlv::kThreadEnterpriseNumber, aServiceData, true, ServerData());
+    }
+
+    Error ValidateServiceData(const ServiceTlv *aServiceTlv, const ServiceData &aServiceData) const
+    {
+        Error       error = kErrorFailed;
+        ServiceData serviceData;
+
+        VerifyOrExit(aServiceTlv != nullptr);
+        aServiceTlv->GetServiceData(serviceData);
+
+        VerifyOrExit(aServiceData == serviceData);
+        error = kErrorNone;
+
+    exit:
+        return error;
+    }
+
+    void Test(void)
+    {
+        const uint8_t kServiceData1[] = {0x02};
+        const uint8_t kServiceData2[] = {0xab};
+        const uint8_t kServiceData3[] = {0xab, 0x00};
+        const uint8_t kServiceData4[] = {0x02, 0xab, 0xcd, 0xef};
+        const uint8_t kServiceData5[] = {0x02, 0xab, 0xcd};
+
+        const ServiceTlv *tlv;
+        ServiceData       serviceData1;
+        ServiceData       serviceData2;
+        ServiceData       serviceData3;
+        ServiceData       serviceData4;
+        ServiceData       serviceData5;
+
+        serviceData1.InitFrom(kServiceData1);
+        serviceData2.InitFrom(kServiceData2);
+        serviceData3.InitFrom(kServiceData3);
+        serviceData4.InitFrom(kServiceData4);
+        serviceData5.InitFrom(kServiceData5);
+
+        SuccessOrQuit(AddService(serviceData1));
+        SuccessOrQuit(AddService(serviceData2));
+        SuccessOrQuit(AddService(serviceData3));
+        SuccessOrQuit(AddService(serviceData4));
+        SuccessOrQuit(AddService(serviceData5));
+
+        DumpBuffer("netdata", GetBytes(), GetLength());
+
+        // Iterate through all entries that start with { 0x02 } (kServiceData1)
+        tlv = nullptr;
+        tlv = FindNextService(tlv, ServiceTlv::kThreadEnterpriseNumber, serviceData1, kServicePrefixMatch);
+        SuccessOrQuit(ValidateServiceData(tlv, serviceData1));
+        tlv = FindNextService(tlv, ServiceTlv::kThreadEnterpriseNumber, serviceData1, kServicePrefixMatch);
+        SuccessOrQuit(ValidateServiceData(tlv, serviceData4));
+        tlv = FindNextService(tlv, ServiceTlv::kThreadEnterpriseNumber, serviceData1, kServicePrefixMatch);
+        SuccessOrQuit(ValidateServiceData(tlv, serviceData5));
+        tlv = FindNextService(tlv, ServiceTlv::kThreadEnterpriseNumber, serviceData1, kServicePrefixMatch);
+        VerifyOrQuit(tlv == nullptr, "FindNextService() returned extra TLV");
+
+        // Iterate through all entries that start with { 0xab } (serviceData2)
+        tlv = nullptr;
+        tlv = FindNextService(tlv, ServiceTlv::kThreadEnterpriseNumber, serviceData2, kServicePrefixMatch);
+        SuccessOrQuit(ValidateServiceData(tlv, serviceData2));
+        tlv = FindNextService(tlv, ServiceTlv::kThreadEnterpriseNumber, serviceData2, kServicePrefixMatch);
+        SuccessOrQuit(ValidateServiceData(tlv, serviceData3));
+        tlv = FindNextService(tlv, ServiceTlv::kThreadEnterpriseNumber, serviceData2, kServicePrefixMatch);
+        VerifyOrQuit(tlv == nullptr, "FindNextService() returned extra TLV");
+
+        // Iterate through all entries that start with serviceData5
+        tlv = nullptr;
+        tlv = FindNextService(tlv, ServiceTlv::kThreadEnterpriseNumber, serviceData5, kServicePrefixMatch);
+        SuccessOrQuit(ValidateServiceData(tlv, serviceData4));
+        tlv = FindNextService(tlv, ServiceTlv::kThreadEnterpriseNumber, serviceData5, kServicePrefixMatch);
+        SuccessOrQuit(ValidateServiceData(tlv, serviceData5));
+        tlv = FindNextService(tlv, ServiceTlv::kThreadEnterpriseNumber, serviceData5, kServicePrefixMatch);
+        VerifyOrQuit(tlv == nullptr, "FindNextService() returned extra TLV");
+    }
+};
+
+void TestNetworkDataFindNextService(void)
+{
+    ot::Instance *instance;
+
+    printf("\n\n-------------------------------------------------");
+    printf("\nTestNetworkDataFindNextService()\n");
+
+    instance = testInitInstance();
+    VerifyOrQuit(instance != nullptr);
+
+    {
+        TestNetworkData netData(*instance);
+        netData.Test();
+    }
+}
+
+#endif // OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
+
+void TestNetworkDataDsnSrpServices(void)
+{
+    class TestLeader : public Leader
+    {
+    public:
+        void Populate(const uint8_t *aTlvs, uint8_t aTlvsLength)
+        {
+            memcpy(GetBytes(), aTlvs, aTlvsLength);
+            SetLength(aTlvsLength);
+        }
+    };
+
+    ot::Instance *instance;
+
+    printf("\n\n-------------------------------------------------");
+    printf("\nTestNetworkDataDsnSrpServices()\n");
+
+    instance = testInitInstance();
+    VerifyOrQuit(instance != nullptr);
+
+    {
+        struct AnycastEntry
+        {
+            uint16_t mAloc16;
+            uint8_t  mSequenceNumber;
+
+            bool Matches(Service::DnsSrpAnycast::Info aInfo) const
+            {
+                VerifyOrQuit(aInfo.mAnycastAddress.GetIid().IsAnycastServiceLocator());
+
+                return (aInfo.mAnycastAddress.GetIid().GetLocator() == mAloc16) &&
+                       (aInfo.mSequenceNumber == mSequenceNumber);
+            }
+        };
+
+        struct UnicastEntry
+        {
+            const char *mAddress;
+            uint16_t    mPort;
+
+            bool Matches(Service::DnsSrpUnicast::Info aInfo) const
+            {
+                Ip6::SockAddr sockAddr;
+
+                SuccessOrQuit(sockAddr.GetAddress().FromString(mAddress));
+                sockAddr.SetPort(mPort);
+
+                return (aInfo.mSockAddr == sockAddr);
+            }
+        };
+
+        const uint8_t kNetworkData[] = {
+            0x0b, 0x08, 0x80, 0x02, 0x5c, 0x02, 0x0d, 0x02, 0x28, 0x00, 0x0b, 0x08, 0x81, 0x02, 0x5c, 0xff, 0x0d, 0x02,
+            0x6c, 0x00, 0x0b, 0x09, 0x82, 0x02, 0x5c, 0x03, 0x0d, 0x03, 0x4c, 0x00, 0xaa, 0x0b, 0x35, 0x83, 0x13, 0x5d,
+            0xfd, 0xde, 0xad, 0x00, 0xbe, 0xef, 0x00, 0x00, 0x2d, 0x0e, 0xc6, 0x27, 0x55, 0x56, 0x18, 0xd9, 0x12, 0x34,
+            0x0d, 0x02, 0x00, 0x00, 0x0d, 0x14, 0x6c, 0x00, 0xfd, 0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11,
+            0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0xab, 0xcd, 0x0d, 0x04, 0x28, 0x00, 0x56, 0x78, 0x0b, 0x23, 0x84, 0x01,
+            0x5d, 0x0d, 0x02, 0x00, 0x00, 0x0d, 0x14, 0x4c, 0x00, 0xfd, 0x00, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde,
+            0xf0, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0x00, 0x0e, 0x0d, 0x04, 0x6c, 0x00, 0xcd, 0x12,
+        };
+
+        const AnycastEntry kAnycastEntries[] = {
+            {0xfc10, 0x02},
+            {0xfc11, 0xff},
+            {0xfc12, 0x03},
+        };
+
+        const UnicastEntry kUnicastEntries[] = {
+            {"fdde:ad00:beef:0:2d0e:c627:5556:18d9", 0x1234}, {"fd00:aabb:ccdd:eeff:11:2233:4455:6677", 0xabcd},
+            {"fdde:ad00:beef:0:0:ff:fe00:2800", 0x5678},      {"fd00:1234:5678:9abc:def0:123:4567:89ab", 0x0e},
+            {"fdde:ad00:beef:0:0:ff:fe00:6c00", 0xcd12},
+        };
+
+        const uint8_t kPreferredAnycastEntryIndex = 2;
+
+        Service::Manager &           manager = instance->Get<Service::Manager>();
+        Service::Manager::Iterator   iterator;
+        Service::DnsSrpAnycast::Info anycastInfo;
+        Service::DnsSrpUnicast::Info unicastInfo;
+
+        reinterpret_cast<TestLeader &>(instance->Get<Leader>()).Populate(kNetworkData, sizeof(kNetworkData));
+
+        DumpBuffer("netdata", kNetworkData, sizeof(kNetworkData));
+
+        // Verify all the "DNS/SRP Anycast Service" entries in Network Data
+
+        printf("\n- - - - - - - - - - - - - - - - - - - -");
+        printf("\nDNS/SRP Anycast Service entries\n");
+
+        for (const AnycastEntry &entry : kAnycastEntries)
+        {
+            SuccessOrQuit(manager.GetNextDnsSrpAnycastInfo(iterator, anycastInfo));
+
+            printf("\nanycastInfo { %s, seq:%d }", anycastInfo.mAnycastAddress.ToString().AsCString(),
+                   anycastInfo.mSequenceNumber);
+
+            VerifyOrQuit(entry.Matches(anycastInfo), "GetNextDnsSrpAnycastInfo() returned incorrect info");
+        }
+
+        VerifyOrQuit(manager.GetNextDnsSrpAnycastInfo(iterator, anycastInfo) == kErrorNotFound,
+                     "GetNextDnsSrpAnycastInfo() returned unexpected extra entry");
+
+        // Find the preferred "DNS/SRP Anycast Service" entries in Network Data
+
+        SuccessOrQuit(manager.FindPreferredDnsSrpAnycastInfo(anycastInfo));
+
+        printf("\n\nPreferred anycastInfo { %s, seq:%d }", anycastInfo.mAnycastAddress.ToString().AsCString(),
+               anycastInfo.mSequenceNumber);
+
+        VerifyOrQuit(kAnycastEntries[kPreferredAnycastEntryIndex].Matches(anycastInfo),
+                     "FindPreferredDnsSrpAnycastInfo() returned invalid info");
+
+        printf("\n\n- - - - - - - - - - - - - - - - - - - -");
+        printf("\nDNS/SRP Unicast Service entries\n");
+
+        iterator.Clear();
+
+        for (const UnicastEntry &entry : kUnicastEntries)
+        {
+            SuccessOrQuit(manager.GetNextDnsSrpUnicastInfo(iterator, unicastInfo));
+            printf("\nunicastInfo %s", unicastInfo.mSockAddr.ToString().AsCString());
+
+            VerifyOrQuit(entry.Matches(unicastInfo), "GetNextDnsSrpUnicastInfo() returned incorrect info");
+        }
+
+        VerifyOrQuit(manager.GetNextDnsSrpUnicastInfo(iterator, unicastInfo) == kErrorNotFound,
+                     "GetNextDnsSrpUnicastInfo() returned unexpected extra entry");
+
+        printf("\n");
     }
 
     testFreeInstance(instance);
@@ -178,6 +456,10 @@ void TestNetworkDataIterator(void)
 int main(void)
 {
     ot::NetworkData::TestNetworkDataIterator();
+#if OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
+    ot::NetworkData::TestNetworkDataFindNextService();
+#endif
+    ot::NetworkData::TestNetworkDataDsnSrpServices();
 
     printf("\nAll tests passed\n");
     return 0;

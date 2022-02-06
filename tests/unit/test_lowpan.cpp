@@ -78,24 +78,24 @@ void TestIphcVector::GetUncompressedStream(uint8_t *aIp6, uint16_t &aIp6Length)
 
 void TestIphcVector::GetUncompressedStream(Message &aMessage)
 {
-    SuccessOrQuit(aMessage.Append(mIpHeader), "6lo: Message::Append failed");
+    SuccessOrQuit(aMessage.Append(mIpHeader));
 
     if (mExtHeader.mLength)
     {
-        SuccessOrQuit(aMessage.AppendBytes(mExtHeader.mData, mExtHeader.mLength), "6lo: Message::Append failed");
+        SuccessOrQuit(aMessage.AppendBytes(mExtHeader.mData, mExtHeader.mLength));
     }
 
     if (mIpTunneledHeader.GetPayloadLength())
     {
-        SuccessOrQuit(aMessage.Append(mIpTunneledHeader), "6lo: Message::Append failed");
+        SuccessOrQuit(aMessage.Append(mIpTunneledHeader));
     }
 
     if (mUdpHeader.GetLength())
     {
-        SuccessOrQuit(aMessage.Append(mUdpHeader), "6lo: Message::Append failed");
+        SuccessOrQuit(aMessage.Append(mUdpHeader));
     }
 
-    SuccessOrQuit(aMessage.AppendBytes(mPayload.mData, mPayload.mLength), "6lo: Message::Append failed");
+    SuccessOrQuit(aMessage.AppendBytes(mPayload.mData, mPayload.mLength));
 }
 
 /**
@@ -124,12 +124,12 @@ static void Init(void)
         0x02, 0x40                                                              // Context ID = 2, C = FALSE
     };
 
-    Message *message = sInstance->Get<MessagePool>().New(Message::kTypeIp6, 0);
-    VerifyOrQuit(message != nullptr, "6lo: Ip6::NewMessage failed");
+    Message *message = sInstance->Get<MessagePool>().Allocate(Message::kTypeIp6);
+    VerifyOrQuit(message != nullptr, "Ip6::NewMessage failed");
 
-    SuccessOrQuit(message->AppendBytes(mockNetworkData, sizeof(mockNetworkData)), "6lo: Message::Append failed");
+    SuccessOrQuit(message->AppendBytes(mockNetworkData, sizeof(mockNetworkData)));
 
-    IgnoreError(sInstance->Get<NetworkData::Leader>().SetNetworkData(0, 0, true, *message, 0));
+    IgnoreError(sInstance->Get<NetworkData::Leader>().SetNetworkData(0, 0, NetworkData::kStableSubset, *message, 0));
 }
 
 /**
@@ -171,15 +171,14 @@ static void Test(TestIphcVector &aVector, bool aCompress, bool aDecompress)
     {
         Lowpan::BufferWriter buffer(result, 127);
 
-        VerifyOrQuit((message = sInstance->Get<MessagePool>().New(Message::kTypeIp6, 0)) != nullptr,
-                     "6lo: Ip6::NewMessage failed");
+        VerifyOrQuit((message = sInstance->Get<MessagePool>().Allocate(Message::kTypeIp6)) != nullptr);
 
         aVector.GetUncompressedStream(*message);
 
-        VerifyOrQuit(sLowpan->Compress(*message, aVector.mMacSource, aVector.mMacDestination, buffer) == aVector.mError,
-                     "6lo: Lowpan:Compress failed");
+        VerifyOrQuit(sLowpan->Compress(*message, aVector.mMacSource, aVector.mMacDestination, buffer) ==
+                     aVector.mError);
 
-        if (aVector.mError == OT_ERROR_NONE)
+        if (aVector.mError == kErrorNone)
         {
             uint8_t compressBytes = static_cast<uint8_t>(buffer.GetWritePointer() - result);
 
@@ -190,9 +189,9 @@ static void Test(TestIphcVector &aVector, bool aCompress, bool aDecompress)
             DumpBuffer("Resulted LOWPAN_IPHC compressed frame", result,
                        compressBytes + message->GetLength() - message->GetOffset());
 
-            VerifyOrQuit(compressBytes == aVector.mIphcHeader.mLength, "6lo: Lowpan::Compress failed");
-            VerifyOrQuit(message->GetOffset() == aVector.mPayloadOffset, "6lo: Lowpan::Compress failed");
-            VerifyOrQuit(memcmp(iphc, result, iphcLength) == 0, "6lo: Lowpan::Compress failed");
+            VerifyOrQuit(compressBytes == aVector.mIphcHeader.mLength, "Lowpan::Compress failed");
+            VerifyOrQuit(message->GetOffset() == aVector.mPayloadOffset, "Lowpan::Compress failed");
+            VerifyOrQuit(memcmp(iphc, result, iphcLength) == 0, "Lowpan::Compress failed");
         }
 
         message->Free();
@@ -201,15 +200,14 @@ static void Test(TestIphcVector &aVector, bool aCompress, bool aDecompress)
 
     if (aDecompress)
     {
-        VerifyOrQuit((message = sInstance->Get<MessagePool>().New(Message::kTypeIp6, 0)) != nullptr,
-                     "6lo: Ip6::NewMessage failed");
+        VerifyOrQuit((message = sInstance->Get<MessagePool>().Allocate(Message::kTypeIp6)) != nullptr);
 
         int decompressedBytes =
             sLowpan->Decompress(*message, aVector.mMacSource, aVector.mMacDestination, iphc, iphcLength, 0);
 
         message->ReadBytes(0, result, message->GetLength());
 
-        if (aVector.mError == OT_ERROR_NONE)
+        if (aVector.mError == kErrorNone)
         {
             // Append payload to the IPv6 Packet.
             memcpy(result + message->GetLength(), iphc + decompressedBytes,
@@ -218,14 +216,14 @@ static void Test(TestIphcVector &aVector, bool aCompress, bool aDecompress)
             DumpBuffer("Resulted IPv6 uncompressed packet", result,
                        message->GetLength() + iphcLength - static_cast<uint16_t>(decompressedBytes));
 
-            VerifyOrQuit(decompressedBytes == aVector.mIphcHeader.mLength, "6lo: Lowpan::Decompress failed");
-            VerifyOrQuit(message->GetOffset() == aVector.mPayloadOffset, "6lo: Lowpan::Decompress failed");
-            VerifyOrQuit(message->GetOffset() == message->GetLength(), "6lo: Lowpan::Decompress failed");
-            VerifyOrQuit(memcmp(ip6, result, ip6Length) == 0, "6lo: Lowpan::Decompress failed");
+            VerifyOrQuit(decompressedBytes == aVector.mIphcHeader.mLength, "Lowpan::Decompress failed");
+            VerifyOrQuit(message->GetOffset() == aVector.mPayloadOffset, "Lowpan::Decompress failed");
+            VerifyOrQuit(message->GetOffset() == message->GetLength(), "Lowpan::Decompress failed");
+            VerifyOrQuit(memcmp(ip6, result, ip6Length) == 0, "Lowpan::Decompress failed");
         }
         else
         {
-            VerifyOrQuit(decompressedBytes < 0, "6lo: Lowpan::Decompress failed");
+            VerifyOrQuit(decompressedBytes < 0, "Lowpan::Decompress failed");
         }
 
         message->Free();
@@ -270,7 +268,7 @@ static void TestFullyCompressableLongAddresses(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -295,7 +293,7 @@ static void TestFullyCompressableShortAddresses(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -320,7 +318,7 @@ static void TestFullyCompressableShortLongAddresses(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -345,7 +343,7 @@ static void TestFullyCompressableLongShortAddresses(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -369,7 +367,7 @@ static void TestSourceUnspecifiedAddress(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -396,7 +394,7 @@ static void TestSource128bitDestination128bitAddresses(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -422,7 +420,7 @@ static void TestSource64bitDestination64bitLongAddresses(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -448,7 +446,7 @@ static void TestSource64bitDestination64bitShortAddresses(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -473,7 +471,7 @@ static void TestSource16bitDestination16bitAddresses(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -498,7 +496,7 @@ static void TestSourceCompressedDestination16bitAddresses(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -524,7 +522,7 @@ static void TestSourceCompressedDestination128bitAddresses(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -550,7 +548,7 @@ static void TestMulticast128bitAddress(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -575,7 +573,7 @@ static void TestMulticast48bitAddress(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -600,7 +598,7 @@ static void TestMulticast32bitAddress(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -625,7 +623,7 @@ static void TestMulticast8bitAddress(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -651,7 +649,7 @@ static void TestStatefulSource64bitDestination64bitContext0(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -677,7 +675,7 @@ static void TestStatefulSource64bitDestination64bitContext0IfContextInLine(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform decompression test only.
     Test(testVector, false, true);
@@ -702,7 +700,7 @@ static void TestStatefulSource16bitDestination16bitContext0(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -727,7 +725,7 @@ static void TestStatefulCompressableLongAddressesContext0(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -752,7 +750,7 @@ static void TestStatefulCompressableShortAddressesContext0(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -777,7 +775,7 @@ static void TestStatefulCompressableLongShortAddressesContext0(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -803,7 +801,7 @@ static void TestStatefulSource64bitDestination128bitContext1(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -829,7 +827,7 @@ static void TestStatefulSource64bitDestination64bitContext1(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -856,7 +854,7 @@ static void TestStatefulSourceDestinationInlineContext2CIDFalse(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression test only.
     Test(testVector, true, false);
@@ -881,7 +879,7 @@ static void TestStatefulMulticastDestination48bitContext0(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform decompression tests.
     Test(testVector, true, true);
@@ -906,7 +904,7 @@ static void TestTrafficClassFlowLabel3Bytes(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -931,7 +929,7 @@ static void TestTrafficClassFlowLabel1Byte(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -956,7 +954,7 @@ static void TestTrafficClassFlowLabel1ByteEcnOnly(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -981,7 +979,7 @@ static void TestTrafficClassFlowLabelInline(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1006,7 +1004,7 @@ static void TestHopLimit1(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1031,7 +1029,7 @@ static void TestHopLimit255(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1056,7 +1054,7 @@ static void TestHopLimitInline(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1084,7 +1082,7 @@ static void TestUdpSourceDestinationInline(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(48);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1112,7 +1110,7 @@ static void TestUdpSourceInlineDestination8bit(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(48);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1140,7 +1138,7 @@ static void TestUdpSource8bitDestinationInline(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(48);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1168,7 +1166,7 @@ static void TestUdpFullyCompressed(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(48);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1196,7 +1194,7 @@ static void TestUdpFullyCompressedMulticast(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(48);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1221,7 +1219,7 @@ static void TestUdpWithoutNhc(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(40);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform only decompression test.
     Test(testVector, false, true);
@@ -1250,7 +1248,7 @@ static void TestExtensionHeaderHopByHopNoPadding(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(48);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1279,7 +1277,7 @@ static void TestExtensionHeaderHopByHopPad1(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(48);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1308,7 +1306,7 @@ static void TestExtensionHeaderHopByHopPadN2(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(48);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1337,7 +1335,7 @@ static void TestExtensionHeaderHopByHopPadN3(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(48);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1366,7 +1364,7 @@ static void TestExtensionHeaderHopByHopPadN4(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(48);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1397,7 +1395,7 @@ static void TestExtensionHeaderHopByHopPadN5(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(56);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1428,7 +1426,7 @@ static void TestExtensionHeaderHopByHopPadN6(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(64);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1459,7 +1457,7 @@ static void TestExtensionHeaderHopByHopPadN7(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(64);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1491,7 +1489,7 @@ static void TestExtensionHeaderHopByHopPadN2UdpFullyCompressed(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(56);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1528,7 +1526,7 @@ static void TestIpInIpHopByHopPadN2UdpSourceDestinationInline(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(96);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1557,7 +1555,7 @@ static void TestIpInIpWithoutExtensionHeader(void)
     // Set payload and error.
     testVector.SetPayload(sTestPayloadDefault, sizeof(sTestPayloadDefault));
     testVector.SetPayloadOffset(80);
-    testVector.SetError(OT_ERROR_NONE);
+    testVector.SetError(kErrorNone);
 
     // Perform compression and decompression tests.
     Test(testVector, true, true);
@@ -1576,7 +1574,7 @@ static void TestErrorNoIphcDispatch(void)
     testVector.SetIphcHeader(iphc, sizeof(iphc));
 
     // Set payload and error.
-    testVector.SetError(OT_ERROR_PARSE);
+    testVector.SetError(kErrorParse);
 
     // Perform decompression test.
     Test(testVector, false, true);
@@ -1595,7 +1593,7 @@ static void TestErrorTruncatedIphc(void)
     testVector.SetIphcHeader(iphc, sizeof(iphc));
 
     // Set payload and error.
-    testVector.SetError(OT_ERROR_PARSE);
+    testVector.SetError(kErrorParse);
 
     // Perform decompression test.
     Test(testVector, false, true);
@@ -1614,7 +1612,7 @@ static void TestErrorReservedValueDestination0100(void)
     testVector.SetIphcHeader(iphc, sizeof(iphc));
 
     // Set payload and error.
-    testVector.SetError(OT_ERROR_PARSE);
+    testVector.SetError(kErrorParse);
 
     // Perform decompression test.
     Test(testVector, false, true);
@@ -1633,7 +1631,7 @@ static void TestErrorReservedValueDestination1101(void)
     testVector.SetIphcHeader(iphc, sizeof(iphc));
 
     // Set payload and error.
-    testVector.SetError(OT_ERROR_PARSE);
+    testVector.SetError(kErrorParse);
 
     // Perform decompression test.
     Test(testVector, false, true);
@@ -1652,7 +1650,7 @@ static void TestErrorReservedValueDestination1110(void)
     testVector.SetIphcHeader(iphc, sizeof(iphc));
 
     // Set payload and error.
-    testVector.SetError(OT_ERROR_PARSE);
+    testVector.SetError(kErrorParse);
 
     // Perform decompression test.
     Test(testVector, false, true);
@@ -1671,7 +1669,7 @@ static void TestErrorReservedValueDestination1111(void)
     testVector.SetIphcHeader(iphc, sizeof(iphc));
 
     // Set payload and error.
-    testVector.SetError(OT_ERROR_PARSE);
+    testVector.SetError(kErrorParse);
 
     // Perform decompression test.
     Test(testVector, false, true);
@@ -1690,7 +1688,7 @@ static void TestErrorUnknownNhc(void)
     testVector.SetIphcHeader(iphc, sizeof(iphc));
 
     // Set payload and error.
-    testVector.SetError(OT_ERROR_PARSE);
+    testVector.SetError(kErrorParse);
 
     // Perform decompression test.
     Test(testVector, false, true);
@@ -1709,7 +1707,7 @@ static void TestErrorReservedNhc5(void)
     testVector.SetIphcHeader(iphc, sizeof(iphc));
 
     // Set payload and error.
-    testVector.SetError(OT_ERROR_PARSE);
+    testVector.SetError(kErrorParse);
 
     // Perform decompression test.
     Test(testVector, false, true);
@@ -1728,7 +1726,7 @@ static void TestErrorReservedNhc6(void)
     testVector.SetIphcHeader(iphc, sizeof(iphc));
 
     // Set payload and error.
-    testVector.SetError(OT_ERROR_PARSE);
+    testVector.SetError(kErrorParse);
 
     // Perform decompression test.
     Test(testVector, false, true);
@@ -1849,61 +1847,60 @@ void TestLowpanMeshHeader(void)
     Lowpan::MeshHeader meshHeader;
 
     meshHeader.Init(kSourceAddr, kDestAddr, 1);
-    VerifyOrQuit(meshHeader.GetSource() == kSourceAddr, "MeshHeader::GetSource() failed after Init()");
-    VerifyOrQuit(meshHeader.GetDestination() == kDestAddr, "MeshHeader::GetDestination() failed after Init()");
-    VerifyOrQuit(meshHeader.GetHopsLeft() == 1, "MeshHeader::GetHopsLeft() failed after Init()");
+    VerifyOrQuit(meshHeader.GetSource() == kSourceAddr, "failed after Init()");
+    VerifyOrQuit(meshHeader.GetDestination() == kDestAddr, "failed after Init()");
+    VerifyOrQuit(meshHeader.GetHopsLeft() == 1, "failed after Init()");
 
     length = meshHeader.WriteTo(frame);
-    VerifyOrQuit(length == meshHeader.GetHeaderLength(), "MeshHeader::GetHeaderLength() failed");
+    VerifyOrQuit(length == meshHeader.GetHeaderLength());
     VerifyOrQuit(length == sizeof(kMeshHeader1), "MeshHeader::WriteTo() returned length is incorrect");
     VerifyOrQuit(memcmp(frame, kMeshHeader1, length) == 0, "MeshHeader::WriteTo() failed");
 
     memset(&meshHeader, 0, sizeof(meshHeader));
-    VerifyOrQuit(Lowpan::MeshHeader::IsMeshHeader(frame, length), "IsMeshHeader() failed");
-    SuccessOrQuit(meshHeader.ParseFrom(frame, length, headerLength), "MeshHeader::ParseFrom() failed");
+    VerifyOrQuit(Lowpan::MeshHeader::IsMeshHeader(frame, length));
+    SuccessOrQuit(meshHeader.ParseFrom(frame, length, headerLength));
     VerifyOrQuit(headerLength == length, "MeshHeader::ParseFrom() returned length is incorrect");
-    VerifyOrQuit(meshHeader.GetSource() == kSourceAddr, "MeshHeader::GetSource() failed after ParseFrom()");
-    VerifyOrQuit(meshHeader.GetDestination() == kDestAddr, "MeshHeader::GetDestination() failed after ParseFrom()");
-    VerifyOrQuit(meshHeader.GetHopsLeft() == 1, "MeshHeader::GetHopsLeft() failed after ParseFrom()");
+    VerifyOrQuit(meshHeader.GetSource() == kSourceAddr, "failed after ParseFrom()");
+    VerifyOrQuit(meshHeader.GetDestination() == kDestAddr, "failed after ParseFrom()");
+    VerifyOrQuit(meshHeader.GetHopsLeft() == 1, "failed after ParseFrom()");
 
-    VerifyOrQuit(meshHeader.ParseFrom(frame, length - 1, headerLength) == OT_ERROR_PARSE,
+    VerifyOrQuit(meshHeader.ParseFrom(frame, length - 1, headerLength) == kErrorParse,
                  "MeshHeader::ParseFrom() did not fail with incorrect length");
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - -
 
     meshHeader.Init(kSourceAddr, kDestAddr, 0x20);
-    VerifyOrQuit(meshHeader.GetSource() == kSourceAddr, "MeshHeader::GetSource() failed after Init()");
-    VerifyOrQuit(meshHeader.GetDestination() == kDestAddr, "MeshHeader::GetDestination() failed after Init()");
-    VerifyOrQuit(meshHeader.GetHopsLeft() == 0x20, "MeshHeader::GetHopsLeft() failed after Init()");
+    VerifyOrQuit(meshHeader.GetSource() == kSourceAddr, "failed after Init()");
+    VerifyOrQuit(meshHeader.GetDestination() == kDestAddr, "failed after Init()");
+    VerifyOrQuit(meshHeader.GetHopsLeft() == 0x20, "failed after Init()");
 
     length = meshHeader.WriteTo(frame);
     VerifyOrQuit(length == sizeof(kMeshHeader2), "MeshHeader::WriteTo() returned length is incorrect");
-    VerifyOrQuit(length == meshHeader.GetHeaderLength(), "MeshHeader::GetHeaderLength() failed");
+    VerifyOrQuit(length == meshHeader.GetHeaderLength());
     VerifyOrQuit(memcmp(frame, kMeshHeader2, length) == 0, "MeshHeader::WriteTo() failed");
 
     memset(&meshHeader, 0, sizeof(meshHeader));
-    VerifyOrQuit(Lowpan::MeshHeader::IsMeshHeader(frame, length), "IsMeshHeader() failed");
-    SuccessOrQuit(meshHeader.ParseFrom(frame, length, headerLength), "MeshHeader::ParseFrom() failed");
+    VerifyOrQuit(Lowpan::MeshHeader::IsMeshHeader(frame, length));
+    SuccessOrQuit(meshHeader.ParseFrom(frame, length, headerLength));
     VerifyOrQuit(headerLength == length, "MeshHeader::ParseFrom() returned length is incorrect");
-    VerifyOrQuit(meshHeader.GetSource() == kSourceAddr, "MeshHeader::GetSource() failed after ParseFrom()");
-    VerifyOrQuit(meshHeader.GetDestination() == kDestAddr, "MeshHeader::GetDestination() failed after ParseFrom()");
-    VerifyOrQuit(meshHeader.GetHopsLeft() == 0x20, "MeshHeader::GetHopsLeft() failed after ParseFrom()");
+    VerifyOrQuit(meshHeader.GetSource() == kSourceAddr, "failed after ParseFrom()");
+    VerifyOrQuit(meshHeader.GetDestination() == kDestAddr, "failed after ParseFrom()");
+    VerifyOrQuit(meshHeader.GetHopsLeft() == 0x20, "failed after ParseFrom()");
 
-    VerifyOrQuit(meshHeader.ParseFrom(frame, length - 1, headerLength) == OT_ERROR_PARSE,
+    VerifyOrQuit(meshHeader.ParseFrom(frame, length - 1, headerLength) == kErrorParse,
                  "MeshHeader::ParseFrom() did not fail with incorrect length");
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - -
 
-    SuccessOrQuit(meshHeader.ParseFrom(kMeshHeader3, sizeof(kMeshHeader3), headerLength),
-                  "MeshHeader::ParseFrom() failed");
+    SuccessOrQuit(meshHeader.ParseFrom(kMeshHeader3, sizeof(kMeshHeader3), headerLength));
     VerifyOrQuit(headerLength == sizeof(kMeshHeader3), "MeshHeader::ParseFrom() returned length is incorrect");
-    VerifyOrQuit(meshHeader.GetSource() == kSourceAddr, "MeshHeader::GetSource() failed after Init()");
-    VerifyOrQuit(meshHeader.GetDestination() == kDestAddr, "MeshHeader::GetDestination() failed after Init()");
-    VerifyOrQuit(meshHeader.GetHopsLeft() == 1, "MeshHeader::GetHopsLeft() failed after Init()");
+    VerifyOrQuit(meshHeader.GetSource() == kSourceAddr, "failed after ParseFrom()");
+    VerifyOrQuit(meshHeader.GetDestination() == kDestAddr, "failed after ParseFrom()");
+    VerifyOrQuit(meshHeader.GetHopsLeft() == 1, "failed after ParseFrom()");
 
-    VerifyOrQuit(meshHeader.WriteTo(frame) == sizeof(kMeshHeader1), "MeshHeader::WriteTo() failed");
+    VerifyOrQuit(meshHeader.WriteTo(frame) == sizeof(kMeshHeader1));
 
-    VerifyOrQuit(meshHeader.ParseFrom(kMeshHeader3, sizeof(kMeshHeader3) - 1, headerLength) == OT_ERROR_PARSE,
+    VerifyOrQuit(meshHeader.ParseFrom(kMeshHeader3, sizeof(kMeshHeader3) - 1, headerLength) == kErrorParse,
                  "MeshHeader::ParseFrom() did not fail with incorrect length");
 }
 
@@ -1931,9 +1928,9 @@ void TestLowpanFragmentHeader(void)
     Lowpan::FragmentHeader fragHeader;
 
     fragHeader.InitFirstFragment(kSize, kTag);
-    VerifyOrQuit(fragHeader.GetDatagramSize() == kSize, "FragmentHeader::GetDatagramSize() failed after Init");
-    VerifyOrQuit(fragHeader.GetDatagramTag() == kTag, "FragmentHeader::GetDatagramTag() failed after Init()");
-    VerifyOrQuit(fragHeader.GetDatagramOffset() == 0, "FragmentHeader::GetDatagramOffset() failed after Init()");
+    VerifyOrQuit(fragHeader.GetDatagramSize() == kSize, "failed after Init");
+    VerifyOrQuit(fragHeader.GetDatagramTag() == kTag, "failed after Init()");
+    VerifyOrQuit(fragHeader.GetDatagramOffset() == 0, "failed after Init()");
 
     length = fragHeader.WriteTo(frame);
     VerifyOrQuit(length == Lowpan::FragmentHeader::kFirstFragmentHeaderSize,
@@ -1942,22 +1939,22 @@ void TestLowpanFragmentHeader(void)
     VerifyOrQuit(memcmp(frame, kFragHeader1, length) == 0, "FragmentHeader::WriteTo() failed");
 
     memset(&fragHeader, 0, sizeof(fragHeader));
-    VerifyOrQuit(Lowpan::FragmentHeader::IsFragmentHeader(frame, length), "IsFragmentHeader() failed");
-    SuccessOrQuit(fragHeader.ParseFrom(frame, length, headerLength), "FragmentHeader::ParseFrom() failed");
+    VerifyOrQuit(Lowpan::FragmentHeader::IsFragmentHeader(frame, length));
+    SuccessOrQuit(fragHeader.ParseFrom(frame, length, headerLength));
     VerifyOrQuit(headerLength == length, "FragmentHeader::ParseFrom() returned length is incorrect");
-    VerifyOrQuit(fragHeader.GetDatagramSize() == kSize, "FragmentHeader::GetDatagramSize() failed after ParseFrom()");
-    VerifyOrQuit(fragHeader.GetDatagramTag() == kTag, "FragmentHeader::GetDatagramTag() failed after ParseFrom()");
-    VerifyOrQuit(fragHeader.GetDatagramOffset() == 0, "FragmentHeader::GetDatagramOffset() failed after ParseFrom()");
+    VerifyOrQuit(fragHeader.GetDatagramSize() == kSize, "failed after ParseFrom()");
+    VerifyOrQuit(fragHeader.GetDatagramTag() == kTag, "failed after ParseFrom()");
+    VerifyOrQuit(fragHeader.GetDatagramOffset() == 0, "failed after ParseFrom()");
 
-    VerifyOrQuit(fragHeader.ParseFrom(frame, length - 1, headerLength) == OT_ERROR_PARSE,
+    VerifyOrQuit(fragHeader.ParseFrom(frame, length - 1, headerLength) == kErrorParse,
                  "FragmentHeader::ParseFrom() did not fail with incorrect length");
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - -
 
     fragHeader.Init(kSize, kTag, kOffset);
-    VerifyOrQuit(fragHeader.GetDatagramSize() == kSize, "FragmentHeader::GetDatagramSize() failed after Init");
-    VerifyOrQuit(fragHeader.GetDatagramTag() == kTag, "FragmentHeader::GetDatagramTag() failed after Init()");
-    VerifyOrQuit(fragHeader.GetDatagramOffset() == kOffset, "FragmentHeader::GetDatagramOffset() failed after Init()");
+    VerifyOrQuit(fragHeader.GetDatagramSize() == kSize, "failed after Init");
+    VerifyOrQuit(fragHeader.GetDatagramTag() == kTag, "failed after Init()");
+    VerifyOrQuit(fragHeader.GetDatagramOffset() == kOffset, "failed after Init()");
 
     // Check the truncation of offset (to be multiple of 8).
     fragHeader.Init(kSize, kTag, kOffset + 1);
@@ -1972,28 +1969,27 @@ void TestLowpanFragmentHeader(void)
     VerifyOrQuit(memcmp(frame, kFragHeader2, length) == 0, "FragmentHeader::WriteTo() failed");
 
     memset(&fragHeader, 0, sizeof(fragHeader));
-    VerifyOrQuit(Lowpan::FragmentHeader::IsFragmentHeader(frame, length), "IsFragmentHeader() failed");
-    SuccessOrQuit(fragHeader.ParseFrom(frame, length, headerLength), "FragmentHeader::ParseFrom() failed");
+    VerifyOrQuit(Lowpan::FragmentHeader::IsFragmentHeader(frame, length));
+    SuccessOrQuit(fragHeader.ParseFrom(frame, length, headerLength));
     VerifyOrQuit(headerLength == length, "FragmentHeader::ParseFrom() returned length is incorrect");
-    VerifyOrQuit(fragHeader.GetDatagramSize() == kSize, "FragmentHeader::GetDatagramSize() failed after ParseFrom()");
-    VerifyOrQuit(fragHeader.GetDatagramTag() == kTag, "FragmentHeader::GetDatagramTag() failed after ParseFrom()");
-    VerifyOrQuit(fragHeader.GetDatagramOffset() == kOffset,
-                 "FragmentHeader::GetDatagramOffset() failed after ParseFrom()");
+    VerifyOrQuit(fragHeader.GetDatagramSize() == kSize, "failed after ParseFrom()");
+    VerifyOrQuit(fragHeader.GetDatagramTag() == kTag, "failed after ParseFrom()");
+    VerifyOrQuit(fragHeader.GetDatagramOffset() == kOffset, "failed after ParseFrom()");
 
-    VerifyOrQuit(fragHeader.ParseFrom(frame, length - 1, headerLength) == OT_ERROR_PARSE,
+    VerifyOrQuit(fragHeader.ParseFrom(frame, length - 1, headerLength) == kErrorParse,
                  "FragmentHeader::ParseFrom() did not fail with incorrect length");
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - -
 
     length = sizeof(kFragHeader3);
     memcpy(frame, kFragHeader3, length);
-    SuccessOrQuit(fragHeader.ParseFrom(frame, length, headerLength), "FragmentHeader::ParseFrom() failed");
+    SuccessOrQuit(fragHeader.ParseFrom(frame, length, headerLength));
     VerifyOrQuit(headerLength == length, "FragmentHeader::ParseFrom() returned length is incorrect");
-    VerifyOrQuit(fragHeader.GetDatagramSize() == kSize, "FragmentHeader::GetDatagramSize() failed after ParseFrom()");
-    VerifyOrQuit(fragHeader.GetDatagramTag() == kTag, "FragmentHeader::GetDatagramTag() failed after ParseFrom()");
-    VerifyOrQuit(fragHeader.GetDatagramOffset() == 0, "FragmentHeader::GetDatagramOffset() failed after ParseFrom()");
+    VerifyOrQuit(fragHeader.GetDatagramSize() == kSize, "failed after ParseFrom()");
+    VerifyOrQuit(fragHeader.GetDatagramTag() == kTag, "failed after ParseFrom()");
+    VerifyOrQuit(fragHeader.GetDatagramOffset() == 0, "failed after ParseFrom()");
 
-    VerifyOrQuit(fragHeader.ParseFrom(frame, length - 1, headerLength) == OT_ERROR_PARSE,
+    VerifyOrQuit(fragHeader.ParseFrom(frame, length - 1, headerLength) == kErrorParse,
                  "FragmentHeader::ParseFrom() did not fail with incorrect length");
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2002,21 +1998,21 @@ void TestLowpanFragmentHeader(void)
     memcpy(frame, kInvalidFragHeader1, length);
     VerifyOrQuit(!Lowpan::FragmentHeader::IsFragmentHeader(frame, length),
                  "IsFragmentHeader() did not detect invalid header");
-    VerifyOrQuit(fragHeader.ParseFrom(frame, length, headerLength) != OT_ERROR_NONE,
+    VerifyOrQuit(fragHeader.ParseFrom(frame, length, headerLength) != kErrorNone,
                  "FragmentHeader::ParseFrom() did not fail with invalid header");
 
     length = sizeof(kInvalidFragHeader2);
     memcpy(frame, kInvalidFragHeader2, length);
     VerifyOrQuit(!Lowpan::FragmentHeader::IsFragmentHeader(frame, length),
                  "IsFragmentHeader() did not detect invalid header");
-    VerifyOrQuit(fragHeader.ParseFrom(frame, length, headerLength) != OT_ERROR_NONE,
+    VerifyOrQuit(fragHeader.ParseFrom(frame, length, headerLength) != kErrorNone,
                  "FragmentHeader::ParseFrom() did not fail with invalid header");
 
     length = sizeof(kInvalidFragHeader3);
     memcpy(frame, kInvalidFragHeader3, length);
     VerifyOrQuit(!Lowpan::FragmentHeader::IsFragmentHeader(frame, length),
                  "IsFragmentHeader() did not detect invalid header");
-    VerifyOrQuit(fragHeader.ParseFrom(frame, length, headerLength) != OT_ERROR_NONE,
+    VerifyOrQuit(fragHeader.ParseFrom(frame, length, headerLength) != kErrorNone,
                  "FragmentHeader::ParseFrom() did not fail with invalid header");
 }
 

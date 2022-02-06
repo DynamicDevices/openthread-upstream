@@ -43,76 +43,64 @@ enum
 
 template <uint16_t kSize> void PrintString(const char *aName, const String<kSize> aString)
 {
-    printf("\t%s = [%d] \"%s\"\n", aName, aString.GetLength(), aString.AsCString());
+    printf("\t%s = [%zu] \"%s\"\n", aName, strlen(aString.AsCString()), aString.AsCString());
 }
 
-void TestString(void)
+void TestStringWriter(void)
 {
-    otError             error;
-    String<kStringSize> str1;
-    String<kStringSize> str2("abc");
-    String<kStringSize> str3("%d", 12);
+    String<kStringSize> str;
+    const char          kLongString[] = "abcdefghijklmnopqratuvwxyzabcdefghijklmnopqratuvwxyz";
 
-    printf("\nTest 1: String constructor\n");
+    printf("\nTest 1: StringWriter constructor\n");
 
-    VerifyOrQuit(str1.GetSize() == kStringSize, "GetSize() failed");
+    VerifyOrQuit(str.GetSize() == kStringSize);
+    VerifyOrQuit(str.GetLength() == 0, "failed for empty string");
 
-    VerifyOrQuit(str1.GetLength() == 0, "GetLength() failed for empty string");
-    VerifyOrQuit(str2.GetLength() == 3, "GetLength() failed");
-    VerifyOrQuit(str3.GetLength() == 2, "GetLength() failed");
+    VerifyOrQuit(strcmp(str.AsCString(), "") == 0);
 
-    VerifyOrQuit(strcmp(str1.AsCString(), "") == 0, "String content is incorrect");
-    VerifyOrQuit(strcmp(str2.AsCString(), "abc") == 0, "String content is incorrect");
-    VerifyOrQuit(strcmp(str3.AsCString(), "12") == 0, "String content is incorrect");
-
-    PrintString("str1", str1);
-    PrintString("str2", str2);
-    PrintString("str3", str3);
+    PrintString("str", str);
 
     printf(" -- PASS\n");
 
-    printf("\nTest 2: String::Set() and String::Clear() method\n");
+    printf("\nTest 2: StringWriter::Append() method\n");
 
-    error = str1.Set("Hello");
-    SuccessOrQuit(error, "String::Set() failed unexpectedly");
-    VerifyOrQuit(str1.GetLength() == 5, "GetLength() failed for empty string");
-    VerifyOrQuit(strcmp(str1.AsCString(), "Hello") == 0, "String content is incorrect");
-    PrintString("str1", str1);
+    str.Append("Hi");
+    VerifyOrQuit(str.GetLength() == 2);
+    VerifyOrQuit(strcmp(str.AsCString(), "Hi") == 0);
+    PrintString("str", str);
 
-    str1.Clear();
-    VerifyOrQuit(str1.GetLength() == 0, "GetLength() failed for empty string");
-    VerifyOrQuit(strcmp(str1.AsCString(), "") == 0, "String content is incorrect");
+    str.Append("%s%d", "!", 12);
+    VerifyOrQuit(str.GetLength() == 5);
+    VerifyOrQuit(strcmp(str.AsCString(), "Hi!12") == 0);
+    PrintString("str", str);
 
-    IgnoreError(str1.Set("%d", 12));
-    VerifyOrQuit(str1.GetLength() == 2, "GetLength() failed");
-    VerifyOrQuit(strcmp(str1.AsCString(), "12") == 0, "String content is incorrect");
-    PrintString("str1", str1);
+    str.Append(kLongString);
+    VerifyOrQuit(str.IsTruncated() && str.GetLength() == 5 + sizeof(kLongString) - 1,
+                 "String::Append() did not handle overflow buffer correctly");
+    PrintString("str", str);
 
-    error = str1.Set("abcdefghijklmnopqratuvwxyzabcdefghijklmnopqratuvwxyz");
-    VerifyOrQuit(error == OT_ERROR_NO_BUFS, "String::Set() did not handle overflow buffer correctly");
-    PrintString("str1", str1);
+    printf("\nTest 3: StringWriter::Clear() method\n");
 
-    printf("\nTest 3: String::Append() method\n");
+    str.Clear();
+    str.Append("Hello");
+    VerifyOrQuit(str.GetLength() == 5);
+    VerifyOrQuit(strcmp(str.AsCString(), "Hello") == 0);
+    PrintString("str", str);
 
-    str2.Clear();
-    VerifyOrQuit(str2.GetLength() == 0, "GetLength() failed for empty string");
-    VerifyOrQuit(strcmp(str2.AsCString(), "") == 0, "String content is incorrect");
+    str.Clear();
+    VerifyOrQuit(str.GetLength() == 0, "failed after Clear()");
+    VerifyOrQuit(strcmp(str.AsCString(), "") == 0);
 
-    error = str2.Append("Hi");
-    SuccessOrQuit(error, "String::Append() failed unexpectedly");
-    VerifyOrQuit(str2.GetLength() == 2, "GetLength() failed");
-    VerifyOrQuit(strcmp(str2.AsCString(), "Hi") == 0, "String content is incorrect");
-    PrintString("str2", str2);
+    str.Append("%d", 12);
+    VerifyOrQuit(str.GetLength() == 2);
+    VerifyOrQuit(strcmp(str.AsCString(), "12") == 0);
+    PrintString("str", str);
 
-    error = str2.Append("%s%d", "!", 12);
-    SuccessOrQuit(error, "String::Append() failed unexpectedly");
-    VerifyOrQuit(str2.GetLength() == 5, "GetLength() failed");
-    VerifyOrQuit(strcmp(str2.AsCString(), "Hi!12") == 0, "String content is incorrect");
-    PrintString("str2", str2);
-
-    error = str2.Append("abcdefghijklmnopqratuvwxyzabcdefghijklmnopqratuvwxyz");
-    VerifyOrQuit(error == OT_ERROR_NO_BUFS, "String::Append() did not handle overflow buffer correctly");
-    PrintString("str2", str2);
+    str.Clear();
+    str.Append(kLongString);
+    VerifyOrQuit(str.IsTruncated() && str.GetLength() == sizeof(kLongString) - 1,
+                 "String::Clear() + String::Append() did not handle overflow buffer correctly");
+    PrintString("str", str);
 
     printf(" -- PASS\n");
 }
@@ -124,17 +112,17 @@ void TestStringLength(void)
 
     printf("\nTest 4: String::StringLength() method\n");
 
-    VerifyOrQuit(StringLength(string_a, 0) == 0, "StringLength() 0len 0 fails");
-    VerifyOrQuit(StringLength(string_a, 1) == 0, "StringLength() 0len 1 fails");
-    VerifyOrQuit(StringLength(string_a, 2) == 0, "StringLength() 0len 2 fails");
+    VerifyOrQuit(StringLength(string_a, 0) == 0);
+    VerifyOrQuit(StringLength(string_a, 1) == 0);
+    VerifyOrQuit(StringLength(string_a, 2) == 0);
 
-    VerifyOrQuit(StringLength(string_b, 0) == 0, "StringLength() 3len 0 fails");
-    VerifyOrQuit(StringLength(string_b, 1) == 1, "StringLength() 3len 1 fails");
-    VerifyOrQuit(StringLength(string_b, 2) == 2, "StringLength() 3len 2 fails");
-    VerifyOrQuit(StringLength(string_b, 3) == 3, "StringLength() 3len 3 fails");
-    VerifyOrQuit(StringLength(string_b, 4) == 3, "StringLength() 3len 4 fails");
-    VerifyOrQuit(StringLength(string_b, 5) == 3, "StringLength() 3len 5 fails");
-    VerifyOrQuit(StringLength(string_b, 6) == 3, "StringLength() 3len 6 fails");
+    VerifyOrQuit(StringLength(string_b, 0) == 0);
+    VerifyOrQuit(StringLength(string_b, 1) == 1);
+    VerifyOrQuit(StringLength(string_b, 2) == 2);
+    VerifyOrQuit(StringLength(string_b, 3) == 3);
+    VerifyOrQuit(StringLength(string_b, 4) == 3);
+    VerifyOrQuit(StringLength(string_b, 5) == 3);
+    VerifyOrQuit(StringLength(string_b, 6) == 3);
 
     printf(" -- PASS\n");
 }
@@ -143,13 +131,15 @@ void TestUtf8(void)
 {
     printf("\nTest 5: IsValidUtf8String() function\n");
 
-    VerifyOrQuit(IsValidUtf8String("An ASCII string"), "IsValidUtf8String() ASCII string fails");
-    VerifyOrQuit(IsValidUtf8String(u8"Строка UTF-8"), "IsValidUtf8String() UTF-8 string fails");
-    VerifyOrQuit(!IsValidUtf8String("\xbf"), "IsValidUtf8String() illegal string fails");
-    VerifyOrQuit(!IsValidUtf8String("\xdf"), "IsValidUtf8String() illegal string fails");
-    VerifyOrQuit(!IsValidUtf8String("\xef\x80"), "IsValidUtf8String() illegal string fails");
-    VerifyOrQuit(!IsValidUtf8String("\xf7\x80\x80"), "IsValidUtf8String() illegal string fails");
-    VerifyOrQuit(!IsValidUtf8String("\xff"), "IsValidUtf8String() illegal string fails");
+    VerifyOrQuit(IsValidUtf8String("An ASCII string"));
+    VerifyOrQuit(IsValidUtf8String(u8"Строка UTF-8"));
+    VerifyOrQuit(!IsValidUtf8String("\xbf"));
+    VerifyOrQuit(!IsValidUtf8String("\xdf"));
+    VerifyOrQuit(!IsValidUtf8String("\xef\x80"));
+    VerifyOrQuit(!IsValidUtf8String("\xf7\x80\x80"));
+    VerifyOrQuit(!IsValidUtf8String("\xff"));
+    VerifyOrQuit(!IsValidUtf8String("NUL\x00NUL", 7)); // UTF-8 NUL
+    VerifyOrQuit(!IsValidUtf8String("abcde\x11"));     // control character
 
     printf(" -- PASS\n");
 }
@@ -157,32 +147,187 @@ void TestUtf8(void)
 void TestStringFind(void)
 {
     char emptyString[1] = {'\0'};
-    char testString[]   = "foo.bar\\.";
+    char testString[]   = "Foo.bar.bar\\.";
+    char testString2[]  = "abcabcabcdabc";
 
     printf("\nTest 6: StringFind() function\n");
 
-    VerifyOrQuit(StringFind(testString, 'f') == testString, "StringFind() failed");
-    VerifyOrQuit(StringFind(testString, 'o') == &testString[1], "StringFind() failed");
-    VerifyOrQuit(StringFind(testString, '.') == &testString[3], "StringFind() failed");
-    VerifyOrQuit(StringFind(testString, 'r') == &testString[6], "StringFind() failed");
-    VerifyOrQuit(StringFind(testString, '\\') == &testString[7], "StringFind() failed");
-    VerifyOrQuit(StringFind(testString, 'x') == nullptr, "StringFind() failed");
-    VerifyOrQuit(StringFind(testString, ',') == nullptr, "StringFind() failed");
+    VerifyOrQuit(StringFind(testString, 'F') == testString);
+    VerifyOrQuit(StringFind(testString, 'o') == &testString[1]);
+    VerifyOrQuit(StringFind(testString, '.') == &testString[3]);
+    VerifyOrQuit(StringFind(testString, 'r') == &testString[6]);
+    VerifyOrQuit(StringFind(testString, '\\') == &testString[11]);
+    VerifyOrQuit(StringFind(testString, 'x') == nullptr);
+    VerifyOrQuit(StringFind(testString, ',') == nullptr);
 
-    VerifyOrQuit(StringFind(emptyString, 'f') == nullptr, "StringFind() failed");
-    VerifyOrQuit(StringFind(emptyString, '.') == nullptr, "StringFind() failed");
+    VerifyOrQuit(StringFind(emptyString, 'F') == nullptr);
+    VerifyOrQuit(StringFind(emptyString, '.') == nullptr);
+
+    VerifyOrQuit(StringFind(testString, "Foo") == &testString[0]);
+    VerifyOrQuit(StringFind(testString, "oo") == &testString[1]);
+    VerifyOrQuit(StringFind(testString, "bar") == &testString[4]);
+    VerifyOrQuit(StringFind(testString, "bar\\") == &testString[8]);
+    VerifyOrQuit(StringFind(testString, "\\.") == &testString[11]);
+    VerifyOrQuit(StringFind(testString, testString) == testString);
+    VerifyOrQuit(StringFind(testString, "Fooo") == nullptr);
+    VerifyOrQuit(StringFind(testString, "Far") == nullptr);
+    VerifyOrQuit(StringFind(testString, "FOO") == nullptr);
+    VerifyOrQuit(StringFind(testString, "BAR") == nullptr);
+    VerifyOrQuit(StringFind(testString, "bar\\..") == nullptr);
+    VerifyOrQuit(StringFind(testString, "") == &testString[0]);
+
+    VerifyOrQuit(StringFind(emptyString, "foo") == nullptr);
+    VerifyOrQuit(StringFind(emptyString, "bar") == nullptr);
+    VerifyOrQuit(StringFind(emptyString, "") == &emptyString[0]);
+
+    // Verify when sub-string has repeated patterns
+    VerifyOrQuit(StringFind(testString2, "abcabc") == &testString2[0]);
+    VerifyOrQuit(StringFind(testString2, "abcabcd") == &testString2[3]);
+
+    VerifyOrQuit(StringFind(testString, "FOO", kStringCaseInsensitiveMatch) == &testString[0]);
+    VerifyOrQuit(StringFind(testString, "OO", kStringCaseInsensitiveMatch) == &testString[1]);
+    VerifyOrQuit(StringFind(testString, "BAR", kStringCaseInsensitiveMatch) == &testString[4]);
+    VerifyOrQuit(StringFind(testString, "BAR\\", kStringCaseInsensitiveMatch) == &testString[8]);
+    VerifyOrQuit(StringFind(testString, "\\.", kStringCaseInsensitiveMatch) == &testString[11]);
+    VerifyOrQuit(StringFind(testString, testString) == testString);
+    VerifyOrQuit(StringFind(testString, "FOOO", kStringCaseInsensitiveMatch) == nullptr);
+    VerifyOrQuit(StringFind(testString, "FAR", kStringCaseInsensitiveMatch) == nullptr);
+    VerifyOrQuit(StringFind(testString, "BAR\\..", kStringCaseInsensitiveMatch) == nullptr);
+    VerifyOrQuit(StringFind(testString, "", kStringCaseInsensitiveMatch) == &testString[0]);
+
+    VerifyOrQuit(StringFind(emptyString, "FOO", kStringCaseInsensitiveMatch) == nullptr);
+    VerifyOrQuit(StringFind(emptyString, "BAR", kStringCaseInsensitiveMatch) == nullptr);
+    VerifyOrQuit(StringFind(emptyString, "", kStringCaseInsensitiveMatch) == &emptyString[0]);
+
+    // Verify when sub-string has repeated patterns
+    VerifyOrQuit(StringFind(testString2, "ABCABC", kStringCaseInsensitiveMatch) == &testString2[0]);
+    VerifyOrQuit(StringFind(testString2, "ABCABCD", kStringCaseInsensitiveMatch) == &testString2[3]);
 
     printf(" -- PASS\n");
 }
+
+void TestStringStartsWith(void)
+{
+    printf("\nTest 7: StringStartsWith() function\n");
+
+    VerifyOrQuit(StringStartsWith("FooBar", "Foo"));
+    VerifyOrQuit(!StringStartsWith("FooBar", "Ba"));
+    VerifyOrQuit(StringStartsWith("FooBar", "FooBar"));
+    VerifyOrQuit(!StringStartsWith("FooBar", "FooBarr"));
+    VerifyOrQuit(!StringStartsWith("FooBar", "foo"));
+    VerifyOrQuit(!StringStartsWith("FooBar", "FoO"));
+
+    VerifyOrQuit(!StringStartsWith("", "foo"));
+
+    VerifyOrQuit(StringStartsWith("FooBar", "FOO", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(!StringStartsWith("FooBar", "BA", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(StringStartsWith("FooBar", "FOOBAR", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(!StringStartsWith("FooBar", "FooBarr", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(StringStartsWith("FooBar", "foO", kStringCaseInsensitiveMatch));
+
+    VerifyOrQuit(!StringStartsWith("", "foo", kStringCaseInsensitiveMatch));
+
+    printf(" -- PASS\n");
+}
+
+void TestStringEndsWith(void)
+{
+    printf("\nTest 8: StringEndsWith() function\n");
+
+    VerifyOrQuit(StringEndsWith("FooBar", 'r'));
+    VerifyOrQuit(!StringEndsWith("FooBar", 'a'));
+    VerifyOrQuit(!StringEndsWith("FooBar", '\0'));
+    VerifyOrQuit(StringEndsWith("a", 'a'));
+    VerifyOrQuit(!StringEndsWith("a", 'b'));
+
+    VerifyOrQuit(StringEndsWith("FooBar", "Bar"));
+    VerifyOrQuit(!StringEndsWith("FooBar", "Ba"));
+    VerifyOrQuit(StringEndsWith("FooBar", "FooBar"));
+    VerifyOrQuit(!StringEndsWith("FooBar", "FooBarr"));
+
+    VerifyOrQuit(!StringEndsWith("", 'a'));
+    VerifyOrQuit(!StringEndsWith("", "foo"));
+
+    VerifyOrQuit(StringEndsWith("FooBar", "baR", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(!StringEndsWith("FooBar", "bA", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(StringEndsWith("FooBar", "fOOBar", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(!StringEndsWith("FooBar", "Foobarr", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(!StringEndsWith("", "Foo", kStringCaseInsensitiveMatch));
+
+    printf(" -- PASS\n");
+}
+
+void TestStringMatch(void)
+{
+    printf("\nTest 9: StringMatch() function\n");
+
+    VerifyOrQuit(StringMatch("", ""));
+    VerifyOrQuit(StringMatch("FooBar", "FooBar"));
+    VerifyOrQuit(!StringMatch("FooBar", "FooBa"));
+    VerifyOrQuit(!StringMatch("FooBa", "FooBar"));
+    VerifyOrQuit(!StringMatch("FooBa", "FooBar"));
+    VerifyOrQuit(!StringMatch("FooBar", "fooBar"));
+    VerifyOrQuit(!StringMatch("FooBaR", "FooBar"));
+
+    VerifyOrQuit(StringMatch("", "", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(StringMatch("FooBar", "fOObAR", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(!StringMatch("FooBar", "fOObA", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(!StringMatch("FooBa", "FooBar", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(!StringMatch("FooBa", "FooBar", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(!StringMatch("Fooba", "fooBar", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(StringMatch("FooBar", "FOOBAR", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(StringMatch("FoobaR", "FooBar", kStringCaseInsensitiveMatch));
+    VerifyOrQuit(StringMatch("FOOBAR", "foobar", kStringCaseInsensitiveMatch));
+
+    printf(" -- PASS\n");
+}
+
+void TestStringToLowercase(void)
+{
+    const uint16_t kMaxSize = 100;
+
+    const char kTestString[]      = "!@#$%^&*()_+=[].,<>//;:\"'`~ \t\r\n";
+    const char kUppercaseString[] = "ABCDEFGHIJKLMNOPQRATUVWXYZABCDEFGHIJKLMNOPQRATUVWXYZ";
+    const char kLowercaseString[] = "abcdefghijklmnopqratuvwxyzabcdefghijklmnopqratuvwxyz";
+
+    char string[kMaxSize];
+
+    printf("\nTest 10: StringConvertToLowercase() function\n");
+
+    memcpy(string, kTestString, sizeof(kTestString));
+    StringConvertToLowercase(string);
+    VerifyOrQuit(memcmp(string, kTestString, sizeof(kTestString)) == 0);
+    StringConvertToUppercase(string);
+    VerifyOrQuit(memcmp(string, kTestString, sizeof(kTestString)) == 0);
+
+    memcpy(string, kUppercaseString, sizeof(kUppercaseString));
+    StringConvertToLowercase(string);
+    VerifyOrQuit(memcmp(string, kLowercaseString, sizeof(kLowercaseString)) == 0);
+    StringConvertToUppercase(string);
+    VerifyOrQuit(memcmp(string, kUppercaseString, sizeof(kUppercaseString)) == 0);
+
+    printf(" -- PASS\n");
+}
+
+static_assert(ot::AreStringsInOrder("a", "b"), "AreStringsInOrder() failed");
+static_assert(ot::AreStringsInOrder("aa", "aaa"), "AreStringsInOrder() failed");
+static_assert(ot::AreStringsInOrder("", "a"), "AreStringsInOrder() failed");
+static_assert(!ot::AreStringsInOrder("cd", "cd"), "AreStringsInOrder() failed");
+static_assert(!ot::AreStringsInOrder("z", "abcd"), "AreStringsInOrder() failed");
+static_assert(!ot::AreStringsInOrder("0", ""), "AreStringsInOrder() failed");
 
 } // namespace ot
 
 int main(void)
 {
-    ot::TestString();
+    ot::TestStringWriter();
     ot::TestStringLength();
     ot::TestUtf8();
     ot::TestStringFind();
+    ot::TestStringStartsWith();
+    ot::TestStringEndsWith();
+    ot::TestStringMatch();
+    ot::TestStringToLowercase();
     printf("\nAll tests passed.\n");
     return 0;
 }

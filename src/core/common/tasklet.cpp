@@ -34,35 +34,19 @@
 #include "tasklet.hpp"
 
 #include "common/code_utils.hpp"
-#include "common/debug.hpp"
-#include "common/instance.hpp"
-#include "common/locator-getters.hpp"
-#include "net/ip6.hpp"
+#include "common/locator_getters.hpp"
 
 namespace ot {
-
-Tasklet::Tasklet(Instance &aInstance, Handler aHandler, void *aOwner)
-    : InstanceLocator(aInstance)
-    , OwnerLocator(aOwner)
-    , mHandler(aHandler)
-    , mNext(nullptr)
-{
-}
 
 void Tasklet::Post(void)
 {
     if (!IsPosted())
     {
-        Get<TaskletScheduler>().PostTasklet(*this);
+        Get<Scheduler>().PostTasklet(*this);
     }
 }
 
-TaskletScheduler::TaskletScheduler(void)
-    : mTail(nullptr)
-{
-}
-
-void TaskletScheduler::PostTasklet(Tasklet &aTasklet)
+void Tasklet::Scheduler::PostTasklet(Tasklet &aTasklet)
 {
     // Tasklets are saved in a circular singly linked list.
 
@@ -80,15 +64,15 @@ void TaskletScheduler::PostTasklet(Tasklet &aTasklet)
     }
 }
 
-void TaskletScheduler::ProcessQueuedTasklets(void)
+void Tasklet::Scheduler::ProcessQueuedTasklets(void)
 {
     Tasklet *tail = mTail;
 
     // This method processes all tasklets queued when this is called. We
     // keep a copy the current list and then clear the main list by
-    // setting `mTail` to nullptr. A newly posted tasklet while processing
-    // the currently queued tasklets will then trigger a call to
-    // `otTaskletsSignalPending()`.
+    // setting `mTail` to `nullptr`. A newly posted tasklet while
+    // processing the currently queued tasklets will then trigger a call
+    // to `otTaskletsSignalPending()`.
 
     mTail = nullptr;
 

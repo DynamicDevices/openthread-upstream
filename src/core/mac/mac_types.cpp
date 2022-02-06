@@ -67,7 +67,7 @@ ExtAddress::InfoString ExtAddress::ToString(void) const
 {
     InfoString string;
 
-    IgnoreError(string.AppendHexBytes(m8, sizeof(ExtAddress)));
+    string.AppendHexBytes(m8, sizeof(ExtAddress));
 
     return string;
 }
@@ -92,53 +92,87 @@ void ExtAddress::CopyAddress(uint8_t *aDst, const uint8_t *aSrc, CopyByteOrder a
 
 Address::InfoString Address::ToString(void) const
 {
-    return (mType == kTypeExtended) ? GetExtended().ToString()
-                                    : (mType == kTypeNone ? InfoString("None") : InfoString("0x%04x", GetShort()));
+    InfoString string;
+
+    if (mType == kTypeExtended)
+    {
+        string.AppendHexBytes(GetExtended().m8, sizeof(ExtAddress));
+    }
+    else if (mType == kTypeNone)
+    {
+        string.Append("None");
+    }
+    else
+    {
+        string.Append("0x%04x", GetShort());
+    }
+
+    return string;
 }
 
 ExtendedPanId::InfoString ExtendedPanId::ToString(void) const
 {
     InfoString string;
 
-    IgnoreError(string.AppendHexBytes(m8, sizeof(ExtendedPanId)));
+    string.AppendHexBytes(m8, sizeof(ExtendedPanId));
 
     return string;
 }
 
 uint8_t NameData::CopyTo(char *aBuffer, uint8_t aMaxSize) const
 {
-    uint8_t len = GetLength();
+    MutableData<kWithUint8Length> destData;
 
-    memset(aBuffer, 0, aMaxSize);
+    destData.Init(aBuffer, aMaxSize);
+    destData.ClearBytes();
+    IgnoreError(destData.CopyBytesFrom(*this));
 
-    if (len > aMaxSize)
-    {
-        len = aMaxSize;
-    }
-
-    memcpy(aBuffer, GetBuffer(), len);
-
-    return len;
+    return destData.GetLength();
 }
 
 NameData NetworkName::GetAsData(void) const
 {
-    uint8_t len = static_cast<uint8_t>(StringLength(m8, kMaxSize + 1));
-
-    return NameData(m8, len);
+    return NameData(m8, static_cast<uint8_t>(StringLength(m8, kMaxSize + 1)));
 }
 
-otError NetworkName::Set(const NameData &aNameData)
+Error NetworkName::Set(const char *aNameString)
 {
-    otError error  = OT_ERROR_NONE;
-    uint8_t newLen = static_cast<uint8_t>(StringLength(aNameData.GetBuffer(), aNameData.GetLength()));
+    // When setting `NetworkName` from a string, we treat it as `NameData`
+    // with `kMaxSize + 1` chars. `NetworkName::Set(data)` will look
+    // for null char in the data (within its given size) to calculate
+    // the name's length and ensure that the name fits in `kMaxSize`
+    // chars. The `+ 1` ensures that a `aNameString` with length
+    // longer than `kMaxSize` is correctly rejected (returning error
+    // `kErrorInvalidArgs`).
 
-    VerifyOrExit(newLen <= kMaxSize, error = OT_ERROR_INVALID_ARGS);
+    Error    error;
+    NameData data(aNameString, kMaxSize + 1);
+
+    VerifyOrExit(IsValidUtf8String(aNameString), error = kErrorInvalidArgs);
+
+    error = Set(data);
+
+exit:
+    return error;
+}
+
+Error NetworkName::Set(const NameData &aNameData)
+{
+    Error    error  = kErrorNone;
+    NameData data   = aNameData;
+    uint8_t  newLen = static_cast<uint8_t>(StringLength(data.GetBuffer(), data.GetLength()));
+
+    VerifyOrExit((0 < newLen) && (newLen <= kMaxSize), error = kErrorInvalidArgs);
+
+    data.SetLength(newLen);
 
     // Ensure the new name does not match the current one.
-    VerifyOrExit(memcmp(m8, aNameData.GetBuffer(), newLen) || (m8[newLen] != '\0'), error = OT_ERROR_ALREADY);
+    if (data.MatchesBytesIn(m8) && m8[newLen] == '\0')
+    {
+        ExitNow(error = kErrorAlready);
+    }
 
-    memcpy(m8, aNameData.GetBuffer(), newLen);
+    data.CopyBytesTo(m8);
     m8[newLen] = '\0';
 
 exit:
@@ -147,38 +181,8 @@ exit:
 
 bool NetworkName::operator==(const NetworkName &aOther) const
 {
-    NameData data      = GetAsData();
-    NameData otherData = aOther.GetAsData();
-
-    return (data.GetLength() == otherData.GetLength()) &&
-           (memcmp(data.GetBuffer(), otherData.GetBuffer(), data.GetLength()) == 0);
+    return GetAsData() == aOther.GetAsData();
 }
-
-#if (OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2)
-NameData DomainName::GetAsData(void) const
-{
-    uint8_t len = static_cast<uint8_t>(StringLength(m8, kMaxSize + 1));
-
-    return NameData(m8, len);
-}
-
-otError DomainName::Set(const NameData &aNameData)
-{
-    otError error  = OT_ERROR_NONE;
-    uint8_t newLen = static_cast<uint8_t>(StringLength(aNameData.GetBuffer(), aNameData.GetLength()));
-
-    VerifyOrExit(newLen <= kMaxSize, error = OT_ERROR_INVALID_ARGS);
-
-    // Ensure the new name does not match the current one.
-    VerifyOrExit(memcmp(m8, aNameData.GetBuffer(), newLen) || (m8[newLen] != '\0'), error = OT_ERROR_ALREADY);
-
-    memcpy(m8, aNameData.GetBuffer(), newLen);
-    m8[newLen] = '\0';
-
-exit:
-    return error;
-}
-#endif // (OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2)
 
 #if OPENTHREAD_CONFIG_MULTI_RADIO
 
@@ -203,13 +207,14 @@ void RadioTypes::AddAll(void)
 
 RadioTypes::InfoString RadioTypes::ToString(void) const
 {
-    InfoString string("{");
+    InfoString string;
     bool       addComma = false;
 
+    string.Append("{");
 #if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
     if (Contains(kRadioTypeIeee802154))
     {
-        IgnoreError(string.Append("%s%s", addComma ? ", " : " ", RadioTypeToString(kRadioTypeIeee802154)));
+        string.Append("%s%s", addComma ? ", " : " ", RadioTypeToString(kRadioTypeIeee802154));
         addComma = true;
     }
 #endif
@@ -217,14 +222,14 @@ RadioTypes::InfoString RadioTypes::ToString(void) const
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     if (Contains(kRadioTypeTrel))
     {
-        IgnoreError(string.Append("%s%s", addComma ? ", " : " ", RadioTypeToString(kRadioTypeTrel)));
+        string.Append("%s%s", addComma ? ", " : " ", RadioTypeToString(kRadioTypeTrel));
         addComma = true;
     }
 #endif
 
     OT_UNUSED_VARIABLE(addComma);
 
-    IgnoreError(string.Append(" }"));
+    string.Append(" }");
 
     return string;
 }
@@ -321,6 +326,93 @@ void LinkFrameCounters::SetAll(uint32_t aCounter)
 #endif
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     mTrelCounter = aCounter;
+#endif
+}
+
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+KeyMaterial &KeyMaterial::operator=(const KeyMaterial &aOther)
+{
+    VerifyOrExit(GetKeyRef() != aOther.GetKeyRef());
+    DestroyKey();
+    SetKeyRef(aOther.GetKeyRef());
+
+exit:
+    return *this;
+}
+#endif
+
+void KeyMaterial::Clear(void)
+{
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+    DestroyKey();
+    SetKeyRef(kInvalidKeyRef);
+#else
+    GetKey().Clear();
+#endif
+}
+
+void KeyMaterial::SetFrom(const Key &aKey, bool aIsExportable)
+{
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+    {
+        KeyRef keyRef = 0;
+
+        DestroyKey();
+
+        SuccessOrAssert(Crypto::Storage::ImportKey(keyRef, Crypto::Storage::kKeyTypeAes,
+                                                   Crypto::Storage::kKeyAlgorithmAesEcb,
+                                                   (aIsExportable ? Crypto::Storage::kUsageExport : 0) |
+                                                       Crypto::Storage::kUsageEncrypt | Crypto::Storage::kUsageDecrypt,
+                                                   Crypto::Storage::kTypeVolatile, aKey.GetBytes(), Key::kSize));
+
+        SetKeyRef(keyRef);
+    }
+#else
+    SetKey(aKey);
+    OT_UNUSED_VARIABLE(aIsExportable);
+#endif
+}
+
+void KeyMaterial::ExtractKey(Key &aKey)
+{
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+    aKey.Clear();
+
+    if (Crypto::Storage::IsKeyRefValid(GetKeyRef()))
+    {
+        size_t keySize;
+
+        SuccessOrAssert(Crypto::Storage::ExportKey(GetKeyRef(), aKey.m8, Key::kSize, keySize));
+    }
+#else
+    aKey = GetKey();
+#endif
+}
+
+void KeyMaterial::ConvertToCryptoKey(Crypto::Key &aCryptoKey) const
+{
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+    aCryptoKey.SetAsKeyRef(GetKeyRef());
+#else
+    aCryptoKey.Set(GetKey().GetBytes(), Key::kSize);
+#endif
+}
+
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+void KeyMaterial::DestroyKey(void)
+{
+    Crypto::Storage::DestroyKey(GetKeyRef());
+    SetKeyRef(kInvalidKeyRef);
+}
+#endif
+
+bool KeyMaterial::operator==(const KeyMaterial &aOther) const
+{
+    return
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+        (GetKeyRef() == aOther.GetKeyRef());
+#else
+        (GetKey() == aOther.GetKey());
 #endif
 }
 

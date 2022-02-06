@@ -34,21 +34,20 @@
 #ifndef OT_CORE_THREAD_TMF_HPP_
 #define OT_CORE_THREAD_TMF_HPP_
 
+#include "openthread-core-config.h"
+
 #include "coap/coap.hpp"
 
 namespace ot {
 namespace Tmf {
 
-enum
-{
-    kUdpPort = 61631, ///< TMF UDP Port
-};
+constexpr uint16_t kUdpPort = 61631; ///< TMF UDP Port
 
 /**
  * This class implements functionality of the Thread TMF agent.
  *
  */
-class TmfAgent : public Coap::Coap
+class Agent : public Coap::Coap
 {
 public:
     /**
@@ -57,7 +56,7 @@ public:
      * @param[in] aInstance      A reference to the OpenThread instance.
      *
      */
-    explicit TmfAgent(Instance &aInstance)
+    explicit Agent(Instance &aInstance)
         : Coap::Coap(aInstance)
     {
         SetInterceptor(&Filter, this);
@@ -66,11 +65,11 @@ public:
     /**
      * This method starts the TMF agent.
      *
-     * @retval OT_ERROR_NONE    Successfully started the CoAP service.
-     * @retval OT_ERROR_FAILED  Failed to start the TMF agent.
+     * @retval kErrorNone    Successfully started the CoAP service.
+     * @retval kErrorFailed  Failed to start the TMF agent.
      *
      */
-    otError Start(void);
+    Error Start(void);
 
     /**
      * This method returns whether Thread Management Framework Addressing Rules are met.
@@ -82,7 +81,7 @@ public:
     bool IsTmfMessage(const Ip6::MessageInfo &aMessageInfo) const;
 
 private:
-    static otError Filter(const ot::Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo, void *aContext);
+    static Error Filter(const ot::Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo, void *aContext);
 };
 
 } // namespace Tmf

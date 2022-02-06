@@ -62,7 +62,8 @@ enum
     OT_PLATFORM_CONFIG_SPI_DEFAULT_ALIGN_ALLOWANCE =
         16, ///< Default maximum number of 0xFF bytes to clip from start of MISO frame.
     OT_PLATFORM_CONFIG_SPI_DEFAULT_SMALL_PACKET_SIZE =
-        32, ///< Default smallest SPI packet size we can receive in a single transaction.
+        32,                                ///< Default smallest SPI packet size we can receive in a single transaction.
+    OT_PLATFORM_CONFIG_MAX_RADIO_URLS = 2, ///< Max number of Radio URLs.
 };
 
 /**
@@ -71,16 +72,19 @@ enum
  */
 typedef struct otPlatformConfig
 {
-    const char *mBackboneInterfaceName; ///< Backbone network interface name.
-    const char *mInterfaceName;         ///< Thread network interface name.
-    const char *mRadioUrl;              ///< Radio url.
-    int         mRealTimeSignal;        ///< The real-time signal for microsecond timer.
-    uint32_t    mSpeedUpFactor;         ///< Speed up factor.
-    const char *mTrelInterface;         ///< Interface name used by TREL radio link (can be NULL to use default).
+    const char *mBackboneInterfaceName;                        ///< Backbone network interface name.
+    const char *mInterfaceName;                                ///< Thread network interface name.
+    const char *mRadioUrls[OT_PLATFORM_CONFIG_MAX_RADIO_URLS]; ///< Radio URLs.
+    uint8_t     mRadioUrlNum;                                  ///< Number of Radio URLs.
+    int         mRealTimeSignal;                               ///< The real-time signal for microsecond timer.
+    uint32_t    mSpeedUpFactor;                                ///< Speed up factor.
+    bool        mDryRun;                                       ///< If 'DryRun' is set, the posix daemon will exit
+                                                               ///< directly after initialization.
 } otPlatformConfig;
 
 /**
- * This function performs all platform-specific initialization of OpenThread's drivers.
+ * This function performs all platform-specific initialization of OpenThread's drivers and initializes the OpenThread
+ * instance.
  *
  * @note This function is not called by the OpenThread library. Instead, the system/RTOS should call this function
  *       when initialization of OpenThread's drivers is most appropriate.
@@ -93,7 +97,8 @@ typedef struct otPlatformConfig
 otInstance *otSysInit(otPlatformConfig *aPlatformConfig);
 
 /**
- * This function performs all platform-specific deinitialization for OpenThread's drivers.
+ * This function finalizes the OpenThread instance and performs all platform-specific deinitialization for OpenThread's
+ * drivers.
  *
  * @note This function is not called by the OpenThread library. Instead, the system/RTOS should call this function
  *       when deinitialization of OpenThread's drivers is most appropriate.
@@ -154,6 +159,30 @@ void otSysMainloopProcess(otInstance *aInstance, const otSysMainloopContext *aMa
 const char *otSysGetRadioUrlHelpString(void);
 
 extern otPlatResetReason gPlatResetReason;
+
+/**
+ * This method returns the Thread network interface name.
+ *
+ * @returns The Thread network interface name.
+ *
+ */
+const char *otSysGetThreadNetifName(void);
+
+/**
+ * This method returns the Thread network interface index.
+ *
+ * @returns The Thread network interface index.
+ *
+ */
+unsigned int otSysGetThreadNetifIndex(void);
+
+/**
+ * This method returns the infrastructure network interface name.
+ *
+ * @returns The infrastructure network interface name, or `nullptr` if not specified.
+ *
+ */
+const char *otSysGetInfraNetifName(void);
 
 #ifdef __cplusplus
 } // end of extern "C"

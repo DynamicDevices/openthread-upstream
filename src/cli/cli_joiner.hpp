@@ -38,66 +38,60 @@
 
 #include <openthread/joiner.h>
 
-#include "utils/lookup_table.hpp"
+#include "cli/cli_output.hpp"
 
 #if OPENTHREAD_CONFIG_JOINER_ENABLE
 
 namespace ot {
 namespace Cli {
 
-class Interpreter;
-
 /**
  * This class implements the Joiner CLI interpreter.
  *
  */
-class Joiner
+class Joiner : private OutputWrapper
 {
 public:
+    typedef Utils::CmdLineParser::Arg Arg;
+
     /**
      * Constructor
      *
-     * @param[in]  aInterpreter  The CLI interpreter.
+     * @param[in]  aOutput The CLI console output context
      *
      */
-    explicit Joiner(Interpreter &aInterpreter)
-        : mInterpreter(aInterpreter)
+    explicit Joiner(Output &aOutput)
+        : OutputWrapper(aOutput)
     {
     }
 
     /**
      * This method interprets a list of CLI arguments.
      *
-     * @param[in]  aArgsLength  The number of elements in @p aArgs.
      * @param[in]  aArgs        A pointer to an array of command line arguments.
      *
      */
-    otError Process(uint8_t aArgsLength, char *aArgs[]);
+    otError Process(Arg aArgs[]);
 
 private:
-    struct Command
-    {
-        const char *mName;
-        otError (Joiner::*mHandler)(uint8_t aArgsLength, char *aArgs[]);
-    };
+    using Command = CommandEntry<Joiner>;
 
-    otError ProcessDiscerner(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessHelp(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessId(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessStart(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessStop(uint8_t aArgsLength, char *aArgs[]);
+    otError ProcessDiscerner(Arg aArgs[]);
+    otError ProcessHelp(Arg aArgs[]);
+    otError ProcessId(Arg aArgs[]);
+    otError ProcessStart(Arg aArgs[]);
+    otError ProcessStop(Arg aArgs[]);
+    otError ProcessState(Arg aArgs[]);
 
     static void HandleCallback(otError aError, void *aContext);
     void        HandleCallback(otError aError);
 
     static constexpr Command sCommands[] = {
-        {"discerner", &Joiner::ProcessDiscerner}, {"help", &Joiner::ProcessHelp}, {"id", &Joiner::ProcessId},
-        {"start", &Joiner::ProcessStart},         {"stop", &Joiner::ProcessStop},
+        {"discerner", &Joiner::ProcessDiscerner}, {"help", &Joiner::ProcessHelp},   {"id", &Joiner::ProcessId},
+        {"start", &Joiner::ProcessStart},         {"state", &Joiner::ProcessState}, {"stop", &Joiner::ProcessStop},
     };
 
-    static_assert(Utils::LookupTable::IsSorted(sCommands), "Command Table is not sorted");
-
-    Interpreter &mInterpreter;
+    static_assert(BinarySearch::IsSorted(sCommands), "Command Table is not sorted");
 };
 
 } // namespace Cli

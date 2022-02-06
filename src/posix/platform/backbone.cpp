@@ -38,6 +38,7 @@
 #include "multicast_routing.hpp"
 #include "platform-posix.h"
 #include "common/code_utils.hpp"
+#include "posix/platform/mainloop.hpp"
 
 char         gBackboneNetifName[IFNAMSIZ] = "";
 unsigned int gBackboneNetifIndex          = 0;
@@ -45,13 +46,16 @@ unsigned int gBackboneNetifIndex          = 0;
 static ot::Posix::MulticastRoutingManager sMulticastRoutingManager;
 #endif
 
-void platformBackboneInit(otInstance *aInstance, const char *aInterfaceName)
+void platformBackboneInit(const char *aInterfaceName)
 {
-    OT_UNUSED_VARIABLE(aInstance);
+    if (aInterfaceName == nullptr || aInterfaceName[0] == '\0')
+    {
+        otLogWarnPlat("Backbone Router feature is disabled: infra/backbone interface is missing");
+        ExitNow();
+    }
 
-    VerifyOrDie(aInterfaceName != nullptr, OT_EXIT_INVALID_ARGUMENTS);
-
-    VerifyOrDie(strnlen(aInterfaceName, IFNAMSIZ) <= IFNAMSIZ - 1, OT_EXIT_INVALID_ARGUMENTS);
+    VerifyOrDie(strnlen(aInterfaceName, sizeof(gBackboneNetifName)) < sizeof(gBackboneNetifName),
+                OT_EXIT_INVALID_ARGUMENTS);
     strcpy(gBackboneNetifName, aInterfaceName);
 
     gBackboneNetifIndex = if_nametoindex(gBackboneNetifName);
@@ -59,28 +63,29 @@ void platformBackboneInit(otInstance *aInstance, const char *aInterfaceName)
 
     otLogInfoPlat("Backbone interface is configured to %s (%d)", gBackboneNetifName, gBackboneNetifIndex);
 
+exit:
+    return;
+}
+
+void platformBackboneSetUp(void)
+{
 #if OPENTHREAD_CONFIG_BACKBONE_ROUTER_MULTICAST_ROUTING_ENABLE
-    sMulticastRoutingManager.Init(aInstance);
+    sMulticastRoutingManager.SetUp();
 #endif
 }
 
-void platformBackboneUpdateFdSet(fd_set &aReadFdSet, int &aMaxFd)
+void platformBackboneTearDown(void)
 {
-    OT_UNUSED_VARIABLE(aReadFdSet);
-    OT_UNUSED_VARIABLE(aMaxFd);
-
 #if OPENTHREAD_CONFIG_BACKBONE_ROUTER_MULTICAST_ROUTING_ENABLE
-    sMulticastRoutingManager.UpdateFdSet(aReadFdSet, aMaxFd);
+    sMulticastRoutingManager.TearDown();
 #endif
 }
 
-void platformBackboneProcess(const fd_set &aReadSet)
+void platformBackboneDeinit(void)
 {
-    OT_UNUSED_VARIABLE(aReadSet);
+    gBackboneNetifIndex = 0;
 
-#if OPENTHREAD_CONFIG_BACKBONE_ROUTER_MULTICAST_ROUTING_ENABLE
-    sMulticastRoutingManager.Process(aReadSet);
-#endif
+    memset(gBackboneNetifName, 0, sizeof(gBackboneNetifName));
 }
 
 void platformBackboneStateChange(otInstance *aInstance, otChangedFlags aFlags)

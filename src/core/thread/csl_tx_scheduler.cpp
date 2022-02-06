@@ -28,9 +28,9 @@
 
 #include "csl_tx_scheduler.hpp"
 
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
 
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 #include "common/time.hpp"
 #include "mac/mac.hpp"
@@ -42,16 +42,16 @@ CslTxScheduler::Callbacks::Callbacks(Instance &aInstance)
 {
 }
 
-inline otError CslTxScheduler::Callbacks::PrepareFrameForChild(Mac::TxFrame &aFrame,
-                                                               FrameContext &aContext,
-                                                               Child &       aChild)
+inline Error CslTxScheduler::Callbacks::PrepareFrameForChild(Mac::TxFrame &aFrame,
+                                                             FrameContext &aContext,
+                                                             Child &       aChild)
 {
     return Get<IndirectSender>().PrepareFrameForChild(aFrame, aContext, aChild);
 }
 
 inline void CslTxScheduler::Callbacks::HandleSentFrameToChild(const Mac::TxFrame &aFrame,
                                                               const FrameContext &aContext,
-                                                              otError             aError,
+                                                              Error               aError,
                                                               Child &             aChild)
 {
     Get<IndirectSender>().HandleSentFrameToChild(aFrame, aContext, aError, aChild);
@@ -163,23 +163,22 @@ uint32_t CslTxScheduler::GetNextCslTransmissionDelay(const Child &aChild, uint32
     return static_cast<uint32_t>(nextTxWindow - radioNow - mCslFrameRequestAheadUs);
 }
 
+#if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
+
 Mac::TxFrame *CslTxScheduler::HandleFrameRequest(Mac::TxFrames &aTxFrames)
 {
     Mac::TxFrame *frame = nullptr;
-
-#if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
-    uint32_t txDelay;
+    uint32_t      txDelay;
 
     VerifyOrExit(mCslTxChild != nullptr);
 
 #if OPENTHREAD_CONFIG_MULTI_RADIO
-    frame = &aTxFrames.GetTxFrame(kRadioTypeIeee802154);
+    frame = &aTxFrames.GetTxFrame(Mac::kRadioTypeIeee802154);
 #else
     frame = &aTxFrames.GetTxFrame();
 #endif
 
-    VerifyOrExit(mCallbacks.PrepareFrameForChild(*frame, mFrameContext, *mCslTxChild) == OT_ERROR_NONE,
-                 frame = nullptr);
+    VerifyOrExit(mCallbacks.PrepareFrameForChild(*frame, mFrameContext, *mCslTxChild) == kErrorNone, frame = nullptr);
     mCslTxMessage = mCslTxChild->GetIndirectMessage();
     VerifyOrExit(mCslTxMessage != nullptr, frame = nullptr);
 
@@ -213,18 +212,27 @@ Mac::TxFrame *CslTxScheduler::HandleFrameRequest(Mac::TxFrames &aTxFrames)
     frame->SetCsmaCaEnabled(false);
 
 exit:
-#endif // OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
     return frame;
 }
 
-void CslTxScheduler::HandleSentFrame(const Mac::TxFrame &aFrame, otError aError)
+#else // OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
+
+Mac::TxFrame *CslTxScheduler::HandleFrameRequest(Mac::TxFrames &)
+{
+    return nullptr;
+}
+
+#endif // OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
+
+void CslTxScheduler::HandleSentFrame(const Mac::TxFrame &aFrame, Error aError)
 {
     Child *child = mCslTxChild;
 
+    mCslTxMessage = nullptr;
+
     VerifyOrExit(child != nullptr); // The result is no longer interested by upper layer
 
-    mCslTxChild   = nullptr;
-    mCslTxMessage = nullptr;
+    mCslTxChild = nullptr;
 
     HandleSentFrame(aFrame, aError, *child);
 
@@ -232,18 +240,19 @@ exit:
     return;
 }
 
-void CslTxScheduler::HandleSentFrame(const Mac::TxFrame &aFrame, otError aError, Child &aChild)
+void CslTxScheduler::HandleSentFrame(const Mac::TxFrame &aFrame, Error aError, Child &aChild)
 {
     switch (aError)
     {
-    case OT_ERROR_NONE:
+    case kErrorNone:
         aChild.ResetCslTxAttempts();
         aChild.ResetIndirectTxAttempts();
         break;
 
-    case OT_ERROR_NO_ACK:
-        aChild.IncrementCslTxAttempts();
+    case kErrorNoAck:
+        OT_ASSERT(!aFrame.GetSecurityEnabled() || aFrame.IsHeaderUpdated());
 
+        aChild.IncrementCslTxAttempts();
         otLogInfoMac("CSL tx to child %04x failed, attempt %d/%d", aChild.GetRloc16(), aChild.GetCslTxAttempts(),
                      kMaxCslTriggeredTxAttempts);
 
@@ -254,9 +263,10 @@ void CslTxScheduler::HandleSentFrame(const Mac::TxFrame &aFrame, otError aError,
             aChild.ResetCslTxAttempts();
         }
 
-        // Fall through
-    case OT_ERROR_CHANNEL_ACCESS_FAILURE:
-    case OT_ERROR_ABORT:
+        OT_FALL_THROUGH;
+
+    case kErrorChannelAccessFailure:
+    case kErrorAbort:
 
         // Even if CSL tx attempts count reaches max, the message won't be
         // dropped until indirect tx attempts count reaches max. So here it
@@ -266,7 +276,7 @@ void CslTxScheduler::HandleSentFrame(const Mac::TxFrame &aFrame, otError aError,
         {
             aChild.SetIndirectDataSequenceNumber(aFrame.GetSequence());
 
-            if (aFrame.GetSecurityEnabled())
+            if (aFrame.GetSecurityEnabled() && aFrame.IsHeaderUpdated())
             {
                 uint32_t frameCounter;
                 uint8_t  keyId;
@@ -295,4 +305,4 @@ exit:
 
 } // namespace ot
 
-#endif // !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#endif // OPENTHREAD_FTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE

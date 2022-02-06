@@ -39,6 +39,7 @@
 
 #include <errno.h>
 #include <net/if.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/select.h>
@@ -46,13 +47,14 @@
 
 #include <openthread/error.h>
 #include <openthread/instance.h>
+#include <openthread/ip6.h>
 #include <openthread/openthread-system.h>
 #include <openthread/platform/time.h>
 
 #include "common/logging.hpp"
 
-#include "radio_url.hpp"
 #include "lib/platform/exit_code.h"
+#include "lib/url/url.hpp"
 
 /**
  * @def OPENTHREAD_POSIX_VIRTUAL_TIME
@@ -158,22 +160,16 @@ void platformAlarmAdvanceNow(uint64_t aDelta);
  * @note Even when @p aPlatformConfig->mResetRadio is false, a reset event (i.e. a PROP_LAST_STATUS between
  * [SPINEL_STATUS_RESET__BEGIN, SPINEL_STATUS_RESET__END]) is still expected from RCP.
  *
- * @param[in]  aPlatformConfig  Platform configuration structure.
+ * @param[in]   aUrl  A pointer to the null-terminated radio URL.
  *
  */
-void platformRadioInit(otUrl *aRadioUrl);
+void platformRadioInit(const char *aUrl);
 
 /**
  * This function shuts down the radio service used by OpenThread.
  *
  */
 void platformRadioDeinit(void);
-
-/**
- * This function shuts down platform network interface.
- *
- */
-void platformNetifDeinit(void);
 
 /**
  * This function inputs a received radio frame.
@@ -243,11 +239,38 @@ void platformUartProcess(const fd_set *aReadFdSet, const fd_set *aWriteFdSet, co
 /**
  * This function initializes platform netif.
  *
- * @param[in]   aInstance       A pointer to the OpenThread instance.
+ * @note This function is called before OpenThread instance is created.
+ *
  * @param[in]   aInterfaceName  A pointer to Thread network interface name.
  *
  */
-void platformNetifInit(otInstance *aInstance, const char *aInterfaceName);
+void platformNetifInit(const char *aInterfaceName);
+
+/**
+ * This function sets up platform netif.
+ *
+ * @note This function is called after OpenThread instance is created.
+ *
+ * @param[in]   aInstance       A pointer to the OpenThread instance.
+ *
+ */
+void platformNetifSetUp(void);
+
+/**
+ * This function tears down platform netif.
+ *
+ * @note This function is called before OpenThread instance is destructed.
+ *
+ */
+void platformNetifTearDown(void);
+
+/**
+ * This function deinitializes platform netif.
+ *
+ * @note This function is called after OpenThread instance is destructed.
+ *
+ */
+void platformNetifDeinit(void);
 
 /**
  * This function updates the file descriptor sets with file descriptors used by platform netif module.
@@ -357,32 +380,6 @@ void virtualTimeSendSleepEvent(const struct timeval *aTimeout);
  */
 void virtualTimeRadioSpinelProcess(otInstance *aInstance, const struct VirtualTimeEvent *aEvent);
 
-/**
- * This function initializes platform UDP driver.
- *
- * @param[in]   aIfName   The name of Thread's platform network interface.
- *
- */
-void platformUdpInit(const char *aIfName);
-
-/**
- * This function performs platform UDP driver processing.
- *
- * @param[in]   aInstance   The OpenThread instance structure.
- * @param[in]   aReadFdSet  A pointer to the read file descriptors.
- *
- */
-void platformUdpProcess(otInstance *aInstance, const fd_set *aReadSet);
-
-/**
- * This function updates the file descriptor sets with file descriptors used by the platform UDP driver.
- *
- * @param[in]     aInstance    The OpenThread instance structure.
- * @param[inout]  aReadFdSet   A pointer to the read file descriptors.
- * @param[inout]  aMaxFd       A pointer to the max file descriptor.
- */
-void platformUdpUpdateFdSet(otInstance *aInstance, fd_set *aReadFdSet, int *aMaxFd);
-
 enum SocketBlockOption
 {
     kSocketBlock,
@@ -392,10 +389,10 @@ enum SocketBlockOption
 /**
  * This function initializes platform TREL UDP6 driver.
  *
- * @param[in]   aInterfaceName   The name of network interface.
+ * @param[in]   aTrelUrl   The TREL URL (configuration for TREL platform).
  *
  */
-void platformTrelInit(const char *aInterfaceName);
+void platformTrelInit(const char *aTrelUrl);
 
 /**
  * This function shuts down the platform TREL UDP6 platform driver.
@@ -454,28 +451,38 @@ extern unsigned int gNetifIndex;
 /**
  * This function initializes platform Backbone network.
  *
- * @param[in]   aInstance       A pointer to the OpenThread instance.
+ * @note This function is called before OpenThread instance is created.
+ *
  * @param[in]   aInterfaceName  A pointer to Thread network interface name.
  *
  */
-void platformBackboneInit(otInstance *aInstance, const char *aInterfaceName);
+void platformBackboneInit(const char *aInterfaceName);
 
 /**
- * This function updates the file descriptor sets with file descriptors used by the platform Backbone network.
+ * This function sets up platform Backbone network.
  *
- * @param[inout]  aReadFdSet   A reference to the read file descriptors.
- * @param[inout]  aMaxFd       A reference to the max file descriptor.
+ * @note This function is called after OpenThread instance is created.
+ *
+ * @param[in]   aInstance       A pointer to the OpenThread instance.
  *
  */
-void platformBackboneUpdateFdSet(fd_set &aReadFdSet, int &aMaxFd);
+void platformBackboneSetUp(void);
 
 /**
- * This function performs platform Backbone network processing.
+ * This function tears down platform Backbone network.
  *
- * @param[in]   aReadFdSet  A reference to the read file descriptors.
+ * @note This function is called before OpenThread instance is destructed.
  *
  */
-void platformBackboneProcess(const fd_set &aReadSet);
+void platformBackboneTearDown(void);
+
+/**
+ * This function shuts down the platform Backbone network.
+ *
+ * @note This function is called after OpenThread instance is destructed.
+ *
+ */
+void platformBackboneDeinit(void);
 
 /**
  * This function performs notifies state changes to platform Backbone network.
@@ -485,6 +492,12 @@ void platformBackboneProcess(const fd_set &aReadSet);
  *
  */
 void platformBackboneStateChange(otInstance *aInstance, otChangedFlags aFlags);
+
+/**
+ * A pointer to the OpenThread instance.
+ *
+ */
+extern otInstance *gInstance;
 
 /**
  * The name of Backbone network interface.
@@ -497,6 +510,14 @@ extern char gBackboneNetifName[IFNAMSIZ];
  *
  */
 extern unsigned int gBackboneNetifIndex;
+
+/**
+ * This function tells if the infrastructure interface is running.
+ *
+ * @returns TRUE if the infrastructure interface is running, FALSE if not.
+ *
+ */
+bool platformInfraIfIsRunning(void);
 
 #ifdef __cplusplus
 }

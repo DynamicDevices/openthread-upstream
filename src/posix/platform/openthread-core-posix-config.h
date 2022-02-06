@@ -35,6 +35,16 @@
 #define OPENTHREAD_CORE_POSIX_CONFIG_H_
 
 /**
+ * @def OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS
+ *
+ * The number of message buffers in the buffer pool.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS
+#define OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS 256
+#endif
+
+/**
  * @def OPENTHREAD_CONFIG_LOG_PLATFORM
  *
  * Define to enable platform region logging.
@@ -52,6 +62,27 @@
  */
 #ifndef OPENTHREAD_CONFIG_LOG_OUTPUT
 #define OPENTHREAD_CONFIG_LOG_OUTPUT OPENTHREAD_CONFIG_LOG_OUTPUT_PLATFORM_DEFINED
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_LOG_LEVEL
+ *
+ * Define the compile-time log level which is the lowest log level
+ * that can be set at run-time by `otLoggingSetLevel`.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_LOG_LEVEL
+#define OPENTHREAD_CONFIG_LOG_LEVEL OT_LOG_LEVEL_DEBG
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_LOG_LEVEL_INIT
+ *
+ * The initial log level used when OpenThread is initialized. See
+ * `OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE`.
+ */
+#ifndef OPENTHREAD_CONFIG_LOG_LEVEL_INIT
+#define OPENTHREAD_CONFIG_LOG_LEVEL_INIT OT_LOG_LEVEL_CRIT
 #endif
 
 /**
@@ -87,12 +118,12 @@
 #endif
 
 /**
- * @def OPENTHREAD_CONFIG_NCP_UART_ENABLE
+ * @def OPENTHREAD_CONFIG_NCP_HDLC_ENABLE
  *
- * Define to 1 to enable NCP UART support.
+ * Define to 1 to enable NCP HDLC support.
  *
  */
-#define OPENTHREAD_CONFIG_NCP_UART_ENABLE 1
+#define OPENTHREAD_CONFIG_NCP_HDLC_ENABLE 1
 
 /**
  * @def OPENTHREAD_CONFIG_PLATFORM_RADIO_COEX_ENABLE
@@ -124,6 +155,136 @@
  */
 #ifndef OPENTHREAD_CONFIG_LOG_MAX_SIZE
 #define OPENTHREAD_CONFIG_LOG_MAX_SIZE 1024
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_COMMISSIONER_MAX_JOINER_ENTRIES
+ *
+ * The maximum number of Joiner entries maintained by the Commissioner.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_COMMISSIONER_MAX_JOINER_ENTRIES
+#define OPENTHREAD_CONFIG_COMMISSIONER_MAX_JOINER_ENTRIES 4
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_TMF_ADDRESS_CACHE_ENTRIES
+ *
+ * The number of EID-to-RLOC cache entries.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_TMF_ADDRESS_CACHE_ENTRIES
+#define OPENTHREAD_CONFIG_TMF_ADDRESS_CACHE_ENTRIES 128
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_MLE_MAX_CHILDREN
+ *
+ * The maximum number of children.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_MLE_MAX_CHILDREN
+#define OPENTHREAD_CONFIG_MLE_MAX_CHILDREN 64
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_MLE_IP_ADDRS_PER_CHILD
+ *
+ * The maximum number of supported IPv6 address registrations per child.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_MLE_IP_ADDRS_PER_CHILD
+#define OPENTHREAD_CONFIG_MLE_IP_ADDRS_PER_CHILD 16
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_IP6_MAX_EXT_UCAST_ADDRS
+ *
+ * The maximum number of supported IPv6 addresses allows to be externally added.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_IP6_MAX_EXT_UCAST_ADDRS
+#define OPENTHREAD_CONFIG_IP6_MAX_EXT_UCAST_ADDRS 8
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_IP6_MAX_EXT_MCAST_ADDRS
+ *
+ * The maximum number of supported IPv6 multicast addresses allows to be externally added.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_IP6_MAX_EXT_MCAST_ADDRS
+#define OPENTHREAD_CONFIG_IP6_MAX_EXT_MCAST_ADDRS 8
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_HISTORY_TRACKER_ENABLE
+ *
+ * Define as 1 to enable History Tracker module.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_HISTORY_TRACKER_ENABLE
+#define OPENTHREAD_CONFIG_HISTORY_TRACKER_ENABLE 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE
+ *
+ * The size of heap buffer when DTLS is enabled.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE
+#define OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE (63 * 1024)
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE_NO_DTLS
+ *
+ * The size of heap buffer when DTLS is disabled.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE_NO_DTLS
+#define OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE_NO_DTLS (63 * 1024)
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_CLI_MAX_LINE_LENGTH
+ *
+ * The maximum size of the CLI line in bytes.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_CLI_MAX_LINE_LENGTH
+#define OPENTHREAD_CONFIG_CLI_MAX_LINE_LENGTH 640
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_CLI_UART_RX_BUFFER_SIZE
+ *
+ * The size of CLI UART RX buffer in bytes.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_CLI_UART_RX_BUFFER_SIZE
+#define OPENTHREAD_CONFIG_CLI_UART_RX_BUFFER_SIZE 640
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_UPTIME_ENABLE
+ *
+ * Define to 1 to enable tracking the uptime of OpenThread instance.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_UPTIME_ENABLE
+#define OPENTHREAD_CONFIG_UPTIME_ENABLE 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME
+ *
+ * Define as 1 to prepend the current uptime to all log messages.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME
+#define OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME 1
 #endif
 
 #endif // OPENTHREAD_CORE_POSIX_CONFIG_H_

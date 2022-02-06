@@ -39,8 +39,11 @@
 #include <stdint.h>
 
 #include <openthread/dataset.h>
+#include <openthread/platform/crypto.h>
 
+#include "common/as_core_type.hpp"
 #include "common/clearable.hpp"
+#include "common/encoding.hpp"
 #include "common/equatable.hpp"
 #include "common/locator.hpp"
 #include "common/non_copyable.hpp"
@@ -62,24 +65,101 @@ namespace ot {
  */
 
 /**
- * This class represents a Thread Master Key.
+ * This class represents Security Policy Rotation and Flags.
+ *
+ */
+class SecurityPolicy : public otSecurityPolicy, public Equatable<SecurityPolicy>
+{
+public:
+    /**
+     * Offset between the Thread Version and the Version-threshold valid for Routing.
+     *
+     */
+    static constexpr uint8_t kVersionThresholdOffsetVersion = 3;
+
+    static constexpr uint16_t kMinKeyRotationTime     = 1;   ///< The minimum Key Rotation Time in hours.
+    static constexpr uint16_t kDefaultKeyRotationTime = 672; ///< Default Key Rotation Time (in unit of hours).
+
+    /**
+     * This constructor initializes the object with default Key Rotation Time
+     * and Security Policy Flags.
+     *
+     */
+    SecurityPolicy(void) { SetToDefault(); }
+
+    /**
+     * This method sets the Security Policy to default values.
+     *
+     */
+    void SetToDefault(void);
+
+    /**
+     * This method sets the Security Policy Flags.
+     *
+     * @param[in]  aFlags        The Security Policy Flags.
+     * @param[in]  aFlagsLength  The length of the Security Policy Flags, 1 byte for
+     *                           Thread 1.1 devices, and 2 bytes for Thread 1.2 or higher.
+     *
+     */
+    void SetFlags(const uint8_t *aFlags, uint8_t aFlagsLength);
+
+    /**
+     * This method returns the Security Policy Flags.
+     *
+     * @param[out] aFlags        A pointer to the Security Policy Flags buffer.
+     * @param[in]  aFlagsLength  The length of the Security Policy Flags buffer.
+     *
+     */
+    void GetFlags(uint8_t *aFlags, uint8_t aFlagsLength) const;
+
+private:
+    static constexpr uint8_t kDefaultFlags                   = 0xff;
+    static constexpr uint8_t kObtainNetworkKeyMask           = 1 << 7;
+    static constexpr uint8_t kNativeCommissioningMask        = 1 << 6;
+    static constexpr uint8_t kRoutersMask                    = 1 << 5;
+    static constexpr uint8_t kExternalCommissioningMask      = 1 << 4;
+    static constexpr uint8_t kBeaconsMask                    = 1 << 3;
+    static constexpr uint8_t kCommercialCommissioningMask    = 1 << 2;
+    static constexpr uint8_t kAutonomousEnrollmentMask       = 1 << 1;
+    static constexpr uint8_t kNetworkKeyProvisioningMask     = 1 << 0;
+    static constexpr uint8_t kTobleLinkMask                  = 1 << 7;
+    static constexpr uint8_t kNonCcmRoutersMask              = 1 << 6;
+    static constexpr uint8_t kReservedMask                   = 0x38;
+    static constexpr uint8_t kVersionThresholdForRoutingMask = 0x07;
+
+    void SetToDefaultFlags(void);
+};
+
+/**
+ * This class represents a Thread Network Key.
  *
  */
 OT_TOOL_PACKED_BEGIN
-class MasterKey : public otMasterKey, public Equatable<MasterKey>
+class NetworkKey : public otNetworkKey, public Equatable<NetworkKey>, public Clearable<NetworkKey>
 {
 public:
+    static constexpr uint8_t kSize = OT_NETWORK_KEY_SIZE; ///< Size of the Thread Network Key (in bytes).
+
 #if !OPENTHREAD_RADIO
     /**
-     * This method generates a cryptographically secure random sequence to populate the Thread Master Key.
+     * This method generates a cryptographically secure random sequence to populate the Thread Network Key.
      *
-     * @retval OT_ERROR_NONE     Successfully generated a random Thread Master Key.
-     * @retval OT_ERROR_FAILED   Failed to generate random sequence.
+     * @retval kErrorNone     Successfully generated a random Thread Network Key.
+     * @retval kErrorFailed   Failed to generate random sequence.
      *
      */
-    otError GenerateRandom(void) { return Random::Crypto::FillBuffer(m8, sizeof(m8)); }
+    Error GenerateRandom(void) { return Random::Crypto::FillBuffer(m8, sizeof(m8)); }
 #endif
+
 } OT_TOOL_PACKED_END;
+
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+/**
+ * Provides a representation for Network Key reference.
+ *
+ */
+typedef otNetworkKeyRef NetworkKeyRef;
+#endif
 
 /**
  * This class represents a Thread Pre-Shared Key for the Commissioner (PSKc).
@@ -89,17 +169,26 @@ OT_TOOL_PACKED_BEGIN
 class Pskc : public otPskc, public Equatable<Pskc>, public Clearable<Pskc>
 {
 public:
+    static constexpr uint8_t kSize = OT_PSKC_MAX_SIZE; ///< Size (number of bytes) of the PSKc.
+
 #if !OPENTHREAD_RADIO
     /**
      * This method generates a cryptographically secure random sequence to populate the Thread PSKc.
      *
-     * @retval OT_ERROR_NONE  Successfully generated a random Thread PSKc.
+     * @retval kErrorNone  Successfully generated a random Thread PSKc.
      *
      */
-    otError GenerateRandom(void) { return Random::Crypto::FillBuffer(m8, sizeof(Pskc)); }
+    Error GenerateRandom(void) { return Random::Crypto::FillBuffer(m8, sizeof(m8)); }
 #endif
-
 } OT_TOOL_PACKED_END;
+
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+/**
+ * Provides a representation for Network Key reference.
+ *
+ */
+typedef otPskcRef PskcRef;
+#endif
 
 /**
  *
@@ -109,22 +198,19 @@ public:
 typedef Mac::Key Kek;
 
 /**
+ *
+ * This class represents a Key Material for Key Encryption Key (KEK).
+ *
+ */
+typedef Mac::KeyMaterial KekKeyMaterial;
+
+/**
  * This class defines Thread Key Manager.
  *
  */
 class KeyManager : public InstanceLocator, private NonCopyable
 {
 public:
-    enum : uint16_t
-    {
-        kDefaultKeyRotationTime = 672, ///< Default Key Rotation Time (in unit of hours).
-    };
-
-    enum : uint8_t
-    {
-        kDefaultSecurityPolicyFlags = 0xff, ///< Default Security Policy Flags.
-    };
-
     /**
      * This constructor initializes the object.
      *
@@ -146,25 +232,39 @@ public:
     void Stop(void);
 
     /**
-     * This method returns the Thread Master Key.
+     * This method gets the Thread Network Key.
      *
-     * @returns The Thread Master Key.
+     * @param[out] aNetworkKey   A reference to a `NetworkKey` to output the Thread Network Key.
      *
      */
-    const MasterKey &GetMasterKey(void) const { return mMasterKey; }
+    void GetNetworkKey(NetworkKey &aNetworkKey) const;
 
     /**
-     * This method sets the Thread Master Key.
+     * This method sets the Thread Network Key.
      *
-     * @param[in]  aKey        A Thread Master Key.
-     *
-     * @retval OT_ERROR_NONE          Successfully set the Thread Master Key.
-     * @retval OT_ERROR_INVALID_ARGS  The @p aKeyLength value was invalid.
+     * @param[in]  aNetworkKey        A Thread Network Key.
      *
      */
-    otError SetMasterKey(const MasterKey &aKey);
+    void SetNetworkKey(const NetworkKey &aNetworkKey);
 
-#if OPENTHREAD_FTD || OPENTHREAD_MTD
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+    /**
+     * This method returns a Key Ref to Thread Network Key.
+     *
+     * @returns A key reference to the Thread Network Key.
+     *
+     */
+    NetworkKeyRef GetNetworkKeyRef(void) { return mNetworkKeyRef; }
+
+    /**
+     * This method sets the Thread Network Key using Key Reference.
+     *
+     * @param[in]  aKeyRef        Reference to Thread Network Key.
+     *
+     */
+    void SetNetworkKeyRef(NetworkKeyRef aKeyRef);
+#endif
+
     /**
      * This method indicates whether the PSKc is configured.
      *
@@ -177,12 +277,12 @@ public:
     bool IsPskcSet(void) const { return mIsPskcSet; }
 
     /**
-     * This method returns a pointer to the PSKc.
+     * This method gets the PKSc.
      *
-     * @returns A reference to the PSKc.
+     * @param[out] aPskc  A reference to a `Pskc` to return the PSKc.
      *
      */
-    const Pskc &GetPskc(void) const { return mPskc; }
+    void GetPskc(Pskc &aPskc) const;
 
     /**
      * This method sets the PSKc.
@@ -191,6 +291,23 @@ public:
      *
      */
     void SetPskc(const Pskc &aPskc);
+
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+    /**
+     * This method returns a Key Ref to PSKc.
+     *
+     * @returns A key reference to the PSKc.
+     *
+     */
+    const PskcRef &GetPskcRef(void) { return mPskcRef; }
+
+    /**
+     * This method sets the PSKc as a Key reference.
+     *
+     * @param[in]  aPskc    A reference to the PSKc.
+     *
+     */
+    void SetPskcRef(PskcRef aKeyRef);
 #endif
 
     /**
@@ -216,7 +333,7 @@ public:
      * @returns The current TREL MAC key.
      *
      */
-    const Mac::Key &GetCurrentTrelMacKey(void) const { return mTrelKey; }
+    const Mac::KeyMaterial &GetCurrentTrelMacKey(void) const { return mTrelKey; }
 
     /**
      * This method returns a temporary MAC key for TREL radio link computed from the given key sequence.
@@ -226,26 +343,26 @@ public:
      * @returns The temporary TREL MAC key.
      *
      */
-    const Mac::Key &GetTemporaryTrelMacKey(uint32_t aKeySequence);
+    const Mac::KeyMaterial &GetTemporaryTrelMacKey(uint32_t aKeySequence);
 #endif
 
     /**
-     * This method returns the current MLE key.
+     * This method returns the current MLE key Material.
      *
      * @returns The current MLE key.
      *
      */
-    const Mle::Key &GetCurrentMleKey(void) const { return mMleKey; }
+    const Mle::KeyMaterial &GetCurrentMleKey(void) const { return mMleKey; }
 
     /**
-     * This method returns a temporary MLE key computed from the given key sequence.
+     * This method returns a temporary MLE key Material computed from the given key sequence.
      *
      * @param[in]  aKeySequence  The key sequence value.
      *
      * @returns The temporary MLE key.
      *
      */
-    const Mle::Key &GetTemporaryMleKey(uint32_t aKeySequence);
+    const Mle::KeyMaterial &GetTemporaryMleKey(uint32_t aKeySequence);
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
     /**
@@ -328,12 +445,20 @@ public:
     void IncrementMleFrameCounter(void);
 
     /**
-     * This method returns the KEK.
+     * This method returns the KEK as `KekKeyMaterail`
      *
-     * @returns A pointer to the KEK.
+     * @returns The KEK as `KekKeyMaterial`.
      *
      */
-    const Kek &GetKek(void) const { return mKek; }
+    const KekKeyMaterial &GetKek(void) const { return mKek; }
+
+    /**
+     * This method retrieves the KEK as literal `Kek` key.
+     *
+     * @param[out] aKek  A reference to a `Kek` to output the retrieved KEK.
+     *
+     */
+    void ExtractKek(Kek &aKek) { mKek.ExtractKey(aKek); }
 
     /**
      * This method sets the KEK.
@@ -346,10 +471,10 @@ public:
     /**
      * This method sets the KEK.
      *
-     * @param[in]  aKek  A pointer to the KEK.
+     * @param[in]  aKekBytes  A pointer to the KEK bytes.
      *
      */
-    void SetKek(const uint8_t *aKek);
+    void SetKek(const uint8_t *aKekBytes) { SetKek(*reinterpret_cast<const Kek *>(aKekBytes)); }
 
     /**
      * This method returns the current KEK Frame Counter value.
@@ -364,29 +489,6 @@ public:
      *
      */
     void IncrementKekFrameCounter(void) { mKekFrameCounter++; }
-
-    /**
-     * This method returns the KeyRotation time.
-     *
-     * The KeyRotation time is the time interval after witch security key will be automatically rotated.
-     *
-     * @returns The KeyRotation value in hours.
-     */
-    uint32_t GetKeyRotation(void) const { return mKeyRotationTime; }
-
-    /**
-     * This method sets the KeyRotation time.
-     *
-     * The KeyRotation time is the time interval after witch security key will be automatically rotated.
-     * Its value shall be larger than or equal to kMinKeyRotationTime.
-     *
-     * @param[in]  aKeyRotation  The KeyRotation value in hours.
-     *
-     * @retval  OT_ERROR_NONE          KeyRotation time updated.
-     * @retval  OT_ERROR_INVALID_ARGS  @p aKeyRotation is out of range.
-     *
-     */
-    otError SetKeyRotation(uint32_t aKeyRotation);
 
     /**
      * This method returns the KeySwitchGuardTime.
@@ -409,82 +511,26 @@ public:
     void SetKeySwitchGuardTime(uint32_t aKeySwitchGuardTime) { mKeySwitchGuardTime = aKeySwitchGuardTime; }
 
     /**
-     * This method returns the Security Policy Flags.
+     * This method returns the Security Policy.
      *
-     * The Security Policy Flags specifies network administrator preferences for which
-     * security-related operations are allowed or disallowed.
+     * The Security Policy specifies Key Rotation Time and network administrator preferences
+     * for which security-related operations are allowed or disallowed.
      *
-     * @returns The SecurityPolicy Flags.
+     * @returns The SecurityPolicy.
      *
      */
-    uint8_t GetSecurityPolicyFlags(void) const { return mSecurityPolicyFlags; }
+    const SecurityPolicy &GetSecurityPolicy(void) const { return mSecurityPolicy; }
 
     /**
-     * This method sets the Security Policy Flags.
+     * This method sets the Security Policy.
      *
-     * The Security Policy Flags specifies network administrator preferences for which
-     * security-related operations are allowed or disallowed.
+     * The Security Policy specifies Key Rotation Time and network administrator preferences
+     * for which security-related operations are allowed or disallowed.
      *
-     * @param[in]  aSecurityPolicyFlags  The Security Policy Flags.
-     *
-     */
-    void SetSecurityPolicyFlags(uint8_t aSecurityPolicyFlags);
-
-    /**
-     * This method indicates whether or not obtaining Master key for out-of-band is enabled.
-     *
-     * @retval TRUE   If obtaining Master key for out-of-band is enabled.
-     * @retval FALSE  If obtaining Master key for out-of-band is not enabled.
+     * @param[in]  aSecurityPolicy  The Security Policy.
      *
      */
-    bool IsObtainMasterKeyEnabled(void) const
-    {
-        return (mSecurityPolicyFlags & OT_SECURITY_POLICY_OBTAIN_MASTER_KEY) != 0;
-    }
-
-    /**
-     * This method indicates whether or not Native Commissioning using PSKc is allowed.
-     *
-     * @retval TRUE   If Native Commissioning using PSKc is allowed.
-     * @retval FALSE  If Native Commissioning using PSKc is not allowed.
-     *
-     */
-    bool IsNativeCommissioningAllowed(void) const
-    {
-        return (mSecurityPolicyFlags & OT_SECURITY_POLICY_NATIVE_COMMISSIONING) != 0;
-    }
-
-    /**
-     * This method indicates whether or not Thread 1.1 Routers are enabled.
-     *
-     * @retval TRUE   If Thread 1.1 Routers are enabled.
-     * @retval FALSE  If Thread 1.1 Routers are not enabled.
-     *
-     */
-    bool IsRouterEnabled(void) const { return (mSecurityPolicyFlags & OT_SECURITY_POLICY_ROUTERS) != 0; }
-
-    /**
-     * This method indicates whether or not external Commissioner authentication is allowed using PSKc.
-     *
-     * @retval TRUE   If the commissioning sessions by an external Commissioner based on the PSKc are allowed
-     *                to be established and that changes to the Commissioner Dataset by on-mesh nodes are allowed.
-     * @retval FALSE  If the commissioning sessions by an external Commissioner based on the PSKc are not allowed
-     *                to be established and that changes to the Commissioner Dataset by on-mesh nodes are not allowed.
-     *
-     */
-    bool IsExternalCommissionerAllowed(void) const
-    {
-        return (mSecurityPolicyFlags & OT_SECURITY_POLICY_EXTERNAL_COMMISSIONER) != 0;
-    }
-
-    /**
-     * This method indicates whether or not Thread Beacons are enabled.
-     *
-     * @retval TRUE   If Thread Beacons are enabled.
-     * @retval FALSE  If Thread Beacons are not enabled.
-     *
-     */
-    bool IsThreadBeaconEnabled(void) const { return (mSecurityPolicyFlags & OT_SECURITY_POLICY_BEACONS) != 0; }
+    void SetSecurityPolicy(const SecurityPolicy &aSecurityPolicy);
 
     /**
      * This method updates the MAC keys and MLE key.
@@ -493,20 +539,18 @@ public:
     void UpdateKeyMaterial(void);
 
     /**
-     * This method handles MAC frame counter change (callback from `SubMac` for 15.4 security frame change)
+     * This method handles MAC frame counter changes (callback from `SubMac` for 15.4 security frame change).
+     *
+     * This is called to indicate the @p aMacFrameCounter value is now used.
      *
      * @param[in]  aMacFrameCounter  The 15.4 link MAC frame counter value.
      *
      */
-    void MacFrameCounterUpdated(uint32_t aMacFrameCounter);
+    void MacFrameCounterUsed(uint32_t aMacFrameCounter);
 
 private:
-    enum
-    {
-        kMinKeyRotationTime        = 1,
-        kDefaultKeySwitchGuardTime = 624,
-        kOneHourIntervalInMsec     = 3600u * 1000u,
-    };
+    static constexpr uint32_t kDefaultKeySwitchGuardTime = 624;
+    static constexpr uint32_t kOneHourIntervalInMsec     = 3600u * 1000u;
 
     OT_TOOL_PACKED_BEGIN
     struct Keys
@@ -519,35 +563,48 @@ private:
     {
         Crypto::HmacSha256::Hash mHash;
         Keys                     mKeys;
+
+        const Mle::Key &GetMleKey(void) const { return mKeys.mMleKey; }
+        const Mac::Key &GetMacKey(void) const { return mKeys.mMacKey; }
     };
 
     void ComputeKeys(uint32_t aKeySequence, HashKeys &aHashKeys);
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
-    void ComputeTrelKey(uint32_t aKeySequence, Mac::Key &aTrelKey);
+    void ComputeTrelKey(uint32_t aKeySequence, Mac::Key &aKey);
 #endif
 
     void        StartKeyRotationTimer(void);
     static void HandleKeyRotationTimer(Timer &aTimer);
     void        HandleKeyRotationTimer(void);
 
-    static const uint8_t     kThreadString[];
-    static const otMasterKey kDefaultMasterKey;
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+    void StoreNetworkKey(const NetworkKey &aNetworkKey, bool aOverWriteExisting);
+    void StorePskc(const Pskc &aPskc);
+#endif
+
+    void ResetFrameCounters(void);
+
+    static const uint8_t kThreadString[];
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     static const uint8_t kHkdfExtractSaltString[];
     static const uint8_t kTrelInfoString[];
 #endif
 
-    MasterKey mMasterKey;
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+    NetworkKeyRef mNetworkKeyRef;
+#else
+    NetworkKey mNetworkKey;
+#endif
 
-    uint32_t mKeySequence;
-    Mle::Key mMleKey;
-    Mle::Key mTemporaryMleKey;
+    uint32_t         mKeySequence;
+    Mle::KeyMaterial mMleKey;
+    Mle::KeyMaterial mTemporaryMleKey;
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
-    Mac::Key mTrelKey;
-    Mac::Key mTemporaryTrelKey;
+    Mac::KeyMaterial mTrelKey;
+    Mac::KeyMaterial mTemporaryTrelKey;
 #endif
 
     Mac::LinkFrameCounters mMacFrameCounters;
@@ -556,24 +613,30 @@ private:
     uint32_t               mStoredMleFrameCounter;
 
     uint32_t   mHoursSinceKeyRotation;
-    uint32_t   mKeyRotationTime;
     uint32_t   mKeySwitchGuardTime;
     bool       mKeySwitchGuardEnabled;
     TimerMilli mKeyRotationTimer;
 
-#if OPENTHREAD_MTD || OPENTHREAD_FTD
-    Pskc mPskc;
+#if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+    PskcRef mPskcRef;
+#else
+    Pskc       mPskc;
 #endif
-    Kek      mKek;
-    uint32_t mKekFrameCounter;
 
-    uint8_t mSecurityPolicyFlags;
-    bool    mIsPskcSet : 1;
+    KekKeyMaterial mKek;
+    uint32_t       mKekFrameCounter;
+
+    SecurityPolicy mSecurityPolicy;
+    bool           mIsPskcSet : 1;
 };
 
 /**
  * @}
  */
+
+DefineCoreType(otSecurityPolicy, SecurityPolicy);
+DefineCoreType(otNetworkKey, NetworkKey);
+DefineCoreType(otPskc, Pskc);
 
 } // namespace ot
 

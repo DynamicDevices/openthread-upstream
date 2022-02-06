@@ -84,12 +84,12 @@ class TestDiag(thread_cert.TestCase):
             ('diag', 'diagnostics mode is disabled\r\n'),
             (
                 'diag 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32',
-                r'Error: too many args \(max 32\)\r\n',
+                r'Error 7: InvalidArgs\r\n',
             ),
         ]
 
         for case in cases:
-            node.send_command(case[0])
+            node.send_command(case[0], expect_command_echo=False)
             self.simulator.go(1)
             if type(self.simulator).__name__ == 'VirtualTime':
                 time.sleep(0.1)

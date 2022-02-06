@@ -37,8 +37,10 @@ import subprocess
 import sys
 import time
 import traceback
+import typing
 import unittest
-from typing import Union, Dict, Optional, List
+from ipaddress import IPv6Address, IPv6Network
+from typing import Union, Dict, Optional, List, Any
 
 import pexpect
 import pexpect.popen_spawn
@@ -51,11 +53,14 @@ PORT_OFFSET = int(os.getenv('PORT_OFFSET', "0"))
 
 
 class OtbrDocker:
+    RESET_DELAY = 3
+
     _socat_proc = None
     _ot_rcp_proc = None
     _docker_proc = None
 
     def __init__(self, nodeid: int, **kwargs):
+        self.verbose = int(float(os.getenv('VERBOSE', 0)))
         try:
             self._docker_name = config.OTBR_DOCKER_NAME_PREFIX + str(nodeid)
             self._prepare_ot_rcp_sim(nodeid)
@@ -83,6 +88,14 @@ class OtbrDocker:
                                              stdin=subprocess.DEVNULL,
                                              stdout=subprocess.DEVNULL,
                                              stderr=subprocess.DEVNULL)
+
+        try:
+            self._ot_rcp_proc.wait(1)
+        except subprocess.TimeoutExpired:
+            # We expect ot-rcp not to quit in 1 second.
+            pass
+        else:
+            raise Exception(f"ot-rcp {nodeid} exited unexpectedly!")
 
     def _get_ot_rcp_path(self) -> str:
         srcdir = os.environ['top_builddir']
@@ -112,6 +125,8 @@ class OtbrDocker:
             config.OTBR_DOCKER_IMAGE,
             '-B',
             config.BACKBONE_IFNAME,
+            '--trel-url',
+            f'trel://{config.BACKBONE_IFNAME}',
         ],
                                              stdin=subprocess.DEVNULL,
                                              stdout=sys.stdout,
@@ -132,8 +147,25 @@ class OtbrDocker:
 
         assert launch_ok
 
+        self.start_ot_ctl()
+
+    def __repr__(self):
+        return f'OtbrDocker<{self.nodeid}>'
+
+    def start_otbr_service(self):
+        self.bash('service otbr-agent start')
+        self.simulator.go(3)
+        self.start_ot_ctl()
+
+    def stop_otbr_service(self):
+        self.stop_ot_ctl()
+        self.bash('service otbr-agent stop')
+
+    def start_ot_ctl(self):
         cmd = f'docker exec -i {self._docker_name} ot-ctl'
-        self.pexpect = pexpect.popen_spawn.PopenSpawn(cmd, timeout=10)
+        self.pexpect = pexpect.popen_spawn.PopenSpawn(cmd, timeout=30)
+        if self.verbose:
+            self.pexpect.logfile_read = sys.stdout.buffer
 
         # Add delay to ensure that the process is ready to receive commands.
         timeout = 0.4
@@ -145,8 +177,10 @@ class OtbrDocker:
             except pexpect.TIMEOUT:
                 timeout -= 0.1
 
-    def __repr__(self):
-        return f'OtbrDocker<{self.nodeid}>'
+    def stop_ot_ctl(self):
+        self.pexpect.sendeof()
+        self.pexpect.wait()
+        self.pexpect.proc.kill()
 
     def destroy(self):
         logging.info("Destroying %s", self)
@@ -155,14 +189,19 @@ class OtbrDocker:
         self._shutdown_socat()
 
     def _shutdown_docker(self):
-        if self._docker_proc is not None:
+        if self._docker_proc is None:
+            return
+
+        try:
             COVERAGE = int(os.getenv('COVERAGE', '0'))
             OTBR_COVERAGE = int(os.getenv('OTBR_COVERAGE', '0'))
+            test_name = os.getenv('TEST_NAME')
+            unique_node_id = f'{test_name}-{PORT_OFFSET}-{self.nodeid}'
+
             if COVERAGE or OTBR_COVERAGE:
                 self.bash('service otbr-agent stop')
 
-                test_name = os.getenv('TEST_NAME')
-                cov_file_path = f'/tmp/coverage/coverage-{test_name}-{PORT_OFFSET}-{self.nodeid}.info'
+                cov_file_path = f'/tmp/coverage/coverage-{unique_node_id}.info'
                 # Upload OTBR code coverage if OTBR_COVERAGE=1, otherwise OpenThread code coverage.
                 if OTBR_COVERAGE:
                     codecov_cmd = f'lcov --directory . --capture --output-file {cov_file_path}'
@@ -172,6 +211,12 @@ class OtbrDocker:
 
                 self.bash(codecov_cmd)
 
+            copyCore = subprocess.run(f'docker cp {self._docker_name}:/core ./coredump_{unique_node_id}', shell=True)
+            if copyCore.returncode == 0:
+                subprocess.check_call(
+                    f'docker cp {self._docker_name}:/usr/sbin/otbr-agent ./otbr-agent_{unique_node_id}', shell=True)
+
+        finally:
             subprocess.check_call(f"docker rm -f {self._docker_name}", shell=True)
             self._docker_proc.wait()
             del self._docker_proc
@@ -189,13 +234,13 @@ class OtbrDocker:
             self._socat_proc.wait()
             del self._socat_proc
 
-    def bash(self, cmd: str) -> List[str]:
+    def bash(self, cmd: str, encoding='ascii') -> List[str]:
         logging.info("%s $ %s", self, cmd)
         proc = subprocess.Popen(['docker', 'exec', '-i', self._docker_name, 'bash', '-c', cmd],
                                 stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE,
                                 stderr=sys.stderr,
-                                encoding='ascii')
+                                encoding=encoding)
 
         with proc:
 
@@ -208,7 +253,7 @@ class OtbrDocker:
                     break
 
                 lines.append(line)
-                logging.info("%s $ %s", self, line.rstrip('\r\n'))
+                logging.info("%s $ %r", self, line.rstrip('\r\n'))
 
             proc.wait()
 
@@ -217,11 +262,136 @@ class OtbrDocker:
             else:
                 return lines
 
+    def dns_dig(self, server: str, name: str, qtype: str):
+        """
+        Run dig command to query a DNS server.
+
+        Args:
+            server: the server address.
+            name: the name to query.
+            qtype: the query type (e.g. AAAA, PTR, TXT, SRV).
+
+        Returns:
+            The dig result similar as below:
+            {
+                "opcode": "QUERY",
+                "status": "NOERROR",
+                "id": "64144",
+                "QUESTION": [
+                    ('google.com.', 'IN', 'AAAA')
+                ],
+                "ANSWER": [
+                    ('google.com.', 107,	'IN', 'AAAA', '2404:6800:4008:c00::71'),
+                    ('google.com.', 107,	'IN', 'AAAA', '2404:6800:4008:c00::8a'),
+                    ('google.com.', 107,	'IN', 'AAAA', '2404:6800:4008:c00::66'),
+                    ('google.com.', 107,	'IN', 'AAAA', '2404:6800:4008:c00::8b'),
+                ],
+                "ADDITIONAL": [
+                ],
+            }
+        """
+        output = self.bash(f'dig -6 @{server} \'{name}\' {qtype}', encoding='raw_unicode_escape')
+
+        section = None
+        dig_result = {
+            'QUESTION': [],
+            'ANSWER': [],
+            'ADDITIONAL': [],
+        }
+
+        for line in output:
+            line = line.strip()
+
+            if line.startswith(';; ->>HEADER<<- '):
+                headers = line[len(';; ->>HEADER<<- '):].split(', ')
+                for header in headers:
+                    key, val = header.split(': ')
+                    dig_result[key] = val
+
+                continue
+
+            if line == ';; QUESTION SECTION:':
+                section = 'QUESTION'
+                continue
+            elif line == ';; ANSWER SECTION:':
+                section = 'ANSWER'
+                continue
+            elif line == ';; ADDITIONAL SECTION:':
+                section = 'ADDITIONAL'
+                continue
+            elif section and not line:
+                section = None
+                continue
+
+            if section:
+                assert line
+
+                if section == 'QUESTION':
+                    assert line.startswith(';')
+                    line = line[1:]
+                record = list(line.split())
+
+                if section == 'QUESTION':
+                    if record[2] in ('SRV', 'TXT'):
+                        record[0] = self.__unescape_dns_instance_name(record[0])
+                else:
+                    record[1] = int(record[1])
+                    if record[3] == 'SRV':
+                        record[0] = self.__unescape_dns_instance_name(record[0])
+                        record[4], record[5], record[6] = map(int, [record[4], record[5], record[6]])
+                    elif record[3] == 'TXT':
+                        record[0] = self.__unescape_dns_instance_name(record[0])
+                        record[4:] = [self.__parse_dns_dig_txt(line)]
+                    elif record[3] == 'PTR':
+                        record[4] = self.__unescape_dns_instance_name(record[4])
+
+                dig_result[section].append(tuple(record))
+
+        return dig_result
+
+    @staticmethod
+    def __unescape_dns_instance_name(name: str) -> str:
+        new_name = []
+        i = 0
+        while i < len(name):
+            c = name[i]
+
+            if c == '\\':
+                assert i + 1 < len(name), name
+                if name[i + 1].isdigit():
+                    assert i + 3 < len(name) and name[i + 2].isdigit() and name[i + 3].isdigit(), name
+                    new_name.append(chr(int(name[i + 1:i + 4])))
+                    i += 3
+                else:
+                    new_name.append(name[i + 1])
+                    i += 1
+            else:
+                new_name.append(c)
+
+            i += 1
+
+        return ''.join(new_name)
+
+    def __parse_dns_dig_txt(self, line: str):
+        # Example TXT entry:
+        # "xp=\\000\\013\\184\\000\\000\\000\\000\\000"
+        txt = {}
+        for entry in re.findall(r'"((?:[^\\]|\\.)*?)"', line):
+            if entry == "":
+                continue
+
+            k, v = entry.split('=', 1)
+            txt[k] = v
+
+        return txt
+
     def _setup_sysctl(self):
         self.bash(f'sysctl net.ipv6.conf.{self.ETH_DEV}.accept_ra=2')
+        self.bash(f'sysctl net.ipv6.conf.{self.ETH_DEV}.accept_ra_rt_info_max_plen=64')
 
 
 class OtCli:
+    RESET_DELAY = 0.1
 
     def __init__(self, nodeid, is_mtd=False, version=None, is_bbr=False, **kwargs):
         self.verbose = int(float(os.getenv('VERBOSE', 0)))
@@ -261,8 +431,13 @@ class OtCli:
         # Default command if no match below, will be overridden if below conditions are met.
         cmd = './ot-cli-%s' % (mode)
 
+        # For Thread 1.2 MTD node, use ot-cli-mtd build regardless of OT_CLI_PATH
+        if self.version == '1.2' and mode == 'mtd' and 'top_builddir' in os.environ:
+            srcdir = os.environ['top_builddir']
+            cmd = '%s/examples/apps/cli/ot-cli-%s %d' % (srcdir, mode, nodeid)
+
         # If Thread version of node matches the testing environment version.
-        if self.version == self.env_version:
+        elif self.version == self.env_version:
             # Load Thread 1.2 BBR device when testing Thread 1.2 scenarios
             # which requires device with Backbone functionality.
             if self.version == '1.2' and self.is_bbr:
@@ -283,6 +458,7 @@ class OtCli:
             if 'RADIO_DEVICE' in os.environ:
                 cmd += ' --real-time-signal=+1 -v spinel+hdlc+uart://%s?forkpty-arg=%d' % (os.environ['RADIO_DEVICE'],
                                                                                            nodeid)
+                self.is_posix = True
             else:
                 cmd += ' %d' % nodeid
 
@@ -298,6 +474,7 @@ class OtCli:
             if 'RADIO_DEVICE_1_1' in os.environ:
                 cmd += ' --real-time-signal=+1 -v spinel+hdlc+uart://%s?forkpty-arg=%d' % (
                     os.environ['RADIO_DEVICE_1_1'], nodeid)
+                self.is_posix = True
             else:
                 cmd += ' %d' % nodeid
 
@@ -326,6 +503,7 @@ class OtCli:
             if 'RADIO_DEVICE' in os.environ:
                 args = ' --real-time-signal=+1 spinel+hdlc+uart://%s?forkpty-arg=%d' % (os.environ['RADIO_DEVICE'],
                                                                                         nodeid)
+                self.is_posix = True
             else:
                 args = ''
 
@@ -365,6 +543,7 @@ class OtCli:
             if 'RADIO_DEVICE_1_1' in os.environ:
                 args = ' --real-time-signal=+1 spinel+hdlc+uart://%s?forkpty-arg=%d' % (os.environ['RADIO_DEVICE_1_1'],
                                                                                         nodeid)
+                self.is_posix = True
             else:
                 args = ''
 
@@ -418,6 +597,7 @@ class NodeImpl:
     def __init__(self, nodeid, name=None, simulator=None, **kwargs):
         self.nodeid = nodeid
         self.name = name or ('Node%d' % nodeid)
+        self.is_posix = False
 
         self.simulator = simulator
         if self.simulator:
@@ -444,26 +624,8 @@ class NodeImpl:
                 if timeout <= 0:
                     raise
 
-    def _prepare_pattern(self, pattern):
-        """Build a new pexpect pattern matching line by line.
-
-        Adds lookahead and lookbehind to make each pattern match a whole line,
-        and add 'Done' as the first pattern.
-
-        Args:
-            pattern: a single regex or a list of regex.
-
-        Returns:
-            A list of regex.
-        """
-        EXPECT_LINE_FORMAT = r'(?<=[\r\n])%s(?=[\r\n])'
-
-        if isinstance(pattern, list):
-            pattern = [EXPECT_LINE_FORMAT % p for p in pattern]
-        else:
-            pattern = [EXPECT_LINE_FORMAT % pattern]
-
-        return [EXPECT_LINE_FORMAT % 'Done'] + pattern
+    def _expect_done(self, timeout=-1):
+        self._expect('Done', timeout)
 
     def _expect_result(self, pattern, *args, **kwargs):
         """Expect a single matching result.
@@ -485,34 +647,25 @@ class NodeImpl:
         Returns:
             The matched lines.
         """
-        results = []
-        pattern = self._prepare_pattern(pattern)
-
-        while self._expect(pattern, *args, **kwargs):
-            results.append(self.pexpect.match.group(0).decode('utf8'))
-
+        output = self._expect_command_output()
+        results = [line for line in output if self._match_pattern(line, pattern)]
         return results
 
-    def _expect_command_output(self, cmd: str):
+    @staticmethod
+    def _match_pattern(line, pattern):
+        if isinstance(pattern, str):
+            pattern = re.compile(pattern)
+
+        if isinstance(pattern, typing.Pattern):
+            return pattern.match(line)
+        else:
+            return any(NodeImpl._match_pattern(line, p) for p in pattern)
+
+    def _expect_command_output(self, ignore_logs=True):
         lines = []
-        cmd_output_started = False
 
         while True:
-            self._expect(r"[^\n]+")
-            line = self.pexpect.match.group(0).decode('utf8').strip()
-
-            if line.startswith('> '):
-                line = line[2:]
-
-            if line == '':
-                continue
-
-            if line == cmd:
-                cmd_output_started = True
-                continue
-
-            if not cmd_output_started:
-                continue
+            line = self.__readline(ignore_logs=ignore_logs)
 
             if line == 'Done':
                 break
@@ -521,8 +674,11 @@ class NodeImpl:
             else:
                 lines.append(line)
 
-        print(f'_expect_command_output({cmd!r}) returns {lines!r}')
+        print(f'_expect_command_output() returns {lines!r}')
         return lines
+
+    def __is_logging_line(self, line: str) -> bool:
+        return len(line) >= 6 and line[:6] in {'[DEBG]', '[INFO]', '[NOTE]', '[WARN]', '[CRIT]', '[NONE]'}
 
     def read_cert_messages_in_commissioning_log(self, timeout=-1):
         """Get the log of the traffic after DTLS handshake.
@@ -573,12 +729,40 @@ class NodeImpl:
         assert len(payload) == payload_len
         return (direction, type, payload)
 
-    def send_command(self, cmd, go=True):
+    def send_command(self, cmd, go=True, expect_command_echo=True):
         print("%d: %s" % (self.nodeid, cmd))
         self.pexpect.send(cmd + '\n')
         if go:
             self.simulator.go(0, nodeid=self.nodeid)
         sys.stdout.flush()
+
+        if expect_command_echo:
+            self._expect_command_echo(cmd)
+
+    def _expect_command_echo(self, cmd):
+        cmd = cmd.strip()
+        while True:
+            line = self.__readline()
+            if line == cmd:
+                break
+
+            logging.warning("expecting echo %r, but read %r", cmd, line)
+
+    def __readline(self, ignore_logs=True):
+        PROMPT = 'spinel-cli > ' if self.node_type == 'ncp-sim' else '> '
+        while True:
+            self._expect(r"[^\n]+\n")
+            line = self.pexpect.match.group(0).decode('utf8').strip()
+            while line.startswith(PROMPT):
+                line = line[len(PROMPT):]
+
+            if line == '':
+                continue
+
+            if ignore_logs and self.__is_logging_line(line):
+                continue
+
+            return line
 
     def get_commands(self):
         self.send_command('?')
@@ -588,7 +772,7 @@ class NodeImpl:
     def set_mode(self, mode):
         cmd = 'mode %s' % mode
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def debug(self, level):
         # `debug` command will not trigger interaction with simulator
@@ -602,31 +786,35 @@ class NodeImpl:
         self.thread_stop()
         self.interface_down()
 
+    def set_log_level(self, level: int):
+        self.send_command(f'log level {level}')
+        self._expect_done()
+
     def interface_up(self):
         self.send_command('ifconfig up')
-        self._expect('Done')
+        self._expect_done()
 
     def interface_down(self):
         self.send_command('ifconfig down')
-        self._expect('Done')
+        self._expect_done()
 
     def thread_start(self):
         self.send_command('thread start')
-        self._expect('Done')
+        self._expect_done()
 
     def thread_stop(self):
         self.send_command('thread stop')
-        self._expect('Done')
+        self._expect_done()
 
     def commissioner_start(self):
         cmd = 'commissioner start'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def commissioner_stop(self):
         cmd = 'commissioner stop'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def commissioner_state(self):
         states = [r'disabled', r'petitioning', r'active']
@@ -636,32 +824,32 @@ class NodeImpl:
     def commissioner_add_joiner(self, addr, psk):
         cmd = 'commissioner joiner add %s %s' % (addr, psk)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def commissioner_set_provisioning_url(self, provisioning_url=''):
         cmd = 'commissioner provisioningurl %s' % provisioning_url
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def joiner_start(self, pskd='', provisioning_url=''):
         cmd = 'joiner start %s %s' % (pskd, provisioning_url)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def clear_allowlist(self):
         cmd = 'macfilter addr clear'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def enable_allowlist(self):
         cmd = 'macfilter addr allowlist'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def disable_allowlist(self):
         cmd = 'macfilter addr disable'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def add_allowlist(self, addr, rssi=None):
         cmd = 'macfilter addr add %s' % addr
@@ -670,7 +858,22 @@ class NodeImpl:
             cmd += ' %s' % rssi
 
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
+
+    def radiofilter_is_enabled(self) -> bool:
+        states = [r'Disabled', r'Enabled']
+        self.send_command('radiofilter')
+        return self._expect_result(states) == 'Enabled'
+
+    def radiofilter_enable(self):
+        cmd = 'radiofilter enable'
+        self.send_command(cmd)
+        self._expect_done()
+
+    def radiofilter_disable(self):
+        cmd = 'radiofilter disable'
+        self.send_command(cmd)
+        self._expect_done()
 
     def get_bbr_registration_jitter(self):
         self.send_command('bbr jitter')
@@ -679,22 +882,349 @@ class NodeImpl:
     def set_bbr_registration_jitter(self, jitter):
         cmd = 'bbr jitter %d' % jitter
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
+
+    def get_rcp_version(self) -> str:
+        self.send_command('rcp version')
+        rcp_version = self._expect_command_output()[0].strip()
+        return rcp_version
+
+    def srp_server_get_state(self):
+        states = ['disabled', 'running', 'stopped']
+        self.send_command('srp server state')
+        return self._expect_result(states)
+
+    def srp_server_get_addr_mode(self):
+        modes = [r'unicast', r'anycast']
+        self.send_command(f'srp server addrmode')
+        return self._expect_result(modes)
+
+    def srp_server_set_addr_mode(self, mode):
+        self.send_command(f'srp server addrmode {mode}')
+        self._expect_done()
+
+    def srp_server_get_anycast_seq_num(self):
+        self.send_command(f'srp server seqnum')
+        return int(self._expect_result(r'\d+'))
+
+    def srp_server_set_anycast_seq_num(self, seqnum):
+        self.send_command(f'srp server seqnum {seqnum}')
+        self._expect_done()
+
+    def srp_server_set_enabled(self, enable):
+        cmd = f'srp server {"enable" if enable else "disable"}'
+        self.send_command(cmd)
+        self._expect_done()
+
+    def srp_server_set_lease_range(self, min_lease, max_lease, min_key_lease, max_key_lease):
+        self.send_command(f'srp server lease {min_lease} {max_lease} {min_key_lease} {max_key_lease}')
+        self._expect_done()
+
+    def srp_server_get_hosts(self):
+        """Returns the host list on the SRP server as a list of property
+           dictionary.
+
+           Example output:
+           [{
+               'fullname': 'my-host.default.service.arpa.',
+               'name': 'my-host',
+               'deleted': 'false',
+               'addresses': ['2001::1', '2001::2']
+           }]
+        """
+
+        cmd = 'srp server host'
+        self.send_command(cmd)
+        lines = self._expect_command_output()
+        host_list = []
+        while lines:
+            host = {}
+
+            host['fullname'] = lines.pop(0).strip()
+            host['name'] = host['fullname'].split('.')[0]
+
+            host['deleted'] = lines.pop(0).strip().split(':')[1].strip()
+            if host['deleted'] == 'true':
+                host_list.append(host)
+                continue
+
+            addresses = lines.pop(0).strip().split('[')[1].strip(' ]').split(',')
+            map(str.strip, addresses)
+            host['addresses'] = [addr for addr in addresses if addr]
+
+            host_list.append(host)
+
+        return host_list
+
+    def srp_server_get_host(self, host_name):
+        """Returns host on the SRP server that matches given host name.
+
+           Example usage:
+           self.srp_server_get_host("my-host")
+        """
+
+        for host in self.srp_server_get_hosts():
+            if host_name == host['name']:
+                return host
+
+    def srp_server_get_services(self):
+        """Returns the service list on the SRP server as a list of property
+           dictionary.
+
+           Example output:
+           [{
+               'fullname': 'my-service._ipps._tcp.default.service.arpa.',
+               'instance': 'my-service',
+               'name': '_ipps._tcp',
+               'deleted': 'false',
+               'port': '12345',
+               'priority': '0',
+               'weight': '0',
+               'TXT': ['abc=010203'],
+               'host_fullname': 'my-host.default.service.arpa.',
+               'host': 'my-host',
+               'addresses': ['2001::1', '2001::2']
+           }]
+
+           Note that the TXT data is output as a HEX string.
+        """
+
+        cmd = 'srp server service'
+        self.send_command(cmd)
+        lines = self._expect_command_output()
+        service_list = []
+        while lines:
+            service = {}
+
+            service['fullname'] = lines.pop(0).strip()
+            name_labels = service['fullname'].split('.')
+            service['instance'] = name_labels[0]
+            service['name'] = '.'.join(name_labels[1:3])
+
+            service['deleted'] = lines.pop(0).strip().split(':')[1].strip()
+            if service['deleted'] == 'true':
+                service_list.append(service)
+                continue
+
+            # 'subtypes', port', 'priority', 'weight'
+            for i in range(0, 4):
+                key_value = lines.pop(0).strip().split(':')
+                service[key_value[0].strip()] = key_value[1].strip()
+
+            txt_entries = lines.pop(0).strip().split('[')[1].strip(' ]').split(',')
+            txt_entries = map(str.strip, txt_entries)
+            service['TXT'] = [txt for txt in txt_entries if txt]
+
+            service['host_fullname'] = lines.pop(0).strip().split(':')[1].strip()
+            service['host'] = service['host_fullname'].split('.')[0]
+
+            addresses = lines.pop(0).strip().split('[')[1].strip(' ]').split(',')
+            addresses = map(str.strip, addresses)
+            service['addresses'] = [addr for addr in addresses if addr]
+
+            service_list.append(service)
+
+        return service_list
+
+    def srp_server_get_service(self, instance_name, service_name):
+        """Returns service on the SRP server that matches given instance
+           name and service name.
+
+           Example usage:
+           self.srp_server_get_service("my-service", "_ipps._tcp")
+        """
+
+        for service in self.srp_server_get_services():
+            if (instance_name == service['instance'] and service_name == service['name']):
+                return service
+
+    def get_srp_server_port(self):
+        """Returns the SRP server UDP port by parsing
+           the SRP Server Data in Network Data.
+        """
+
+        for service in self.get_services():
+            # TODO: for now, we are using 0xfd as the SRP service data.
+            #       May use a dedicated bit flag for SRP server.
+            if int(service[1], 16) == 0x5d:
+                # The SRP server data contains IPv6 address (16 bytes)
+                # followed by UDP port number.
+                return int(service[2][2 * 16:], 16)
+
+    def srp_client_start(self, server_address, server_port):
+        self.send_command(f'srp client start {server_address} {server_port}')
+        self._expect_done()
+
+    def srp_client_stop(self):
+        self.send_command(f'srp client stop')
+        self._expect_done()
+
+    def srp_client_get_state(self):
+        cmd = 'srp client state'
+        self.send_command(cmd)
+        return self._expect_command_output()[0]
+
+    def srp_client_get_auto_start_mode(self):
+        cmd = 'srp client autostart'
+        self.send_command(cmd)
+        return self._expect_command_output()[0]
+
+    def srp_client_enable_auto_start_mode(self):
+        self.send_command(f'srp client autostart enable')
+        self._expect_done()
+
+    def srp_client_disable_auto_start_mode(self):
+        self.send_command(f'srp client autostart able')
+        self._expect_done()
+
+    def srp_client_get_server_address(self):
+        cmd = 'srp client server address'
+        self.send_command(cmd)
+        return self._expect_command_output()[0]
+
+    def srp_client_get_server_port(self):
+        cmd = 'srp client server port'
+        self.send_command(cmd)
+        return int(self._expect_command_output()[0])
+
+    def srp_client_get_host_state(self):
+        cmd = 'srp client host state'
+        self.send_command(cmd)
+        return self._expect_command_output()[0]
+
+    def srp_client_set_host_name(self, name):
+        self.send_command(f'srp client host name {name}')
+        self._expect_done()
+
+    def srp_client_get_host_name(self):
+        self.send_command(f'srp client host name')
+        self._expect_done()
+
+    def srp_client_remove_host(self, remove_key=False, send_unreg_to_server=False):
+        self.send_command(f'srp client host remove {int(remove_key)} {int(send_unreg_to_server)}')
+        self._expect_done()
+
+    def srp_client_clear_host(self):
+        self.send_command(f'srp client host clear')
+        self._expect_done()
+
+    def srp_client_set_host_address(self, *addrs: str):
+        self.send_command(f'srp client host address {" ".join(addrs)}')
+        self._expect_done()
+
+    def srp_client_get_host_address(self):
+        self.send_command(f'srp client host address')
+        self._expect_done()
+
+    def srp_client_add_service(self, instance_name, service_name, port, priority=0, weight=0, txt_entries=[]):
+        txt_record = "".join(self._encode_txt_entry(entry) for entry in txt_entries)
+        instance_name = self._escape_escapable(instance_name)
+        self.send_command(
+            f'srp client service add {instance_name} {service_name} {port} {priority} {weight} {txt_record}')
+        self._expect_done()
+
+    def srp_client_remove_service(self, instance_name, service_name):
+        self.send_command(f'srp client service remove {instance_name} {service_name}')
+        self._expect_done()
+
+    def srp_client_clear_service(self, instance_name, service_name):
+        self.send_command(f'srp client service clear {instance_name} {service_name}')
+        self._expect_done()
+
+    def srp_client_get_services(self):
+        cmd = 'srp client service'
+        self.send_command(cmd)
+        service_lines = self._expect_command_output()
+        return [self._parse_srp_client_service(line) for line in service_lines]
+
+    def srp_client_set_lease_interval(self, leaseinterval: int):
+        cmd = f'srp client leaseinterval {leaseinterval}'
+        self.send_command(cmd)
+        self._expect_done()
+
+    def srp_client_get_lease_interval(self) -> int:
+        cmd = 'srp client leaseinterval'
+        self.send_command(cmd)
+        return int(self._expect_result('\d+'))
+
+    #
+    # TREL utilities
+    #
+
+    def get_trel_state(self) -> Union[None, bool]:
+        states = [r'Disabled', r'Enabled']
+        self.send_command('trel')
+        try:
+            return self._expect_result(states) == 'Enabled'
+        except Exception as ex:
+            if 'InvalidCommand' in str(ex):
+                return None
+
+            raise
+
+    def _encode_txt_entry(self, entry):
+        """Encodes the TXT entry to the DNS-SD TXT record format as a HEX string.
+
+           Example usage:
+           self._encode_txt_entries(['abc'])     -> '03616263'
+           self._encode_txt_entries(['def='])    -> '046465663d'
+           self._encode_txt_entries(['xyz=XYZ']) -> '0778797a3d58595a'
+        """
+        return '{:02x}'.format(len(entry)) + "".join("{:02x}".format(ord(c)) for c in entry)
+
+    def _parse_srp_client_service(self, line: str):
+        """Parse one line of srp service list into a dictionary which
+           maps string keys to string values.
+
+           Example output for input
+           'instance:\"%s\", name:\"%s\", state:%s, port:%d, priority:%d, weight:%d"'
+           {
+               'instance': 'my-service',
+               'name': '_ipps._udp',
+               'state': 'ToAdd',
+               'port': '12345',
+               'priority': '0',
+               'weight': '0'
+           }
+
+           Note that value of 'port', 'priority' and 'weight' are represented
+           as strings but not integers.
+        """
+        key_values = [word.strip().split(':') for word in line.split(', ')]
+        keys = [key_value[0] for key_value in key_values]
+        values = [key_value[1].strip('"') for key_value in key_values]
+        return dict(zip(keys, values))
+
+    def locate(self, anycast_addr):
+        cmd = 'locate ' + anycast_addr
+        self.send_command(cmd)
+        self.simulator.go(5)
+        return self._parse_locate_result(self._expect_command_output()[0])
+
+    def _parse_locate_result(self, line: str):
+        """Parse anycast locate result as list of ml-eid and rloc16.
+
+           Example output for input
+           'fd00:db8:0:0:acf9:9d0:7f3c:b06e 0xa800'
+
+           [ 'fd00:db8:0:0:acf9:9d0:7f3c:b06e', '0xa800' ]
+        """
+        return line.split(' ')
 
     def enable_backbone_router(self):
         cmd = 'bbr enable'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def disable_backbone_router(self):
         cmd = 'bbr disable'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def register_backbone_router(self):
         cmd = 'bbr register'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_backbone_router_state(self):
         states = [r'Disabled', r'Primary', r'Secondary']
@@ -742,7 +1272,7 @@ class NodeImpl:
             cmd += ' timeout %d' % mlr_timeout
 
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def set_domain_prefix(self, prefix, flags='prosD'):
         self.add_prefix(prefix, flags)
@@ -763,7 +1293,7 @@ class NodeImpl:
         if iid is not None:
             cmd += ' ' + str(iid)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def set_dua_iid(self, iid: str):
         assert len(iid) == 16
@@ -771,14 +1301,14 @@ class NodeImpl:
 
         cmd = 'dua iid {}'.format(iid)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def clear_dua_iid(self):
         cmd = 'dua iid clear'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
-    def multicast_listener_list(self) -> Dict[ipaddress.IPv6Address, int]:
+    def multicast_listener_list(self) -> Dict[IPv6Address, int]:
         cmd = 'bbr mgmt mlr listener'
         self.send_command(cmd)
 
@@ -786,7 +1316,7 @@ class NodeImpl:
         for line in self._expect_results("\S+ \d+"):
             line = line.split()
             assert len(line) == 2, line
-            ip = ipaddress.IPv6Address(line[0])
+            ip = IPv6Address(line[0])
             timeout = int(line[1])
             assert ip not in table
 
@@ -797,11 +1327,11 @@ class NodeImpl:
     def multicast_listener_clear(self):
         cmd = f'bbr mgmt mlr listener clear'
         self.send_command(cmd)
-        self._expect("Done")
+        self._expect_done()
 
-    def multicast_listener_add(self, ip: Union[ipaddress.IPv6Address, str], timeout: int = 0):
-        if not isinstance(ip, ipaddress.IPv6Address):
-            ip = ipaddress.IPv6Address(ip)
+    def multicast_listener_add(self, ip: Union[IPv6Address, str], timeout: int = 0):
+        if not isinstance(ip, IPv6Address):
+            ip = IPv6Address(ip)
 
         cmd = f'bbr mgmt mlr listener add {ip.compressed} {timeout}'
         self.send_command(cmd)
@@ -810,40 +1340,41 @@ class NodeImpl:
     def set_next_mlr_response(self, status: int):
         cmd = 'bbr mgmt mlr response {}'.format(status)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
-    def register_multicast_listener(self, *ipaddrs: Union[ipaddress.IPv6Address, str], timeout=None):
+    def register_multicast_listener(self, *ipaddrs: Union[IPv6Address, str], timeout=None):
         assert len(ipaddrs) > 0, ipaddrs
 
+        ipaddrs = map(str, ipaddrs)
         cmd = f'mlr reg {" ".join(ipaddrs)}'
         if timeout is not None:
             cmd += f' {int(timeout)}'
         self.send_command(cmd)
         self.simulator.go(3)
-        lines = self._expect_command_output(cmd)
+        lines = self._expect_command_output()
         m = re.match(r'status (\d+), (\d+) failed', lines[0])
         assert m is not None, lines
         status = int(m.group(1))
         failed_num = int(m.group(2))
         assert failed_num == len(lines) - 1
-        failed_ips = list(map(ipaddress.IPv6Address, lines[1:]))
+        failed_ips = list(map(IPv6Address, lines[1:]))
         print(f"register_multicast_listener {ipaddrs} => status: {status}, failed ips: {failed_ips}")
         return status, failed_ips
 
     def set_link_quality(self, addr, lqi):
         cmd = 'macfilter rss add-lqi %s %s' % (addr, lqi)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def set_outbound_link_quality(self, lqi):
         cmd = 'macfilter rss add-lqi * %s' % (lqi)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def remove_allowlist(self, addr):
         cmd = 'macfilter addr remove %s' % addr
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_addr16(self):
         self.send_command('rloc16')
@@ -863,7 +1394,7 @@ class NodeImpl:
         assert len(addr64) == 16
         int(addr64, 16)
         self.send_command('extaddr %s' % addr64)
-        self._expect('Done')
+        self._expect_done()
 
     def get_eui64(self):
         self.send_command('eui64')
@@ -871,7 +1402,11 @@ class NodeImpl:
 
     def set_extpanid(self, extpanid):
         self.send_command('extpanid %s' % extpanid)
-        self._expect('Done')
+        self._expect_done()
+
+    def get_extpanid(self):
+        self.send_command('extpanid')
+        return self._expect_result('[0-9a-fA-F]{16}')
 
     def get_joiner_id(self):
         self.send_command('joiner id')
@@ -884,16 +1419,16 @@ class NodeImpl:
     def set_channel(self, channel):
         cmd = 'channel %d' % channel
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
-    def get_masterkey(self):
-        self.send_command('masterkey')
+    def get_networkkey(self):
+        self.send_command('networkkey')
         return self._expect_result('[0-9a-fA-F]{32}')
 
-    def set_masterkey(self, masterkey):
-        cmd = 'masterkey %s' % masterkey
+    def set_networkkey(self, networkkey):
+        cmd = 'networkkey %s' % networkkey
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_key_sequence_counter(self):
         self.send_command('keysequence counter')
@@ -903,17 +1438,17 @@ class NodeImpl:
     def set_key_sequence_counter(self, key_sequence_counter):
         cmd = 'keysequence counter %d' % key_sequence_counter
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def set_key_switch_guardtime(self, key_switch_guardtime):
         cmd = 'keysequence guardtime %d' % key_switch_guardtime
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def set_network_id_timeout(self, network_id_timeout):
         cmd = 'networkidtimeout %d' % network_id_timeout
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def _escape_escapable(self, string):
         """Escape CLI escapable characters in the given string.
@@ -936,7 +1471,7 @@ class NodeImpl:
     def set_network_name(self, network_name):
         cmd = 'networkname %s' % self._escape_escapable(network_name)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_panid(self):
         self.send_command('panid')
@@ -946,12 +1481,16 @@ class NodeImpl:
     def set_panid(self, panid=config.PANID):
         cmd = 'panid %d' % panid
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def set_parent_priority(self, priority):
         cmd = 'parentpriority %d' % priority
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
+
+    def get_partition_id(self):
+        self.send_command('partitionid')
+        return self._expect_result(r'\d+')
 
     def get_preferred_partition_id(self):
         self.send_command('partitionid preferred')
@@ -960,7 +1499,7 @@ class NodeImpl:
     def set_preferred_partition_id(self, partition_id):
         cmd = 'partitionid preferred %d' % partition_id
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_pollperiod(self):
         self.send_command('pollperiod')
@@ -968,41 +1507,41 @@ class NodeImpl:
 
     def set_pollperiod(self, pollperiod):
         self.send_command('pollperiod %d' % pollperiod)
-        self._expect('Done')
+        self._expect_done()
 
     def get_csl_info(self):
         self.send_command('csl')
-        self._expect('Done')
+        self._expect_done()
 
     def set_csl_channel(self, csl_channel):
         self.send_command('csl channel %d' % csl_channel)
-        self._expect('Done')
+        self._expect_done()
 
     def set_csl_period(self, csl_period):
         self.send_command('csl period %d' % csl_period)
-        self._expect('Done')
+        self._expect_done()
 
     def set_csl_timeout(self, csl_timeout):
         self.send_command('csl timeout %d' % csl_timeout)
-        self._expect('Done')
+        self._expect_done()
 
     def send_mac_emptydata(self):
         self.send_command('mac send emptydata')
-        self._expect('Done')
+        self._expect_done()
 
     def send_mac_datarequest(self):
         self.send_command('mac send datarequest')
-        self._expect('Done')
+        self._expect_done()
 
     def set_router_upgrade_threshold(self, threshold):
         cmd = 'routerupgradethreshold %d' % threshold
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def set_router_downgrade_threshold(self, threshold):
         cmd = 'routerdowngradethreshold %d' % threshold
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_router_downgrade_threshold(self) -> int:
         self.send_command('routerdowngradethreshold')
@@ -1011,7 +1550,7 @@ class NodeImpl:
     def set_router_eligible(self, enable: bool):
         cmd = f'routereligible {"enable" if enable else "disable"}'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_router_eligible(self) -> bool:
         states = [r'Disabled', r'Enabled']
@@ -1021,12 +1560,12 @@ class NodeImpl:
     def prefer_router_id(self, router_id):
         cmd = 'preferrouterid %d' % router_id
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def release_router_id(self, router_id):
         cmd = 'releaserouterid %d' % router_id
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_state(self):
         states = [r'detached', r'child', r'router', r'leader', r'disabled']
@@ -1036,7 +1575,7 @@ class NodeImpl:
     def set_state(self, state):
         cmd = 'state %s' % state
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_timeout(self):
         self.send_command('childtimeout')
@@ -1045,12 +1584,12 @@ class NodeImpl:
     def set_timeout(self, timeout):
         cmd = 'childtimeout %d' % timeout
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def set_max_children(self, number):
         cmd = 'childmax %d' % number
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_weight(self):
         self.send_command('leaderweight')
@@ -1059,27 +1598,27 @@ class NodeImpl:
     def set_weight(self, weight):
         cmd = 'leaderweight %d' % weight
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def add_ipaddr(self, ipaddr):
         cmd = 'ipaddr add %s' % ipaddr
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def del_ipaddr(self, ipaddr):
         cmd = 'ipaddr del %s' % ipaddr
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def add_ipmaddr(self, ipmaddr):
         cmd = 'ipmaddr add %s' % ipmaddr
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def del_ipmaddr(self, ipmaddr):
         cmd = 'ipmaddr del %s' % ipmaddr
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def get_addrs(self):
         self.send_command('ipaddr')
@@ -1143,15 +1682,15 @@ class NodeImpl:
                 return addr
         return None
 
+    def get_mleid_iid(self):
+        ml_eid = IPv6Address(self.get_mleid())
+        return ml_eid.packed[8:].hex()
+
     def get_eidcaches(self):
         eidcaches = []
         self.send_command('eidcache')
-
-        pattern = self._prepare_pattern(r'([a-fA-F0-9\:]+) ([a-fA-F0-9]+)')
-        while self._expect(pattern):
-            eid = self.pexpect.match.groups()[0].decode("utf-8")
-            rloc = self.pexpect.match.groups()[1].decode("utf-8")
-            eidcaches.append((eid, rloc))
+        for line in self._expect_results(r'([a-fA-F0-9\:]+) ([a-fA-F0-9]+)'):
+            eidcaches.append(line.split())
 
         return eidcaches
 
@@ -1162,12 +1701,80 @@ class NodeImpl:
             serverData,
         )
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def remove_service(self, enterpriseNumber, serviceData):
         cmd = 'service remove %s %s' % (enterpriseNumber, serviceData)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
+
+    def get_child_table(self) -> Dict[int, Dict[str, Any]]:
+        """Get the table of attached children."""
+        cmd = 'child table'
+        self.send_command(cmd)
+        output = self._expect_command_output()
+
+        #
+        # Example output:
+        # | ID  | RLOC16 | Timeout    | Age        | LQ In | C_VN |R|D|N|Ver|CSL|QMsgCnt| Extended MAC     |
+        # +-----+--------+------------+------------+-------+------+-+-+-+---+---+-------+------------------+
+        # |   1 | 0xc801 |        240 |         24 |     3 |  131 |1|0|0|  3| 0 |     0 | 4ecede68435358ac |
+        # |   2 | 0xc802 |        240 |          2 |     3 |  131 |0|0|0|  3| 1 |     0 | a672a601d2ce37d8 |
+        # Done
+        #
+
+        headers = self.__split_table_row(output[0])
+
+        table = {}
+        for line in output[2:]:
+            line = line.strip()
+            if not line:
+                continue
+
+            fields = self.__split_table_row(line)
+            col = lambda colname: self.__get_table_col(colname, headers, fields)
+
+            id = int(col("ID"))
+            r, d, n = int(col("R")), int(col("D")), int(col("N"))
+            mode = f'{"r" if r else ""}{"d" if d else ""}{"n" if n else ""}'
+
+            table[int(id)] = {
+                'id': int(id),
+                'rloc16': int(col('RLOC16'), 16),
+                'timeout': int(col('Timeout')),
+                'age': int(col('Age')),
+                'lq_in': int(col('LQ In')),
+                'c_vn': int(col('C_VN')),
+                'mode': mode,
+                'extaddr': col('Extended MAC'),
+                'ver': int(col('Ver')),
+                'csl': bool(int(col('CSL'))),
+                'qmsgcnt': int(col('QMsgCnt')),
+            }
+
+        return table
+
+    def __split_table_row(self, row: str) -> List[str]:
+        if not (row.startswith('|') and row.endswith('|')):
+            raise ValueError(row)
+
+        fields = row.split('|')
+        fields = [x.strip() for x in fields[1:-1]]
+        return fields
+
+    def __get_table_col(self, colname: str, headers: List[str], fields: List[str]) -> str:
+        return fields[headers.index(colname)]
+
+    def __getOmrAddress(self):
+        prefixes = [prefix.split('::')[0] for prefix in self.get_prefixes()]
+        omr_addrs = []
+        for addr in self.get_addrs():
+            for prefix in prefixes:
+                if (addr.startswith(prefix)) and (addr != self.__getDua()):
+                    omr_addrs.append(addr)
+                    break
+
+        return omr_addrs
 
     def __getLinkLocalAddress(self):
         for ip6Addr in self.get_addrs():
@@ -1219,6 +1826,22 @@ class NodeImpl:
 
         return None
 
+    def get_ip6_address_by_prefix(self, prefix: Union[str, IPv6Network]) -> List[IPv6Address]:
+        """Get addresses matched with given prefix.
+
+        Args:
+            prefix: the prefix to match against.
+                    Can be either a string or ipaddress.IPv6Network.
+
+        Returns:
+            The IPv6 address list.
+        """
+        if isinstance(prefix, str):
+            prefix = IPv6Network(prefix)
+        addrs = map(IPv6Address, self.get_addrs())
+
+        return [addr for addr in addrs if addr in prefix]
+
     def get_ip6_address(self, address_type):
         """Get specific type of IPv6 address configured on thread device.
 
@@ -1242,6 +1865,8 @@ class NodeImpl:
             return self.__getDua()
         elif address_type == config.ADDRESS_TYPE.BACKBONE_GUA:
             return self._getBackboneGua()
+        elif address_type == config.ADDRESS_TYPE.OMR:
+            return self.__getOmrAddress()
         else:
             return None
 
@@ -1252,17 +1877,72 @@ class NodeImpl:
     def set_context_reuse_delay(self, delay):
         cmd = 'contextreusedelay %d' % delay
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def add_prefix(self, prefix, flags='paosr', prf='med'):
         cmd = 'prefix add %s %s %s' % (prefix, flags, prf)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def remove_prefix(self, prefix):
         cmd = 'prefix remove %s' % prefix
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
+
+    def enable_br(self):
+        self.send_command('br enable')
+        self._expect_done()
+
+    def disable_br(self):
+        self.send_command('br disable')
+        self._expect_done()
+
+    def get_omr_prefix(self):
+        cmd = 'br omrprefix'
+        self.send_command(cmd)
+        return self._expect_command_output()[0]
+
+    def get_on_link_prefix(self):
+        cmd = 'br onlinkprefix'
+        self.send_command(cmd)
+        return self._expect_command_output()[0]
+
+    def get_prefixes(self):
+        return self.get_netdata()['Prefixes']
+
+    def get_routes(self):
+        return self.get_netdata()['Routes']
+
+    def get_services(self):
+        netdata = self.netdata_show()
+        services = []
+        services_section = False
+
+        for line in netdata:
+            if line.startswith('Services:'):
+                services_section = True
+            elif services_section:
+                services.append(line.strip().split(' '))
+        return services
+
+    def netdata_show(self):
+        self.send_command('netdata show')
+        return self._expect_command_output()
+
+    def get_netdata(self):
+        raw_netdata = self.netdata_show()
+        netdata = {'Prefixes': [], 'Routes': [], 'Services': []}
+        key_list = ['Prefixes', 'Routes', 'Services']
+        key = None
+
+        for i in range(0, len(raw_netdata)):
+            keys = list(filter(raw_netdata[i].startswith, key_list))
+            if keys != []:
+                key = keys[0]
+            elif key is not None:
+                netdata[key].append(raw_netdata[i])
+
+        return netdata
 
     def add_route(self, prefix, stable=False, prf='med'):
         cmd = 'route add %s ' % prefix
@@ -1270,16 +1950,44 @@ class NodeImpl:
             cmd += 's'
         cmd += ' %s' % prf
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def remove_route(self, prefix):
         cmd = 'route remove %s' % prefix
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def register_netdata(self):
         self.send_command('netdata register')
-        self._expect('Done')
+        self._expect_done()
+
+    def netdata_publish_dnssrp_anycast(self, seqnum):
+        self.send_command(f'netdata publish dnssrp anycast {seqnum}')
+        self._expect_done()
+
+    def netdata_publish_dnssrp_unicast(self, address, port):
+        self.send_command(f'netdata publish dnssrp unicast {address} {port}')
+        self._expect_done()
+
+    def netdata_publish_dnssrp_unicast_mleid(self, port):
+        self.send_command(f'netdata publish dnssrp unicast {port}')
+        self._expect_done()
+
+    def netdata_unpublish_dnssrp(self):
+        self.send_command('netdata unpublish dnssrp')
+        self._expect_done()
+
+    def netdata_publish_prefix(self, prefix, flags='paosr', prf='med'):
+        self.send_command(f'netdata publish prefix {prefix} {flags} {prf}')
+        self._expect_done()
+
+    def netdata_publish_route(self, prefix, flags='s', prf='med'):
+        self.send_command(f'netdata publish route {prefix} {flags} {prf}')
+        self._expect_done()
+
+    def netdata_unpublish_prefix(self, prefix):
+        self.send_command(f'netdata unpublish {prefix}')
+        self._expect_done()
 
     def send_network_diag_get(self, addr, tlv_types):
         self.send_command('networkdiagnostic get %s %s' % (addr, ' '.join([str(t.value) for t in tlv_types])))
@@ -1290,7 +1998,7 @@ class NodeImpl:
         else:
             timeout = 8
 
-        self._expect('Done', timeout=timeout)
+        self._expect_done(timeout=timeout)
 
     def send_network_diag_reset(self, addr, tlv_types):
         self.send_command('networkdiagnostic reset %s %s' % (addr, ' '.join([str(t.value) for t in tlv_types])))
@@ -1301,7 +2009,7 @@ class NodeImpl:
         else:
             timeout = 8
 
-        self._expect('Done', timeout=timeout)
+        self._expect_done(timeout=timeout)
 
     def energy_scan(self, mask, count, period, scan_duration, ipaddr):
         cmd = 'commissioner energy %d %d %d %d %s' % (
@@ -1333,19 +2041,53 @@ class NodeImpl:
 
         self._expect('Conflict:', timeout=timeout)
 
-    def scan(self):
+    def scan(self, result=1, timeout=10):
         self.send_command('scan')
 
-        return self._expect_results(r'\|\s(\S+)\s+\|\s(\S+)\s+\|\s([0-9a-fA-F]{4})\s\|\s([0-9a-fA-F]{16})\s\|\s(\d+)')
+        self.simulator.go(timeout)
 
-    def ping(self, ipaddr, num_responses=1, size=None, timeout=5):
-        cmd = 'ping %s' % ipaddr
-        if size is not None:
-            cmd += ' %d' % size
+        if result == 1:
+            networks = []
+            for line in self._expect_command_output()[2:]:
+                _, J, networkname, extpanid, panid, extaddr, channel, dbm, lqi, _ = map(str.strip, line.split('|'))
+                J = bool(int(J))
+                panid = int(panid, 16)
+                channel, dbm, lqi = map(int, (channel, dbm, lqi))
+
+                networks.append({
+                    'joinable': J,
+                    'networkname': networkname,
+                    'extpanid': extpanid,
+                    'panid': panid,
+                    'extaddr': extaddr,
+                    'channel': channel,
+                    'dbm': dbm,
+                    'lqi': lqi,
+                })
+            return networks
+
+    def scan_energy(self, timeout=10):
+        self.send_command('scan energy')
+        self.simulator.go(timeout)
+        rssi_list = []
+        for line in self._expect_command_output()[2:]:
+            _, channel, rssi, _ = line.split('|')
+            rssi_list.append({
+                'channel': int(channel.strip()),
+                'rssi': int(rssi.strip()),
+            })
+        return rssi_list
+
+    def ping(self, ipaddr, num_responses=1, size=8, timeout=5, count=1, interval=1, hoplimit=64, interface=None):
+        args = f'{ipaddr} {size} {count} {interval} {hoplimit} {timeout}'
+        if interface is not None:
+            args = f'-I {interface} {args}'
+        cmd = f'ping {args}'
 
         self.send_command(cmd)
 
-        end = self.simulator.now() + timeout
+        wait_allowance = 3
+        end = self.simulator.now() + timeout + wait_allowance
 
         responders = {}
 
@@ -1368,17 +2110,27 @@ class NodeImpl:
                     responders[self.pexpect.match.groups()[0]] = 1
                 elif i == 1:
                     done = True
-
         return result
 
     def reset(self):
-        self.send_command('reset')
-        time.sleep(0.1)
+        self.send_command('reset', expect_command_echo=False)
+        time.sleep(self.RESET_DELAY)
+        # Send a "version" command and drain the CLI output after reset
+        self.send_command('version', expect_command_echo=False)
+        while True:
+            try:
+                self._expect(r"[^\n]+\n", timeout=0.1)
+                continue
+            except pexpect.TIMEOUT:
+                break
+
+        if self.is_otbr:
+            self.set_log_level(5)
 
     def set_router_selection_jitter(self, jitter):
         cmd = 'routerselectionjitter %d' % jitter
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def set_active_dataset(
         self,
@@ -1386,75 +2138,101 @@ class NodeImpl:
         panid=None,
         channel=None,
         channel_mask=None,
-        master_key=None,
+        network_key=None,
+        security_policy=[],
     ):
         self.send_command('dataset clear')
-        self._expect('Done')
+        self._expect_done()
 
         cmd = 'dataset activetimestamp %d' % timestamp
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
         if panid is not None:
             cmd = 'dataset panid %d' % panid
             self.send_command(cmd)
-            self._expect('Done')
+            self._expect_done()
 
         if channel is not None:
             cmd = 'dataset channel %d' % channel
             self.send_command(cmd)
-            self._expect('Done')
+            self._expect_done()
 
         if channel_mask is not None:
             cmd = 'dataset channelmask %d' % channel_mask
             self.send_command(cmd)
-            self._expect('Done')
+            self._expect_done()
 
-        if master_key is not None:
-            cmd = 'dataset masterkey %s' % master_key
+        if network_key is not None:
+            cmd = 'dataset networkkey %s' % network_key
             self.send_command(cmd)
-            self._expect('Done')
+            self._expect_done()
+
+        if security_policy and len(security_policy) == 2:
+            cmd = 'dataset securitypolicy %s %s' % (
+                str(security_policy[0]),
+                security_policy[1],
+            )
+            self.send_command(cmd)
+            self._expect_done()
 
         # Set the meshlocal prefix in config.py
         self.send_command('dataset meshlocalprefix %s' % config.MESH_LOCAL_PREFIX.split('/')[0])
-        self._expect('Done')
+        self._expect_done()
 
         self.send_command('dataset commit active')
-        self._expect('Done')
+        self._expect_done()
 
     def set_pending_dataset(self, pendingtimestamp, activetimestamp, panid=None, channel=None, delay=None):
         self.send_command('dataset clear')
-        self._expect('Done')
+        self._expect_done()
 
         cmd = 'dataset pendingtimestamp %d' % pendingtimestamp
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
         cmd = 'dataset activetimestamp %d' % activetimestamp
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
         if panid is not None:
             cmd = 'dataset panid %d' % panid
             self.send_command(cmd)
-            self._expect('Done')
+            self._expect_done()
 
         if channel is not None:
             cmd = 'dataset channel %d' % channel
             self.send_command(cmd)
-            self._expect('Done')
+            self._expect_done()
 
         if delay is not None:
             cmd = 'dataset delay %d' % delay
             self.send_command(cmd)
-            self._expect('Done')
+            self._expect_done()
 
         # Set the meshlocal prefix in config.py
         self.send_command('dataset meshlocalprefix %s' % config.MESH_LOCAL_PREFIX.split('/')[0])
-        self._expect('Done')
+        self._expect_done()
 
         self.send_command('dataset commit pending')
-        self._expect('Done')
+        self._expect_done()
+
+    def start_dataset_updater(self, panid=None, channel=None):
+        self.send_command('dataset clear')
+        self._expect_done()
+
+        if panid is not None:
+            cmd = 'dataset panid %d' % panid
+            self.send_command(cmd)
+            self._expect_done()
+
+        if channel is not None:
+            cmd = 'dataset channel %d' % channel
+            self.send_command(cmd)
+            self._expect_done()
+
+        self.send_command('dataset updater start')
+        self._expect_done()
 
     def announce_begin(self, mask, count, period, ipaddr):
         cmd = 'commissioner announce %d %d %d %s' % (
@@ -1464,7 +2242,7 @@ class NodeImpl:
             ipaddr,
         )
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def send_mgmt_active_set(
         self,
@@ -1473,9 +2251,10 @@ class NodeImpl:
         channel_mask=None,
         extended_panid=None,
         panid=None,
-        master_key=None,
+        network_key=None,
         mesh_local=None,
         network_name=None,
+        security_policy=None,
         binary=None,
     ):
         cmd = 'dataset mgmtsetcommand active '
@@ -1495,8 +2274,8 @@ class NodeImpl:
         if panid is not None:
             cmd += 'panid %d ' % panid
 
-        if master_key is not None:
-            cmd += 'masterkey %s ' % master_key
+        if network_key is not None:
+            cmd += 'networkkey %s ' % network_key
 
         if mesh_local is not None:
             cmd += 'localprefix %s ' % mesh_local
@@ -1504,11 +2283,15 @@ class NodeImpl:
         if network_name is not None:
             cmd += 'networkname %s ' % self._escape_escapable(network_name)
 
+        if security_policy is not None:
+            rotation, flags = security_policy
+            cmd += 'securitypolicy %d %s ' % (rotation, flags)
+
         if binary is not None:
             cmd += '-x %s ' % binary
 
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def send_mgmt_active_get(self, addr='', tlvs=[]):
         cmd = 'dataset mgmtgetcommand active'
@@ -1523,7 +2306,7 @@ class NodeImpl:
             cmd += tlv_str
 
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def send_mgmt_pending_get(self, addr='', tlvs=[]):
         cmd = 'dataset mgmtgetcommand pending'
@@ -1538,7 +2321,7 @@ class NodeImpl:
             cmd += tlv_str
 
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def send_mgmt_pending_set(
         self,
@@ -1547,7 +2330,7 @@ class NodeImpl:
         delay_timer=None,
         channel=None,
         panid=None,
-        master_key=None,
+        network_key=None,
         mesh_local=None,
         network_name=None,
     ):
@@ -1567,8 +2350,8 @@ class NodeImpl:
         if panid is not None:
             cmd += 'panid %d ' % panid
 
-        if master_key is not None:
-            cmd += 'masterkey %s ' % master_key
+        if network_key is not None:
+            cmd += 'networkkey %s ' % network_key
 
         if mesh_local is not None:
             cmd += 'localprefix %s ' % mesh_local
@@ -1577,7 +2360,7 @@ class NodeImpl:
             cmd += 'networkname %s ' % self._escape_escapable(network_name)
 
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def coap_cancel(self):
         """
@@ -1585,7 +2368,7 @@ class NodeImpl:
         """
         cmd = 'coap cancel'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def coap_delete(self, ipaddr, uri, con=False, payload=None):
         """
@@ -1599,6 +2382,12 @@ class NodeImpl:
         """
         return self._coap_rq('get', ipaddr, uri, con, payload)
 
+    def coap_get_block(self, ipaddr, uri, size=16, count=0):
+        """
+        Send a GET request via CoAP.
+        """
+        return self._coap_rq_block('get', ipaddr, uri, size, count)
+
     def coap_observe(self, ipaddr, uri, con=False, payload=None):
         """
         Send a GET request via CoAP with Observe set.
@@ -1611,11 +2400,23 @@ class NodeImpl:
         """
         return self._coap_rq('post', ipaddr, uri, con, payload)
 
+    def coap_post_block(self, ipaddr, uri, size=16, count=0):
+        """
+        Send a POST request via CoAP.
+        """
+        return self._coap_rq_block('post', ipaddr, uri, size, count)
+
     def coap_put(self, ipaddr, uri, con=False, payload=None):
         """
         Send a PUT request via CoAP.
         """
         return self._coap_rq('put', ipaddr, uri, con, payload)
+
+    def coap_put_block(self, ipaddr, uri, size=16, count=0):
+        """
+        Send a PUT request via CoAP.
+        """
+        return self._coap_rq_block('put', ipaddr, uri, size, count)
 
     def _coap_rq(self, method, ipaddr, uri, con=False, payload=None):
         """
@@ -1629,6 +2430,20 @@ class NodeImpl:
 
         if payload is not None:
             cmd += ' %s' % payload
+
+        self.send_command(cmd)
+        return self.coap_wait_response()
+
+    def _coap_rq_block(self, method, ipaddr, uri, size=16, count=0):
+        """
+        Issue a GET/POST/PUT/DELETE/GET OBSERVE BLOCK request.
+        """
+        cmd = 'coap %s %s %s' % (method, ipaddr, uri)
+
+        cmd += ' block-%d' % size
+
+        if count != 0:
+            cmd += ' %d' % count
 
         self.send_command(cmd)
         return self.coap_wait_response()
@@ -1653,7 +2468,10 @@ class NodeImpl:
             observe = int(observe, base=10)
 
         if payload is not None:
-            payload = binascii.a2b_hex(payload).decode('UTF-8')
+            try:
+                payload = binascii.a2b_hex(payload).decode('UTF-8')
+            except UnicodeDecodeError:
+                pass
 
         # Return the values received
         return dict(source=source, observe=observe, payload=payload)
@@ -1717,6 +2535,14 @@ class NodeImpl:
         """
         cmd = 'coap resource %s' % path
         self.send_command(cmd)
+        self._expect_done()
+
+    def coap_set_resource_path_block(self, path, count=0):
+        """
+        Set the path for the CoAP resource and how many blocks can be received from this resource.
+        """
+        cmd = 'coap resource %s %d' % (path, count)
+        self.send_command(cmd)
         self._expect('Done')
 
     def coap_set_content(self, content):
@@ -1725,7 +2551,7 @@ class NodeImpl:
         """
         cmd = 'coap set %s' % content
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def coap_start(self):
         """
@@ -1733,7 +2559,7 @@ class NodeImpl:
         """
         cmd = 'coap start'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def coap_stop(self):
         """
@@ -1748,30 +2574,30 @@ class NodeImpl:
         else:
             timeout = 5
 
-        self._expect('Done', timeout=timeout)
+        self._expect_done(timeout=timeout)
 
     def coaps_start_psk(self, psk, pskIdentity):
         cmd = 'coaps psk %s %s' % (psk, pskIdentity)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
         cmd = 'coaps start'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def coaps_start_x509(self):
         cmd = 'coaps x509'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
         cmd = 'coaps start'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def coaps_set_resource_path(self, path):
         cmd = 'coaps resource %s' % path
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def coaps_stop(self):
         cmd = 'coaps stop'
@@ -1783,7 +2609,7 @@ class NodeImpl:
         else:
             timeout = 5
 
-        self._expect('Done', timeout=timeout)
+        self._expect_done(timeout=timeout)
 
     def coaps_connect(self, ipaddr):
         cmd = 'coaps connect %s' % ipaddr
@@ -1800,7 +2626,7 @@ class NodeImpl:
     def coaps_disconnect(self):
         cmd = 'coaps disconnect'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
         self.simulator.go(5)
 
     def coaps_get(self):
@@ -1820,12 +2646,12 @@ class NodeImpl:
         if tlvs_binary is not None:
             cmd += ' -x %s' % tlvs_binary
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def commissioner_mgmtset(self, tlvs_binary):
         cmd = 'commissioner mgmtset -x %s' % tlvs_binary
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def bytes_to_hex_str(self, src):
         return ''.join(format(x, '02x') for x in src)
@@ -1836,25 +2662,25 @@ class NodeImpl:
             payload += tlv.to_hex()
         self.commissioner_mgmtset(self.bytes_to_hex_str(payload))
 
-    def udp_start(self, local_ipaddr, local_port):
+    def udp_start(self, local_ipaddr, local_port, bind_unspecified=False):
         cmd = 'udp open'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
-        cmd = 'udp bind %s %s' % (local_ipaddr, local_port)
+        cmd = 'udp bind %s %s %s' % ("-u" if bind_unspecified else "", local_ipaddr, local_port)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def udp_stop(self):
         cmd = 'udp close'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def udp_send(self, bytes, ipaddr, port, success=True):
         cmd = 'udp send %s %d -s %d ' % (ipaddr, port, bytes)
         self.send_command(cmd)
         if success:
-            self._expect('Done')
+            self._expect_done()
         else:
             self._expect('Error')
 
@@ -1864,7 +2690,7 @@ class NodeImpl:
     def set_routereligible(self, enable: bool):
         cmd = f'routereligible {"enable" if enable else "disable"}'
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def router_list(self):
         cmd = 'router list'
@@ -1874,7 +2700,7 @@ class NodeImpl:
         g = self.pexpect.match.groups()
         router_list = g[0].decode('utf8') + ' ' + g[1].decode('utf8')
         router_list = [int(x) for x in router_list.split()]
-        self._expect('Done')
+        self._expect_done()
         return router_list
 
     def router_table(self):
@@ -1897,7 +2723,7 @@ class NodeImpl:
 
             line = line[1:][:-1]
             line = [x.strip() for x in line.split('|')]
-            if len(line) != 8:
+            if len(line) < 9:
                 print("unexpected line %d: %s" % (i, line))
                 continue
 
@@ -1916,6 +2742,7 @@ class NodeImpl:
             lqout = int(line[5])
             age = int(line[6])
             emac = str(line[7])
+            link = int(line[8])
 
             router_table[id] = {
                 'rloc16': rloc16,
@@ -1925,6 +2752,7 @@ class NodeImpl:
                 'lqout': lqout,
                 'age': age,
                 'emac': emac,
+                'link': link,
             }
 
         return router_table
@@ -1932,12 +2760,12 @@ class NodeImpl:
     def link_metrics_query_single_probe(self, dst_addr: str, linkmetrics_flags: str):
         cmd = 'linkmetrics query %s single %s' % (dst_addr, linkmetrics_flags)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def link_metrics_query_forward_tracking_series(self, dst_addr: str, series_id: int):
         cmd = 'linkmetrics query %s forward %d' % (dst_addr, series_id)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def link_metrics_mgmt_req_enhanced_ack_based_probing(self,
                                                          dst_addr: str,
@@ -1950,28 +2778,320 @@ class NodeImpl:
         else:
             cmd = cmd + " clear"
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def link_metrics_mgmt_req_forward_tracking_series(self, dst_addr: str, series_id: int, series_flags: str,
                                                       metrics_flags: str):
         cmd = "linkmetrics mgmt %s forward %d %s %s" % (dst_addr, series_id, series_flags, metrics_flags)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def link_metrics_send_link_probe(self, dst_addr: str, series_id: int, length: int):
         cmd = "linkmetrics probe %s %d %d" % (dst_addr, series_id, length)
         self.send_command(cmd)
-        self._expect('Done')
+        self._expect_done()
 
     def send_address_notification(self, dst: str, target: str, mliid: str):
         cmd = f'fake /a/an {dst} {target} {mliid}'
         self.send_command(cmd)
-        self._expect("Done")
+        self._expect_done()
 
     def send_proactive_backbone_notification(self, target: str, mliid: str, ltt: int):
         cmd = f'fake /b/ba {target} {mliid} {ltt}'
         self.send_command(cmd)
-        self._expect("Done")
+        self._expect_done()
+
+    def dns_get_config(self):
+        """
+        Returns the DNS config as a list of property dictionary (string key and string value).
+
+        Example output:
+        {
+            'Server': '[fd00:0:0:0:0:0:0:1]:1234'
+            'ResponseTimeout': '5000 ms'
+            'MaxTxAttempts': '2'
+            'RecursionDesired': 'no'
+        }
+        """
+        cmd = f'dns config'
+        self.send_command(cmd)
+        output = self._expect_command_output()
+        config = {}
+        for line in output:
+            k, v = line.split(': ')
+            config[k] = v
+        return config
+
+    def dns_set_config(self, config):
+        cmd = f'dns config {config}'
+        self.send_command(cmd)
+        self._expect_done()
+
+    def dns_resolve(self, hostname, server=None, port=53):
+        cmd = f'dns resolve {hostname}'
+        if server is not None:
+            cmd += f' {server} {port}'
+
+        self.send_command(cmd)
+        self.simulator.go(10)
+        output = self._expect_command_output()
+        dns_resp = output[0]
+        # example output: "DNS response for host1.default.service.arpa. - fd00:db8:0:0:fd3d:d471:1e8c:b60 TTL:7190 "
+        #                 " fd00:db8:0:0:0:ff:fe00:9000 TTL:7190"
+        addrs = dns_resp.strip().split(' - ')[1].split(' ')
+        ip = [item.strip() for item in addrs[::2]]
+        ttl = [int(item.split('TTL:')[1]) for item in addrs[1::2]]
+
+        return list(zip(ip, ttl))
+
+    def dns_resolve_service(self, instance, service, server=None, port=53):
+        """
+        Resolves the service instance and returns the instance information as a dict.
+
+        Example return value:
+            {
+                'port': 12345,
+                'priority': 0,
+                'weight': 0,
+                'host': 'ins1._ipps._tcp.default.service.arpa.',
+                'address': '2001::1',
+                'txt_data': 'a=00, b=02bb',
+                'srv_ttl': 7100,
+                'txt_ttl': 7100,
+                'aaaa_ttl': 7100,
+            }
+        """
+        instance = self._escape_escapable(instance)
+        cmd = f'dns service {instance} {service}'
+        if server is not None:
+            cmd += f' {server} {port}'
+
+        self.send_command(cmd)
+        self.simulator.go(10)
+        output = self._expect_command_output()
+
+        # Example output:
+        # DNS service resolution response for ins2 for service _ipps._tcp.default.service.arpa.
+        # Port:22222, Priority:2, Weight:2, TTL:7155
+        # Host:host2.default.service.arpa.
+        # HostAddress:0:0:0:0:0:0:0:0 TTL:0
+        # TXT:[a=00, b=02bb] TTL:7155
+        # Done
+
+        m = re.match(
+            r'.*Port:(\d+), Priority:(\d+), Weight:(\d+), TTL:(\d+)\s+Host:(.*?)\s+HostAddress:(\S+) TTL:(\d+)\s+TXT:\[(.*?)\] TTL:(\d+)',
+            '\r'.join(output))
+        if m:
+            port, priority, weight, srv_ttl, hostname, address, aaaa_ttl, txt_data, txt_ttl = m.groups()
+            return {
+                'port': int(port),
+                'priority': int(priority),
+                'weight': int(weight),
+                'host': hostname,
+                'address': address,
+                'txt_data': txt_data,
+                'srv_ttl': int(srv_ttl),
+                'txt_ttl': int(txt_ttl),
+                'aaaa_ttl': int(aaaa_ttl),
+            }
+        else:
+            raise Exception('dns resolve service failed: %s.%s' % (instance, service))
+
+    @staticmethod
+    def __parse_hex_string(hexstr: str) -> bytes:
+        assert (len(hexstr) % 2 == 0)
+        return bytes(int(hexstr[i:i + 2], 16) for i in range(0, len(hexstr), 2))
+
+    def dns_browse(self, service_name, server=None, port=53):
+        """
+        Browse the service and returns the instances.
+
+        Example return value:
+            {
+                'ins1': {
+                    'port': 12345,
+                    'priority': 1,
+                    'weight': 1,
+                    'host': 'ins1._ipps._tcp.default.service.arpa.',
+                    'address': '2001::1',
+                    'txt_data': 'a=00, b=11cf',
+                    'srv_ttl': 7100,
+                    'txt_ttl': 7100,
+                    'aaaa_ttl': 7100,
+                },
+                'ins2': {
+                    'port': 12345,
+                    'priority': 2,
+                    'weight': 2,
+                    'host': 'ins2._ipps._tcp.default.service.arpa.',
+                    'address': '2001::2',
+                    'txt_data': 'a=01, b=23dd',
+                    'srv_ttl': 7100,
+                    'txt_ttl': 7100,
+                    'aaaa_ttl': 7100,
+                }
+            }
+        """
+        cmd = f'dns browse {service_name}'
+        if server is not None:
+            cmd += f' {server} {port}'
+
+        self.send_command(cmd)
+        self.simulator.go(10)
+        output = '\n'.join(self._expect_command_output())
+
+        # Example output:
+        # ins2
+        #     Port:22222, Priority:2, Weight:2, TTL:7175
+        #     Host:host2.default.service.arpa.
+        #     HostAddress:fd00:db8:0:0:3205:28dd:5b87:6a63 TTL:7175
+        #     TXT:[a=00, b=11cf] TTL:7175
+        # ins1
+        #     Port:11111, Priority:1, Weight:1, TTL:7170
+        #     Host:host1.default.service.arpa.
+        #     HostAddress:fd00:db8:0:0:39f4:d9:eb4f:778 TTL:7170
+        #     TXT:[a=01, b=23dd] TTL:7170
+        # Done
+
+        result = {}
+        for ins, port, priority, weight, srv_ttl, hostname, address, aaaa_ttl, txt_data, txt_ttl in re.findall(
+                r'(.*?)\s+Port:(\d+), Priority:(\d+), Weight:(\d+), TTL:(\d+)\s*Host:(\S+)\s+HostAddress:(\S+) TTL:(\d+)\s+TXT:\[(.*?)\] TTL:(\d+)',
+                output):
+            result[ins] = {
+                'port': int(port),
+                'priority': int(priority),
+                'weight': int(weight),
+                'host': hostname,
+                'address': address,
+                'txt_data': txt_data,
+                'srv_ttl': int(srv_ttl),
+                'txt_ttl': int(txt_ttl),
+                'aaaa_ttl': int(aaaa_ttl),
+            }
+
+        return result
+
+    def set_mliid(self, mliid: str):
+        cmd = f'mliid {mliid}'
+        self.send_command(cmd)
+        self._expect_command_output()
+
+    def history_netinfo(self, num_entries=0):
+        """
+        Get the `netinfo` history list, parse each entry and return
+        a list of dictionary (string key and string value) entries.
+
+        Example of return value:
+        [
+            {
+                'age': '00:00:00.000 ago',
+                'role': 'disabled',
+                'mode': 'rdn',
+                'rloc16': '0x7400',
+                'partition-id': '1318093703'
+            },
+            {
+                'age': '00:00:02.588 ago',
+                'role': 'leader',
+                'mode': 'rdn',
+                'rloc16': '0x7400',
+                'partition-id': '1318093703'
+            }
+        ]
+        """
+        cmd = f'history netinfo list {num_entries}'
+        self.send_command(cmd)
+        output = self._expect_command_output()
+        netinfos = []
+        for entry in output:
+            netinfo = {}
+            age, info = entry.split(' -> ')
+            netinfo['age'] = age
+            for item in info.split(' '):
+                k, v = item.split(':')
+                netinfo[k] = v
+            netinfos.append(netinfo)
+        return netinfos
+
+    def history_rx(self, num_entries=0):
+        """
+        Get the IPv6 RX history list, parse each entry and return
+        a list of dictionary (string key and string value) entries.
+
+        Example of return value:
+        [
+            {
+                'age': '00:00:01.999',
+                'type': 'ICMP6(EchoReqst)',
+                'len': '16',
+                'sec': 'yes',
+                'prio': 'norm',
+                'rss': '-20',
+                'from': '0xac00',
+                'radio': '15.4',
+                'src': '[fd00:db8:0:0:2cfa:fd61:58a9:f0aa]:0',
+                'dst': '[fd00:db8:0:0:ed7e:2d04:e543:eba5]:0',
+            }
+        ]
+        """
+        cmd = f'history rx list {num_entries}'
+        self.send_command(cmd)
+        return self._parse_history_rx_tx_ouput(self._expect_command_output())
+
+    def history_tx(self, num_entries=0):
+        """
+        Get the IPv6 TX history list, parse each entry and return
+        a list of dictionary (string key and string value) entries.
+
+        Example of return value:
+        [
+            {
+                'age': '00:00:01.999',
+                'type': 'ICMP6(EchoReply)',
+                'len': '16',
+                'sec': 'yes',
+                'prio': 'norm',
+                'to': '0xac00',
+                'tx-success': 'yes',
+                'radio': '15.4',
+                'src': '[fd00:db8:0:0:ed7e:2d04:e543:eba5]:0',
+                'dst': '[fd00:db8:0:0:2cfa:fd61:58a9:f0aa]:0',
+
+            }
+        ]
+        """
+        cmd = f'history tx list {num_entries}'
+        self.send_command(cmd)
+        return self._parse_history_rx_tx_ouput(self._expect_command_output())
+
+    def _parse_history_rx_tx_ouput(self, lines):
+        rxtx_list = []
+        for line in lines:
+            if line.strip().startswith('type:'):
+                for item in line.strip().split(' '):
+                    k, v = item.split(':')
+                    entry[k] = v
+            elif line.strip().startswith('src:'):
+                entry['src'] = line[4:]
+            elif line.strip().startswith('dst:'):
+                entry['dst'] = line[4:]
+                rxtx_list.append(entry)
+            else:
+                entry = {}
+                entry['age'] = line
+
+        return rxtx_list
+
+    def set_router_id_range(self, min_router_id: int, max_router_id: int):
+        cmd = f'routeridrange {min_router_id} {max_router_id}'
+        self.send_command(cmd)
+        self._expect_command_output()
+
+    def get_router_id_range(self):
+        cmd = 'routeridrange'
+        self.send_command(cmd)
+        line = self._expect_command_output()[0]
+        return [int(item) for item in line.split()]
 
 
 class Node(NodeImpl, OtCli):
@@ -1981,6 +3101,18 @@ class Node(NodeImpl, OtCli):
 class LinuxHost():
     PING_RESPONSE_PATTERN = re.compile(r'\d+ bytes from .*:.*')
     ETH_DEV = config.BACKBONE_IFNAME
+
+    def enable_ether(self):
+        """Enable the ethernet interface.
+        """
+
+        self.bash(f'ifconfig {self.ETH_DEV} up')
+
+    def disable_ether(self):
+        """Disable the ethernet interface.
+        """
+
+        self.bash(f'ifconfig {self.ETH_DEV} down')
 
     def get_ether_addrs(self):
         output = self.bash(f'ip -6 addr list dev {self.ETH_DEV}')
@@ -2013,8 +3145,9 @@ class LinuxHost():
         cmd = f'python3 /app/third_party/openthread/repo/tests/scripts/thread-cert/mcast6.py {self.ETH_DEV} {ip} &'
         self.bash(cmd)
 
-    def ping_ether(self, ipaddr, num_responses=1, size=None, timeout=5, ttl=None) -> int:
-        cmd = f'ping -6 {ipaddr} -I eth0 -c {num_responses} -W {timeout}'
+    def ping_ether(self, ipaddr, num_responses=1, size=None, timeout=5, ttl=None, interface='eth0') -> int:
+
+        cmd = f'ping -6 {ipaddr} -I {interface} -c {num_responses} -W {timeout}'
         if size is not None:
             cmd += f' -s {size}'
 
@@ -2033,11 +3166,28 @@ class LinuxHost():
         return resp_count
 
     def _getBackboneGua(self) -> Optional[str]:
-        for ip6Addr in self.get_addrs():
-            if re.match(config.BACKBONE_PREFIX_REGEX_PATTERN, ip6Addr, re.I):
-                return ip6Addr
+        for addr in self.get_ether_addrs():
+            if re.match(config.BACKBONE_PREFIX_REGEX_PATTERN, addr, re.I):
+                return addr
 
         return None
+
+    def _getInfraUla(self) -> Optional[str]:
+        """ Returns the ULA addresses autoconfigured on the infra link.
+        """
+        addrs = []
+        for addr in self.get_ether_addrs():
+            if re.match(config.ONLINK_PREFIX_REGEX_PATTERN, addr, re.I):
+                addrs.append(addr)
+
+        return addrs
+
+    def _getInfraGua(self) -> Optional[str]:
+        """ Returns the GUA addresses autoconfigured on the infra link.
+        """
+
+        gua_prefix = config.ONLINK_GUA_PREFIX.split('::/')[0]
+        return [addr for addr in self.get_ether_addrs() if addr.startswith(gua_prefix)]
 
     def ping(self, *args, **kwargs):
         backbone = kwargs.pop('backbone', False)
@@ -2045,6 +3195,15 @@ class LinuxHost():
             return self.ping_ether(*args, **kwargs)
         else:
             return super().ping(*args, **kwargs)
+
+    def udp_send_host(self, ipaddr, port, data, hop_limit=None):
+        if hop_limit is None:
+            if ipaddress.ip_address(ipaddr).is_multicast:
+                hop_limit = 10
+            else:
+                hop_limit = 64
+        cmd = f'python3 /app/third_party/openthread/repo/tests/scripts/thread-cert/udp_send_host.py {ipaddr} {port} "{data}" {hop_limit}'
+        self.bash(cmd)
 
     def add_ipmaddr(self, *args, **kwargs):
         backbone = kwargs.pop('backbone', False)
@@ -2061,8 +3220,160 @@ class LinuxHost():
                   (self.ETH_DEV, self.ETH_DEV))
         self.bash(f'ip -6 neigh list dev {self.ETH_DEV}')
 
+    def browse_mdns_services(self, name, timeout=2):
+        """ Browse mDNS services on the ethernet.
+
+        :param name: the service type name in format of '<service-name>.<protocol>'.
+        :param timeout: timeout value in seconds before returning.
+        :return: A list of service instance names.
+        """
+
+        self.bash(f'dns-sd -Z {name} local. > /tmp/{name} 2>&1 &')
+        time.sleep(timeout)
+        self.bash('pkill dns-sd')
+
+        instances = []
+        for line in self.bash(f'cat /tmp/{name}', encoding='raw_unicode_escape'):
+            elements = line.split()
+            if len(elements) >= 3 and elements[0] == name and elements[1] == 'PTR':
+                instances.append(elements[2][:-len('.' + name)])
+        return instances
+
+    def discover_mdns_service(self, instance, name, host_name, timeout=2):
+        """ Discover/resolve the mDNS service on ethernet.
+
+        :param instance: the service instance name.
+        :param name: the service name in format of '<service-name>.<protocol>'.
+        :param host_name: the host name this service points to. The domain
+                          should not be included.
+        :param timeout: timeout value in seconds before returning.
+        :return: a dict of service properties or None.
+
+        The return value is a dict with the same key/values of srp_server_get_service
+        except that we don't have a `deleted` field here.
+        """
+        host_name_file = self.bash('mktemp')[0].strip()
+        service_data_file = self.bash('mktemp')[0].strip()
+
+        self.bash(f'dns-sd -Z {name} local. > {service_data_file} 2>&1 &')
+        time.sleep(timeout)
+
+        full_service_name = f'{instance}.{name}'
+        # When hostname is unspecified, extract hostname from browse result
+        if host_name is None:
+            for line in self.bash(f'cat {service_data_file}', encoding='raw_unicode_escape'):
+                elements = line.split()
+                if len(elements) >= 6 and elements[0] == full_service_name and elements[1] == 'SRV':
+                    host_name = elements[5].split('.')[0]
+                    break
+
+        assert (host_name is not None)
+        self.bash(f'dns-sd -G v6 {host_name}.local. > {host_name_file} 2>&1 &')
+        time.sleep(timeout)
+
+        self.bash('pkill dns-sd')
+        addresses = []
+        service = {}
+
+        logging.debug(self.bash(f'cat {host_name_file}', encoding='raw_unicode_escape'))
+        logging.debug(self.bash(f'cat {service_data_file}', encoding='raw_unicode_escape'))
+
+        # example output in the host file:
+        # Timestamp     A/R Flags if Hostname                               Address                                     TTL
+        # 9:38:09.274  Add     23 48 my-host.local.                         2001:0000:0000:0000:0000:0000:0000:0002%<0>  120
+        #
+        for line in self.bash(f'cat {host_name_file}', encoding='raw_unicode_escape'):
+            elements = line.split()
+            fullname = f'{host_name}.local.'
+            if fullname not in elements:
+                continue
+            addresses.append(elements[elements.index(fullname) + 1].split('%')[0])
+
+        logging.debug(f'addresses of {host_name}: {addresses}')
+
+        # example output of in the service file:
+        # _ipps._tcp                                      PTR     my-service._ipps._tcp
+        # my-service._ipps._tcp                           SRV     0 0 12345 my-host.local. ; Replace with unicast FQDN of target host
+        # my-service._ipps._tcp                           TXT     ""
+        #
+        is_txt = False
+        txt = ''
+        for line in self.bash(f'cat {service_data_file}', encoding='raw_unicode_escape'):
+            elements = line.split()
+            if len(elements) >= 2 and elements[0] == full_service_name and elements[1] == 'TXT':
+                is_txt = True
+            if is_txt:
+                txt += line.strip()
+                if line.strip().endswith('"'):
+                    is_txt = False
+                    txt_dict = self.__parse_dns_sd_txt(txt)
+                    logging.info(f'txt = {txt_dict}')
+                    service['txt'] = txt_dict
+
+            if not elements or elements[0] != full_service_name:
+                continue
+            if elements[1] == 'SRV':
+                service['fullname'] = elements[0]
+                service['instance'] = instance
+                service['name'] = name
+                service['priority'] = int(elements[2])
+                service['weight'] = int(elements[3])
+                service['port'] = int(elements[4])
+                service['host_fullname'] = elements[5]
+                assert (service['host_fullname'] == f'{host_name}.local.')
+                service['host'] = host_name
+                service['addresses'] = addresses
+        return service if 'addresses' in service and service['addresses'] else None
+
+    def start_radvd_service(self, prefix, slaac):
+        self.bash("""cat >/etc/radvd.conf <<EOF
+interface eth0
+{
+    AdvSendAdvert on;
+
+    AdvReachableTime 200;
+    AdvRetransTimer 200;
+    AdvDefaultLifetime 1800;
+    MinRtrAdvInterval 1200;
+    MaxRtrAdvInterval 1800;
+    AdvDefaultPreference low;
+
+    prefix %s
+    {
+        AdvOnLink on;
+        AdvAutonomous %s;
+        AdvRouterAddr off;
+        AdvPreferredLifetime 40;
+        AdvValidLifetime 60;
+    };
+};
+EOF
+""" % (prefix, 'on' if slaac else 'off'))
+        self.bash('service radvd start')
+        self.bash('service radvd status')  # Make sure radvd service is running
+
+    def stop_radvd_service(self):
+        self.bash('service radvd stop')
+
+    def kill_radvd_service(self):
+        self.bash('pkill radvd')
+
+    def __parse_dns_sd_txt(self, line: str):
+        # Example TXT entry:
+        # "xp=\\000\\013\\184\\000\\000\\000\\000\\000"
+        txt = {}
+        for entry in re.findall(r'"((?:[^\\]|\\.)*?)"', line):
+            if '=' not in entry:
+                continue
+
+            k, v = entry.split('=', 1)
+            txt[k] = v
+
+        return txt
+
 
 class OtbrNode(LinuxHost, NodeImpl, OtbrDocker):
+    TUN_DEV = config.THREAD_IFNAME
     is_otbr = True
     is_bbr = True  # OTBR is also BBR
     node_type = 'otbr-docker'
@@ -2070,12 +3381,18 @@ class OtbrNode(LinuxHost, NodeImpl, OtbrDocker):
     def __repr__(self):
         return f'Otbr<{self.nodeid}>'
 
-    def get_addrs(self) -> List[str]:
-        return super().get_addrs() + self.get_ether_addrs()
-
     def start(self):
         self._setup_sysctl()
+        self.set_log_level(5)
         super().start()
+
+    def add_ipaddr(self, addr):
+        cmd = f'ip -6 addr add {addr}/64 dev {self.TUN_DEV}'
+        self.bash(cmd)
+
+    def add_ipmaddr_tun(self, ip: str):
+        cmd = f'python3 /app/third_party/openthread/repo/tests/scripts/thread-cert/mcast6.py {self.TUN_DEV} {ip} &'
+        self.bash(cmd)
 
 
 class HostNode(LinuxHost, OtbrDocker):
@@ -2085,19 +3402,34 @@ class HostNode(LinuxHost, OtbrDocker):
         self.nodeid = nodeid
         self.name = name or ('Host%d' % nodeid)
         super().__init__(nodeid, **kwargs)
+        self.bash('service otbr-agent stop')
 
-    def start(self):
+    def start(self, start_radvd=True, prefix=config.DOMAIN_PREFIX, slaac=False):
         self._setup_sysctl()
-        self._service_radvd_start()
+        if start_radvd:
+            self.start_radvd_service(prefix, slaac)
+        else:
+            self.stop_radvd_service()
 
     def stop(self):
-        self._service_radvd_stop()
+        self.stop_radvd_service()
 
     def get_addrs(self) -> List[str]:
         return self.get_ether_addrs()
 
     def __repr__(self):
         return f'Host<{self.nodeid}>'
+
+    def get_matched_ula_addresses(self, prefix):
+        """Get the IPv6 addresses that matches given prefix.
+        """
+
+        addrs = []
+        for addr in self.get_ip6_address(config.ADDRESS_TYPE.ONLINK_ULA):
+            if IPv6Address(addr) in IPv6Network(prefix):
+                addrs.append(addr)
+
+        return addrs
 
     def get_ip6_address(self, address_type: config.ADDRESS_TYPE):
         """Get specific type of IPv6 address configured on thread device.
@@ -2108,37 +3440,15 @@ class HostNode(LinuxHost, OtbrDocker):
         Returns:
             IPv6 address string.
         """
-        assert address_type == config.ADDRESS_TYPE.BACKBONE_GUA
 
         if address_type == config.ADDRESS_TYPE.BACKBONE_GUA:
             return self._getBackboneGua()
+        elif address_type == config.ADDRESS_TYPE.ONLINK_ULA:
+            return self._getInfraUla()
+        elif address_type == config.ADDRESS_TYPE.ONLINK_GUA:
+            return self._getInfraGua()
         else:
-            return None
-
-    def _service_radvd_start(self):
-        self.bash("""cat >/etc/radvd.conf <<EOF
-interface eth0
-{
-	AdvSendAdvert on;
-
-	MinRtrAdvInterval 3;
-	MaxRtrAdvInterval 30;
-	AdvDefaultPreference low;
-
-	prefix %s
-	{
-		AdvOnLink on;
-		AdvAutonomous off;
-		AdvRouterAddr off;
-	};
-};
-EOF
-""" % config.DOMAIN_PREFIX)
-        self.bash('service radvd start')
-        self.bash('service radvd status')  # Make sure radvd service is running
-
-    def _service_radvd_stop(self):
-        self.bash('service radvd stop')
+            raise ValueError(f'unsupported address type: {address_type}')
 
 
 if __name__ == '__main__':

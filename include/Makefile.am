@@ -43,18 +43,21 @@ openthread_headers                      = \
     openthread/channel_monitor.h          \
     openthread/child_supervision.h        \
     openthread/cli.h                      \
-    openthread/coap_secure.h              \
     openthread/coap.h                     \
+    openthread/coap_secure.h              \
     openthread/commissioner.h             \
+    openthread/config.h                   \
     openthread/crypto.h                   \
     openthread/dataset.h                  \
     openthread/dataset_ftd.h              \
     openthread/dataset_updater.h          \
     openthread/diag.h                     \
     openthread/dns.h                      \
-    openthread/entropy.h                  \
+    openthread/dns_client.h               \
+    openthread/dnssd_server.h             \
     openthread/error.h                    \
     openthread/heap.h                     \
+    openthread/history_tracker.h          \
     openthread/icmp6.h                    \
     openthread/instance.h                 \
     openthread/ip6.h                      \
@@ -69,15 +72,22 @@ openthread_headers                      = \
     openthread/multi_radio.h              \
     openthread/ncp.h                      \
     openthread/netdata.h                  \
+    openthread/netdata_publisher.h        \
     openthread/netdiag.h                  \
     openthread/network_time.h             \
+    openthread/ping_sender.h              \
     openthread/random_crypto.h            \
     openthread/random_noncrypto.h         \
     openthread/server.h                   \
     openthread/sntp.h                     \
+    openthread/srp_client.h               \
+    openthread/srp_client_buffers.h       \
+    openthread/srp_server.h               \
     openthread/tasklet.h                  \
+    openthread/tcp.h                      \
     openthread/thread.h                   \
     openthread/thread_ftd.h               \
+    openthread/trel.h                     \
     openthread/udp.h                      \
     $(NULL)
 
@@ -87,22 +97,25 @@ dist_openthread_HEADERS = $(openthread_headers)
 ot_platform_headers                     = \
     openthread/platform/alarm-micro.h     \
     openthread/platform/alarm-milli.h     \
+    openthread/platform/crypto.h          \
+    openthread/platform/debug_uart.h      \
     openthread/platform/diag.h            \
-    openthread/platform/flash.h           \
+    openthread/platform/dso_transport.h   \
     openthread/platform/entropy.h         \
-    openthread/platform/memory.h          \
-    openthread/platform/misc.h            \
+    openthread/platform/flash.h           \
+    openthread/platform/infra_if.h        \
     openthread/platform/logging.h         \
+    openthread/platform/memory.h          \
+    openthread/platform/messagepool.h     \
+    openthread/platform/misc.h            \
     openthread/platform/otns.h            \
     openthread/platform/radio.h           \
-    openthread/platform/time.h            \
-    openthread/platform/uart.h            \
-    openthread/platform/udp.h             \
-    openthread/platform/spi-slave.h       \
     openthread/platform/settings.h        \
-    openthread/platform/messagepool.h     \
+    openthread/platform/spi-slave.h       \
+    openthread/platform/time.h            \
     openthread/platform/toolchain.h       \
-    openthread/platform/trel-udp6.h       \
+    openthread/platform/trel.h            \
+    openthread/platform/udp.h             \
     $(NULL)
 
 ot_platformdir = $(includedir)/openthread/platform

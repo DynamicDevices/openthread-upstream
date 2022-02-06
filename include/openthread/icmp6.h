@@ -29,7 +29,7 @@
 /**
  * @file
  * @brief
- *  This file defines the top-level icmp6 functions for the OpenThread library.
+ *  This file defines the top-level ICMPv6 functions for the OpenThread library.
  */
 
 #ifndef OPENTHREAD_ICMP6_H_
@@ -64,6 +64,8 @@ typedef enum otIcmp6Type
     OT_ICMP6_TYPE_PARAMETER_PROBLEM = 4,   ///< Parameter Problem
     OT_ICMP6_TYPE_ECHO_REQUEST      = 128, ///< Echo Request
     OT_ICMP6_TYPE_ECHO_REPLY        = 129, ///< Echo Reply
+    OT_ICMP6_TYPE_ROUTER_SOLICIT    = 133, ///< Router Solicitation
+    OT_ICMP6_TYPE_ROUTER_ADVERT     = 134, ///< Router Advertisement
 } otIcmp6Type;
 
 /**

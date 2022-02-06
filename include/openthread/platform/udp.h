@@ -35,20 +35,11 @@
 #ifndef OPENTHREAD_PLATFORM_UDP_H_
 #define OPENTHREAD_PLATFORM_UDP_H_
 
+#include <openthread/udp.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/**
- * This enumeration defines the OpenThread network interface identifiers.
- *
- */
-typedef enum otNetifIdentifier
-{
-    OT_NETIF_UNSPECIFIED = 0, ///< Unspecified network interface.
-    OT_NETIF_THREAD,          ///< The Thread interface.
-    OT_NETIF_BACKBONE,        ///< The Backbone interface.
-} otNetifIdentifier;
 
 /**
  * This function initializes the UDP socket by platform.

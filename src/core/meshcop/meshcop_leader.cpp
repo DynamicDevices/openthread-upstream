@@ -31,16 +31,17 @@
  *   This file implements a MeshCoP Leader.
  */
 
-#if OPENTHREAD_FTD
-
 #include "meshcop_leader.hpp"
+
+#if OPENTHREAD_FTD
 
 #include <stdio.h>
 
 #include "coap/coap_message.hpp"
+#include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 #include "common/random.hpp"
 #include "meshcop/meshcop.hpp"
@@ -56,18 +57,17 @@ Leader::Leader(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mPetition(UriPath::kLeaderPetition, Leader::HandlePetition, this)
     , mKeepAlive(UriPath::kLeaderKeepAlive, Leader::HandleKeepAlive, this)
-    , mTimer(aInstance, HandleTimer, this)
+    , mTimer(aInstance, HandleTimer)
     , mDelayTimerMinimal(DelayTimerTlv::kDelayTimerMinimal)
     , mSessionId(Random::NonCrypto::GetUint16())
 {
-    Get<Tmf::TmfAgent>().AddResource(mPetition);
-    Get<Tmf::TmfAgent>().AddResource(mKeepAlive);
+    Get<Tmf::Agent>().AddResource(mPetition);
+    Get<Tmf::Agent>().AddResource(mKeepAlive);
 }
 
 void Leader::HandlePetition(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo)
 {
-    static_cast<Leader *>(aContext)->HandlePetition(*static_cast<Coap::Message *>(aMessage),
-                                                    *static_cast<const Ip6::MessageInfo *>(aMessageInfo));
+    static_cast<Leader *>(aContext)->HandlePetition(AsCoapMessage(aMessage), AsCoreType(aMessageInfo));
 }
 
 void Leader::HandlePetition(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
@@ -123,10 +123,10 @@ void Leader::SendPetitionResponse(const Coap::Message &   aRequest,
                                   const Ip6::MessageInfo &aMessageInfo,
                                   StateTlv::State         aState)
 {
-    otError        error = OT_ERROR_NONE;
+    Error          error = kErrorNone;
     Coap::Message *message;
 
-    VerifyOrExit((message = NewMeshCoPMessage(Get<Tmf::TmfAgent>())) != nullptr, error = OT_ERROR_NO_BUFS);
+    VerifyOrExit((message = Get<Tmf::Agent>().NewPriorityMessage()) != nullptr, error = kErrorNoBufs);
 
     SuccessOrExit(error = message->SetDefaultResponseHeader(aRequest));
     SuccessOrExit(error = message->SetPayloadMarker());
@@ -143,7 +143,7 @@ void Leader::SendPetitionResponse(const Coap::Message &   aRequest,
         SuccessOrExit(error = Tlv::Append<CommissionerSessionIdTlv>(*message, mSessionId));
     }
 
-    SuccessOrExit(error = Get<Tmf::TmfAgent>().SendMessage(*message, aMessageInfo));
+    SuccessOrExit(error = Get<Tmf::Agent>().SendMessage(*message, aMessageInfo));
 
     otLogInfoMeshCoP("sent petition response");
 
@@ -154,8 +154,7 @@ exit:
 
 void Leader::HandleKeepAlive(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo)
 {
-    static_cast<Leader *>(aContext)->HandleKeepAlive(*static_cast<Coap::Message *>(aMessage),
-                                                     *static_cast<const Ip6::MessageInfo *>(aMessageInfo));
+    static_cast<Leader *>(aContext)->HandleKeepAlive(AsCoapMessage(aMessage), AsCoreType(aMessageInfo));
 }
 
 void Leader::HandleKeepAlive(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
@@ -171,8 +170,8 @@ void Leader::HandleKeepAlive(Coap::Message &aMessage, const Ip6::MessageInfo &aM
 
     SuccessOrExit(Tlv::Find<CommissionerSessionIdTlv>(aMessage, sessionId));
 
-    borderAgentLocator = static_cast<BorderAgentLocatorTlv *>(
-        Get<NetworkData::Leader>().GetCommissioningDataSubTlv(Tlv::kBorderAgentLocator));
+    borderAgentLocator =
+        As<BorderAgentLocatorTlv>(Get<NetworkData::Leader>().GetCommissioningDataSubTlv(Tlv::kBorderAgentLocator));
 
     if ((borderAgentLocator == nullptr) || (sessionId != mSessionId))
     {
@@ -207,17 +206,17 @@ void Leader::SendKeepAliveResponse(const Coap::Message &   aRequest,
                                    const Ip6::MessageInfo &aMessageInfo,
                                    StateTlv::State         aState)
 {
-    otError        error = OT_ERROR_NONE;
+    Error          error = kErrorNone;
     Coap::Message *message;
 
-    VerifyOrExit((message = NewMeshCoPMessage(Get<Tmf::TmfAgent>())) != nullptr, error = OT_ERROR_NO_BUFS);
+    VerifyOrExit((message = Get<Tmf::Agent>().NewPriorityMessage()) != nullptr, error = kErrorNoBufs);
 
     SuccessOrExit(error = message->SetDefaultResponseHeader(aRequest));
     SuccessOrExit(error = message->SetPayloadMarker());
 
     SuccessOrExit(error = Tlv::Append<StateTlv>(*message, aState));
 
-    SuccessOrExit(error = Get<Tmf::TmfAgent>().SendMessage(*message, aMessageInfo));
+    SuccessOrExit(error = Get<Tmf::Agent>().SendMessage(*message, aMessageInfo));
 
     otLogInfoMeshCoP("sent keep alive response");
 
@@ -228,18 +227,18 @@ exit:
 
 void Leader::SendDatasetChanged(const Ip6::Address &aAddress)
 {
-    otError          error = OT_ERROR_NONE;
+    Error            error = kErrorNone;
     Ip6::MessageInfo messageInfo;
     Coap::Message *  message;
 
-    VerifyOrExit((message = NewMeshCoPMessage(Get<Tmf::TmfAgent>())) != nullptr, error = OT_ERROR_NO_BUFS);
+    VerifyOrExit((message = Get<Tmf::Agent>().NewPriorityMessage()) != nullptr, error = kErrorNoBufs);
 
     SuccessOrExit(error = message->InitAsConfirmablePost(UriPath::kDatasetChanged));
 
     messageInfo.SetSockAddr(Get<Mle::MleRouter>().GetMeshLocal16());
     messageInfo.SetPeerAddr(aAddress);
     messageInfo.SetPeerPort(Tmf::kUdpPort);
-    SuccessOrExit(error = Get<Tmf::TmfAgent>().SendMessage(*message, messageInfo));
+    SuccessOrExit(error = Get<Tmf::Agent>().SendMessage(*message, messageInfo));
 
     otLogInfoMeshCoP("sent dataset changed");
 
@@ -248,11 +247,11 @@ exit:
     LogError("send dataset changed", error);
 }
 
-otError Leader::SetDelayTimerMinimal(uint32_t aDelayTimerMinimal)
+Error Leader::SetDelayTimerMinimal(uint32_t aDelayTimerMinimal)
 {
-    otError error = OT_ERROR_NONE;
+    Error error = kErrorNone;
     VerifyOrExit((aDelayTimerMinimal != 0 && aDelayTimerMinimal < DelayTimerTlv::kDelayTimerDefault),
-                 error = OT_ERROR_INVALID_ARGS);
+                 error = kErrorInvalidArgs);
     mDelayTimerMinimal = aDelayTimerMinimal;
 
 exit:
@@ -266,7 +265,7 @@ uint32_t Leader::GetDelayTimerMinimal(void) const
 
 void Leader::HandleTimer(Timer &aTimer)
 {
-    aTimer.GetOwner<Leader>().HandleTimer();
+    aTimer.Get<Leader>().HandleTimer();
 }
 
 void Leader::HandleTimer(void)

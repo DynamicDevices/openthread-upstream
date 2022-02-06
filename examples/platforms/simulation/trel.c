@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2019, The OpenThread Authors.
+ *  Copyright (c) 2019-21, The OpenThread Authors.
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@
 #include "platform-simulation.h"
 
 #include <openthread/random_noncrypto.h>
-#include <openthread/platform/trel-udp6.h>
+#include <openthread/platform/trel.h>
 
 #include "utils/code_utils.h"
 
@@ -44,34 +44,75 @@
 
 #define TREL_MAX_PACKET_SIZE 1800
 
-#define TREL_MAX_PENDING_TX 5
+#define TREL_MAX_PENDING_TX 64
 
-typedef struct PendingTx
+#define TREL_MAX_SERVICE_TXT_DATA_LEN 128
+
+typedef enum MessageType
 {
-    uint8_t      mPacketBuffer[TREL_MAX_PACKET_SIZE];
-    uint16_t     mPacketLength;
-    otIp6Address mDestIp6Address;
-} PendingTx;
+    TREL_DATA_MESSAGE,
+    TREL_DNSSD_BROWSE_MESSAGE,
+    TREL_DNSSD_ADD_SERVICE_MESSAGE,
+    TREL_DNSSD_REMOVE_SERVICE_MESSAGE,
+} MessageType;
 
-static uint8_t   sNumPendingTx = 0;
-static PendingTx sPendingTx[TREL_MAX_PENDING_TX];
+typedef struct Message
+{
+    MessageType mType;
+    otSockAddr  mSockAddr;                   // Destination (when TREL_DATA_MESSAGE), or peer addr (when DNS-SD service)
+    uint16_t    mDataLength;                 // mData length
+    uint8_t     mData[TREL_MAX_PACKET_SIZE]; // TREL UDP packet (when TREL_DATA_MESSAGE), or service TXT data.
+} Message;
+
+static uint8_t sNumPendingTx = 0;
+static Message sPendingTx[TREL_MAX_PENDING_TX];
 
 static int      sTxFd       = -1;
 static int      sRxFd       = -1;
 static uint16_t sPortOffset = 0;
-static bool     sEnabled    = true;
+static bool     sEnabled    = false;
+static uint16_t sUdpPort;
+
+static bool     sServiceRegistered = false;
+static uint16_t sServicePort;
+static uint8_t  sServiceTxtLength;
+static char     sServiceTxtData[TREL_MAX_SERVICE_TXT_DATA_LEN];
 
 #if DEBUG_LOG
-static void dumpBuffer(const uint8_t *aBuffer, uint16_t aLength)
+static void dumpBuffer(const void *aBuffer, uint16_t aLength)
 {
+    const uint8_t *buffer = (const uint8_t *)aBuffer;
     fprintf(stderr, "[ (len:%d) ", aLength);
 
     while (aLength--)
     {
-        fprintf(stderr, "%02x ", *aBuffer++);
+        fprintf(stderr, "%02x ", *buffer++);
     }
 
     fprintf(stderr, "]");
+}
+
+static const char *messageTypeToString(MessageType aType)
+{
+    const char *str = "unknown";
+
+    switch (aType)
+    {
+    case TREL_DATA_MESSAGE:
+        str = "data";
+        break;
+    case TREL_DNSSD_BROWSE_MESSAGE:
+        str = "browse";
+        break;
+    case TREL_DNSSD_ADD_SERVICE_MESSAGE:
+        str = "add-service";
+        break;
+    case TREL_DNSSD_REMOVE_SERVICE_MESSAGE:
+        str = "remove-service";
+        break;
+    }
+
+    return str;
 }
 #endif
 
@@ -86,8 +127,9 @@ static void initFds(void)
 
     otEXPECT_ACTION((fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) != -1, perror("socket(sTxFd)"));
 
+    sUdpPort                 = (uint16_t)(TREL_SIM_PORT + sPortOffset + gNodeId);
     sockaddr.sin_family      = AF_INET;
-    sockaddr.sin_port        = htons((uint16_t)(TREL_SIM_PORT + sPortOffset + gNodeId));
+    sockaddr.sin_port        = htons(sUdpPort);
     sockaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
     otEXPECT_ACTION(setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &sockaddr.sin_addr, sizeof(sockaddr.sin_addr)) != -1,
@@ -148,7 +190,12 @@ static void deinitFds(void)
     }
 }
 
-void sendPendingTxPackets(void)
+static uint16_t getMessageSize(const Message *aMessage)
+{
+    return (uint16_t)(&aMessage->mData[aMessage->mDataLength] - (const uint8_t *)aMessage);
+}
+
+static void sendPendingTxMessages(void)
 {
     ssize_t            rval;
     struct sockaddr_in sockaddr;
@@ -161,14 +208,14 @@ void sendPendingTxPackets(void)
 
     for (uint8_t i = 0; i < sNumPendingTx; i++)
     {
+        uint16_t size = getMessageSize(&sPendingTx[i]);
+
 #if DEBUG_LOG
-        fprintf(stderr, "\n[trel-udp] Sending packet (num:%d)", i);
-        dumpBuffer(sPendingTx[i].mPacketBuffer, sPendingTx[i].mPacketLength);
-        fprintf(stderr, "\n");
+        fprintf(stderr, "\r\n[trel-sim] Sending message (num:%d, type:%s, port:%u)\r\n", i,
+                messageTypeToString(sPendingTx[i].mType), sPendingTx[i].mSockAddr.mPort);
 #endif
 
-        rval = sendto(sTxFd, sPendingTx[i].mPacketBuffer, sPendingTx[i].mPacketLength, 0, (struct sockaddr *)&sockaddr,
-                      sizeof(sockaddr));
+        rval = sendto(sTxFd, &sPendingTx[i], size, 0, (struct sockaddr *)&sockaddr, sizeof(sockaddr));
 
         if (rval < 0)
         {
@@ -180,61 +227,167 @@ void sendPendingTxPackets(void)
     sNumPendingTx = 0;
 }
 
+static void sendBrowseMessage(void)
+{
+    Message *message;
+
+    assert(sNumPendingTx < TREL_MAX_PENDING_TX);
+    message = &sPendingTx[sNumPendingTx++];
+
+    message->mType       = TREL_DNSSD_BROWSE_MESSAGE;
+    message->mDataLength = 0;
+
+#if DEBUG_LOG
+    fprintf(stderr, "\r\n[trel-sim] sendBrowseMessage()\r\n");
+#endif
+}
+
+static void sendServiceMessage(MessageType aType)
+{
+    Message *message;
+
+    assert((aType == TREL_DNSSD_ADD_SERVICE_MESSAGE) || (aType == TREL_DNSSD_REMOVE_SERVICE_MESSAGE));
+
+    assert(sNumPendingTx < TREL_MAX_PENDING_TX);
+    message = &sPendingTx[sNumPendingTx++];
+
+    message->mType = aType;
+    memset(&message->mSockAddr, 0, sizeof(otSockAddr));
+    message->mSockAddr.mPort = sServicePort;
+    message->mDataLength     = sServiceTxtLength;
+    memcpy(message->mData, sServiceTxtData, sServiceTxtLength);
+
+#if DEBUG_LOG
+    fprintf(stderr, "\r\n[trel-sim] sendServiceMessage(%s): service-port:%u, txt-len:%u\r\n",
+            aType == TREL_DNSSD_ADD_SERVICE_MESSAGE ? "add" : "remove", sServicePort, sServiceTxtLength);
+#endif
+}
+
+static void processMessage(otInstance *aInstance, Message *aMessage, uint16_t aLength)
+{
+    otPlatTrelPeerInfo peerInfo;
+
+#if DEBUG_LOG
+    fprintf(stderr, "\r\n[trel-sim] processMessage(len:%u, type:%s, port:%u)\r\n", aLength,
+            messageTypeToString(aMessage->mType), aMessage->mSockAddr.mPort);
+#endif
+
+    otEXPECT(aLength > 0);
+    otEXPECT(getMessageSize(aMessage) == aLength);
+
+    switch (aMessage->mType)
+    {
+    case TREL_DATA_MESSAGE:
+        otEXPECT(aMessage->mSockAddr.mPort == sUdpPort);
+        otPlatTrelHandleReceived(aInstance, aMessage->mData, aMessage->mDataLength);
+        break;
+
+    case TREL_DNSSD_BROWSE_MESSAGE:
+        sendServiceMessage(TREL_DNSSD_ADD_SERVICE_MESSAGE);
+        break;
+
+    case TREL_DNSSD_ADD_SERVICE_MESSAGE:
+    case TREL_DNSSD_REMOVE_SERVICE_MESSAGE:
+        memset(&peerInfo, 0, sizeof(peerInfo));
+        peerInfo.mRemoved   = (aMessage->mType == TREL_DNSSD_REMOVE_SERVICE_MESSAGE);
+        peerInfo.mTxtData   = aMessage->mData;
+        peerInfo.mTxtLength = (uint8_t)(aMessage->mDataLength);
+        peerInfo.mSockAddr  = aMessage->mSockAddr;
+        otPlatTrelHandleDiscoveredPeerInfo(aInstance, &peerInfo);
+        break;
+    }
+
+exit:
+    return;
+}
+
 //---------------------------------------------------------------------------------------------------------------------
 // otPlatTrel
 
-void otPlatTrelUdp6Init(otInstance *aInstance, const otIp6Address *aUnicastAddress, uint16_t aPort)
-{
-    OT_UNUSED_VARIABLE(aInstance);
-    OT_UNUSED_VARIABLE(aUnicastAddress);
-    OT_UNUSED_VARIABLE(aPort);
-}
-
-void otPlatTrelUdp6UpdateAddress(otInstance *aInstance, const otIp6Address *aUnicastAddress)
-{
-    OT_UNUSED_VARIABLE(aInstance);
-    OT_UNUSED_VARIABLE(aUnicastAddress);
-}
-
-void otPlatTrelUdp6SubscribeMulticastAddress(otInstance *aInstance, const otIp6Address *aMulticastAddress)
-{
-    OT_UNUSED_VARIABLE(aInstance);
-    OT_UNUSED_VARIABLE(aMulticastAddress);
-}
-
-otError otPlatTrelUdp6SendTo(otInstance *        aInstance,
-                             const uint8_t *     aBuffer,
-                             uint16_t            aLength,
-                             const otIp6Address *aDestAddress)
-{
-    otError error = OT_ERROR_NONE;
-
-    OT_UNUSED_VARIABLE(aInstance);
-
-    otEXPECT(sEnabled);
-    otEXPECT_ACTION(sNumPendingTx < TREL_MAX_PENDING_TX, error = OT_ERROR_ABORT);
-
-    memcpy(sPendingTx[sNumPendingTx].mPacketBuffer, aBuffer, aLength);
-    sPendingTx[sNumPendingTx].mPacketLength = aLength;
-    memcpy(&sPendingTx[sNumPendingTx].mDestIp6Address, aDestAddress, sizeof(otIp6Address));
-    sNumPendingTx++;
-
-exit:
-    return error;
-}
-
-otError otPlatTrelUdp6SetTestMode(otInstance *aInstance, bool aEnable)
+void otPlatTrelEnable(otInstance *aInstance, uint16_t *aUdpPort)
 {
     OT_UNUSED_VARIABLE(aInstance);
 
-    sEnabled = aEnable;
+    *aUdpPort = sUdpPort;
+
+#if DEBUG_LOG
+    fprintf(stderr, "\r\n[trel-sim] otPlatTrelEnable() *aUdpPort=%u\r\n", *aUdpPort);
+#endif
 
     if (!sEnabled)
     {
-        sNumPendingTx = 0;
+        sEnabled = true;
+        sendBrowseMessage();
+    }
+}
+
+void otPlatTrelDisable(otInstance *aInstance)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+
+#if DEBUG_LOG
+    fprintf(stderr, "\r\n[trel-sim] otPlatTrelDisable()\r\n");
+#endif
+
+    if (sEnabled)
+    {
+        sEnabled = false;
+
+        if (sServiceRegistered)
+        {
+            sendServiceMessage(TREL_DNSSD_REMOVE_SERVICE_MESSAGE);
+            sServiceRegistered = false;
+        }
+    }
+}
+
+void otPlatTrelRegisterService(otInstance *aInstance, uint16_t aPort, const uint8_t *aTxtData, uint8_t aTxtLength)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+
+    assert(aTxtLength <= TREL_MAX_SERVICE_TXT_DATA_LEN);
+
+    if (sServiceRegistered)
+    {
+        sendServiceMessage(TREL_DNSSD_REMOVE_SERVICE_MESSAGE);
     }
 
-    return OT_ERROR_NONE;
+    sServiceRegistered = true;
+    sServicePort       = aPort;
+    sServiceTxtLength  = aTxtLength;
+    memcpy(sServiceTxtData, aTxtData, aTxtLength);
+
+    sendServiceMessage(TREL_DNSSD_ADD_SERVICE_MESSAGE);
+
+#if DEBUG_LOG
+    fprintf(stderr, "\r\n[trel-sim] otPlatTrelRegisterService(aPort:%d, aTxtData:", aPort);
+    dumpBuffer(aTxtData, aTxtLength);
+    fprintf(stderr, ")\r\n");
+#endif
+}
+
+void otPlatTrelSend(otInstance *      aInstance,
+                    const uint8_t *   aUdpPayload,
+                    uint16_t          aUdpPayloadLen,
+                    const otSockAddr *aDestSockAddr)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+
+    Message *message;
+
+    assert(sNumPendingTx < TREL_MAX_PENDING_TX);
+    assert(aUdpPayloadLen <= TREL_MAX_PACKET_SIZE);
+
+    message = &sPendingTx[sNumPendingTx++];
+
+    message->mType       = TREL_DATA_MESSAGE;
+    message->mSockAddr   = *aDestSockAddr;
+    message->mDataLength = aUdpPayloadLen;
+    memcpy(message->mData, aUdpPayload, aUdpPayloadLen);
+
+#if DEBUG_LOG
+    fprintf(stderr, "\r\n[trel-sim] otPlatTrelSend(len:%u, port:%u)\r\n", aUdpPayloadLen, aDestSockAddr->mPort);
+#endif
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -254,7 +407,7 @@ void platformTrelInit(uint32_t aSpeedUpFactor)
 
         if (*endptr != '\0')
         {
-            fprintf(stderr, "\nInvalid PORT_OFFSET: %s\n", str);
+            fprintf(stderr, "\r\nInvalid PORT_OFFSET: %s\r\n", str);
             exit(EXIT_FAILURE);
         }
 
@@ -301,16 +454,17 @@ void platformTrelProcess(otInstance *aInstance, const fd_set *aReadFdSet, const 
 {
     if (FD_ISSET(sTxFd, aWriteFdSet) && (sNumPendingTx > 0))
     {
-        sendPendingTxPackets();
+        sendPendingTxMessages();
     }
 
     if (FD_ISSET(sRxFd, aReadFdSet))
     {
-        uint8_t  rxPacketBuffer[TREL_MAX_PACKET_SIZE];
-        uint16_t rxPacketLength;
-        ssize_t  rval;
+        Message message;
+        ssize_t rval;
 
-        rval = recvfrom(sRxFd, (char *)rxPacketBuffer, sizeof(rxPacketBuffer), 0, NULL, NULL);
+        message.mDataLength = 0;
+
+        rval = recvfrom(sRxFd, (char *)&message, sizeof(message), 0, NULL, NULL);
 
         if (rval < 0)
         {
@@ -318,26 +472,26 @@ void platformTrelProcess(otInstance *aInstance, const fd_set *aReadFdSet, const 
             exit(EXIT_FAILURE);
         }
 
-        rxPacketLength = (uint16_t)(rval);
-
-#if DEBUG_LOG
-        fprintf(stderr, "\n[trel-udp6] recvdPacket()");
-        dumpBuffer(rxPacketBuffer, rxPacketLength);
-        fprintf(stderr, "\n");
-#endif
-        if (sEnabled)
-        {
-            otPlatTrelUdp6HandleReceived(aInstance, rxPacketBuffer, rxPacketLength);
-        }
+        processMessage(aInstance, &message, (uint16_t)(rval));
     }
 }
 
+//---------------------------------------------------------------------------------------------------------------------
+
 // This is added for RCP build to be built ok
-OT_TOOL_WEAK void otPlatTrelUdp6HandleReceived(otInstance *aInstance, uint8_t *aBuffer, uint16_t aLength)
+OT_TOOL_WEAK void otPlatTrelHandleReceived(otInstance *aInstance, uint8_t *aBuffer, uint16_t aLength)
 {
     OT_UNUSED_VARIABLE(aInstance);
     OT_UNUSED_VARIABLE(aBuffer);
     OT_UNUSED_VARIABLE(aLength);
+
+    assert(false);
+}
+
+OT_TOOL_WEAK void otPlatTrelHandleDiscoveredPeerInfo(otInstance *aInstance, const otPlatTrelPeerInfo *aInfo)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    OT_UNUSED_VARIABLE(aInfo);
 
     assert(false);
 }

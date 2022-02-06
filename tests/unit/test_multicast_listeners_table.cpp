@@ -57,24 +57,17 @@ static const otIp6Address MA501 = {
 
 uint32_t sNow;
 
-uint32_t testTimerAlarmGetNow(void)
+extern "C" uint32_t otPlatAlarmMilliGetNow(void)
 {
     return sNow;
-}
-
-void InitTestTimer(void)
-{
-    g_testPlatAlarmGetNow = testTimerAlarmGetNow;
 }
 
 void testMulticastListenersTableAPIs(Instance *aInstance);
 
 void TestMulticastListenersTable(void)
 {
-    InitTestTimer();
-
     sInstance = testInitInstance();
-    VerifyOrQuit(sInstance != nullptr, "Null OpenThread instance");
+    VerifyOrQuit(sInstance != nullptr);
 
     MulticastListenersTable &table = sInstance->Get<MulticastListenersTable>();
 
@@ -88,15 +81,15 @@ void TestMulticastListenersTable(void)
 
     sNow = 1;
     // Add valid MAs should succeed
-    SuccessOrQuit(table.Add(static_cast<const Ip6::Address &>(MA401), TimerMilli::GetNow()), "Add failed");
-    SuccessOrQuit(table.Add(static_cast<const Ip6::Address &>(MA501), TimerMilli::GetNow()), "Add failed");
+    SuccessOrQuit(table.Add(static_cast<const Ip6::Address &>(MA401), TimerMilli::GetNow()));
+    SuccessOrQuit(table.Add(static_cast<const Ip6::Address &>(MA501), TimerMilli::GetNow()));
     VerifyOrQuit(table.Count() == 2, "Table count is wrong");
 
-    // Add invalid MAs should fail with OT_ERROR_INVALID_ARGS
-    VerifyOrQuit(table.Add(static_cast<const Ip6::Address &>(MA201), TimerMilli::GetNow()) == OT_ERROR_INVALID_ARGS,
-                 "Add should fail");
-    VerifyOrQuit(table.Add(static_cast<const Ip6::Address &>(MA301), TimerMilli::GetNow()) == OT_ERROR_INVALID_ARGS,
-                 "Add should fail");
+    // Add invalid MAs should fail with kErrorInvalidArgs
+    VerifyOrQuit(table.Add(static_cast<const Ip6::Address &>(MA201), TimerMilli::GetNow()) == kErrorInvalidArgs,
+                 "failed to detect bad arg");
+    VerifyOrQuit(table.Add(static_cast<const Ip6::Address &>(MA301), TimerMilli::GetNow()) == kErrorInvalidArgs,
+                 "failed to detect bad arg");
 
     // Expire should expire outdated Listeners
     sNow = 2;
@@ -112,13 +105,13 @@ void TestMulticastListenersTable(void)
         address                = static_cast<const Ip6::Address &>(MA401);
         address.mFields.m16[7] = HostSwap16(i);
 
-        SuccessOrQuit(table.Add(address, TimerMilli::GetNow() + i), "Add failed");
+        SuccessOrQuit(table.Add(address, TimerMilli::GetNow() + i));
         VerifyOrQuit(table.Count() == i + 1, "Table count is wrong");
     }
 
     // Now the table is full, we can't add more addresses
-    VerifyOrQuit(table.Add(static_cast<const Ip6::Address &>(MA501), TimerMilli::GetNow()) == OT_ERROR_NO_BUFS,
-                 "Add should fail");
+    VerifyOrQuit(table.Add(static_cast<const Ip6::Address &>(MA501), TimerMilli::GetNow()) == kErrorNoBufs,
+                 "succeeded when table is full");
 
     // Expire one Listener at a time
     for (uint16_t i = 0; i < OPENTHREAD_CONFIG_MAX_MULTICAST_LISTENERS; i++)
@@ -169,15 +162,15 @@ void testMulticastListenersTableAPIs(Instance *aInstance)
     otBackboneRouterMulticastListenerInfo     info;
     size_t                                    table_size = 0;
 
-    while (otBackboneRouterMulticastListenerGetNext(aInstance, &iter, &info) == OT_ERROR_NONE)
+    while (otBackboneRouterMulticastListenerGetNext(aInstance, &iter, &info) == kErrorNone)
     {
         VerifyOrQuit(false, "Table should be empty");
     }
 
-    SuccessOrQuit(otBackboneRouterMulticastListenerAdd(aInstance, &MA401, 30), "Add failed");
+    SuccessOrQuit(otBackboneRouterMulticastListenerAdd(aInstance, &MA401, 30));
 
     table_size = 0, iter = OT_BACKBONE_ROUTER_MULTICAST_LISTENER_ITERATOR_INIT;
-    while (otBackboneRouterMulticastListenerGetNext(aInstance, &iter, &info) == OT_ERROR_NONE)
+    while (otBackboneRouterMulticastListenerGetNext(aInstance, &iter, &info) == kErrorNone)
     {
         table_size++;
 
@@ -189,7 +182,7 @@ void testMulticastListenersTableAPIs(Instance *aInstance)
     otBackboneRouterMulticastListenerClear(aInstance);
 
     iter = OT_BACKBONE_ROUTER_MULTICAST_LISTENER_ITERATOR_INIT;
-    while (otBackboneRouterMulticastListenerGetNext(aInstance, &iter, &info) == OT_ERROR_NONE)
+    while (otBackboneRouterMulticastListenerGetNext(aInstance, &iter, &info) == kErrorNone)
     {
         VerifyOrQuit(false, "Table should be empty");
     }

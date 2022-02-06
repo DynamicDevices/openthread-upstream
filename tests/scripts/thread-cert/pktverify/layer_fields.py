@@ -42,7 +42,7 @@ from pktverify.null_field import nullField
 
 def _auto(v: Union[LayerFieldsContainer, LayerField]):
     """parse the layer field automatically according to its format"""
-    assert not isinstance(v, LayerFieldsContainer) or len(v.fields) == 1, v.fields
+    assert not isinstance(v, LayerFieldsContainer) or len(v.fields) == 1 or v.get_default_value() is not None, v.fields
     dv = v.get_default_value()
     rv = v.raw_value
 
@@ -536,6 +536,12 @@ _LAYER_FIELDS = {
     'dtls.record.content_type': _list(_auto),
     'dtls.alert_message.desc': _auto,
 
+    # thread beacon
+    'thread_bcn.protocol': _auto,
+    'thread_bcn.version': _auto,
+    'thread_bcn.network_name': _str,
+    'thread_bcn.epid': _ext_addr,
+
     # thread_address
     'thread_address.tlv.len': _list(_auto),
     'thread_address.tlv.type': _list(_auto),
@@ -565,19 +571,20 @@ _LAYER_FIELDS = {
     'thread_meshcop.len_size_mismatch': _str,
     'thread_meshcop.tlv.type': _list(_auto),
     'thread_meshcop.tlv.len8': _list(_auto),
-    'thread_meshcop.tlv.net_name': _str,  # from thread_bl
+    'thread_meshcop.tlv.net_name': _list(_str),  # from thread_bl
     'thread_meshcop.tlv.commissioner_id': _str,
     'thread_meshcop.tlv.commissioner_sess_id': _auto,  # from mle
     "thread_meshcop.tlv.channel_page": _auto,  # from ble
-    "thread_meshcop.tlv.channel": _auto,  # from ble
+    "thread_meshcop.tlv.channel": _list(_auto),  # from ble
     "thread_meshcop.tlv.chan_mask": _str,  # from ble
     'thread_meshcop.tlv.chan_mask_page': _auto,
     'thread_meshcop.tlv.chan_mask_len': _auto,
     'thread_meshcop.tlv.chan_mask_mask': _bytes,
     'thread_meshcop.tlv.discovery_req_ver': _auto,
     'thread_meshcop.tlv.discovery_rsp_ver': _auto,
+    'thread_meshcop.tlv.discovery_rsp_n': _auto,
     'thread_meshcop.tlv.energy_list': _list(_auto),
-    'thread_meshcop.tlv.pan_id': _auto,
+    'thread_meshcop.tlv.pan_id': _list(_auto),
     'thread_meshcop.tlv.xpan_id': _bytes,
     'thread_meshcop.tlv.ml_prefix': _bytes,
     'thread_meshcop.tlv.master_key': _bytes,
@@ -609,7 +616,7 @@ _LAYER_FIELDS = {
     'thread_nwd.tlv.service.s_data.seqno': _auto,
     'thread_nwd.tlv.service.s_data.rrdelay': _auto,
     'thread_nwd.tlv.service.s_data.mlrtimeout': _auto,
-    'thread_nwd.tlv.server_16': _auto,
+    'thread_nwd.tlv.server_16': _list(_auto),
     'thread_nwd.tlv.border_router_16': _list(_auto),
     'thread_nwd.tlv.sub_tlvs': _list(_str),
     # TODO: support thread_nwd.tlv.prefix.length and thread_nwd.tlv.prefix.domain_id
@@ -625,13 +632,17 @@ _LAYER_FIELDS = {
     'thread_nwd.tlv.border_router.flag.c': _list(_auto),
     'thread_nwd.tlv.6co.flag.reserved': _auto,
     'thread_nwd.tlv.6co.flag.cid': _auto,
-    'thread_nwd.tlv.6co.flag.c': _auto,
+    'thread_nwd.tlv.6co.flag.c': _list(_auto),
     'thread_nwd.tlv.6co.context_length': _auto,
 
     # Thread Diagnostic
     'thread_diagnostic.tlv.type': _list(_auto),
     'thread_diagnostic.tlv.len8': _list(_auto),
-    'thread_diagnostic.tlv.general': _list(_str)
+    'thread_diagnostic.tlv.general': _list(_str),
+
+    # DNS
+    'dns.resp.ttl': _auto,
+    'dns.flags.response': _auto,
 }
 
 _layer_containers = set()
@@ -676,11 +687,19 @@ def get_layer_field(packet: RawPacket, field_uri: str) -> Any:
     """
     assert isinstance(packet, RawPacket)
     secs = field_uri.split('.')
+    layer_depth = 0
     layer_name = secs[0]
+    if layer_name.endswith('inner'):
+        layer_name = layer_name[:-len('inner')]
+        field_uri = '.'.join([layer_name] + secs[1:])
+        layer_depth = 1
 
     if is_layer_field(field_uri):
         candidate_layers = _get_candidate_layers(packet, layer_name)
-        for layer in candidate_layers:
+        for layers in candidate_layers:
+            if layer_depth >= len(layers):
+                continue
+            layer = layers[layer_depth]
             v = layer.get_field(field_uri)
             if v is not None:
                 try:
@@ -717,10 +736,11 @@ def check_layer_field_exists(packet, field_uri):
         raise NotImplementedError('%s is neither a field or field container' % field_uri)
 
     candidate_layers = _get_candidate_layers(packet, layer_name)
-    for layer in candidate_layers:
-        for k, v in layer._all_fields.items():
-            if k == field_uri or k.startswith(field_uri + '.'):
-                return True
+    for layers in candidate_layers:
+        for layer in layers:
+            for k, v in layer._all_fields.items():
+                if k == field_uri or k.startswith(field_uri + '.'):
+                    return True
 
     return False
 
@@ -734,12 +754,14 @@ def _get_candidate_layers(packet, layer_name):
         candidate_layer_names = ['wpan', 'mle']
     elif layer_name == 'ip':
         candidate_layer_names = ['ip', 'ipv6']
+    elif layer_name == 'thread_bcn':
+        candidate_layer_names = ['thread_bcn']
     else:
         candidate_layer_names = [layer_name]
 
     layers = []
     for ln in candidate_layer_names:
         if hasattr(packet, ln):
-            layers.append(getattr(packet, ln))
+            layers.append(packet.get_multiple_layers(ln))
 
     return layers

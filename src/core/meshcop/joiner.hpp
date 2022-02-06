@@ -36,11 +36,14 @@
 
 #include "openthread-core-config.h"
 
+#if OPENTHREAD_CONFIG_JOINER_ENABLE
+
 #include <openthread/joiner.h>
 
 #include "coap/coap.hpp"
 #include "coap/coap_message.hpp"
 #include "coap/coap_secure.hpp"
+#include "common/as_core_type.hpp"
 #include "common/locator.hpp"
 #include "common/logging.hpp"
 #include "common/message.hpp"
@@ -84,27 +87,27 @@ public:
      * This method starts the Joiner service.
      *
      * @param[in]  aPskd             A pointer to the PSKd.
-     * @param[in]  aProvisioningUrl  A pointer to the Provisioning URL (may be nullptr).
-     * @param[in]  aVendorName       A pointer to the Vendor Name (may be nullptr).
-     * @param[in]  aVendorModel      A pointer to the Vendor Model (may be nullptr).
-     * @param[in]  aVendorSwVersion  A pointer to the Vendor SW Version (may be nullptr).
-     * @param[in]  aVendorData       A pointer to the Vendor Data (may be nullptr).
+     * @param[in]  aProvisioningUrl  A pointer to the Provisioning URL (may be `nullptr`).
+     * @param[in]  aVendorName       A pointer to the Vendor Name (may be `nullptr`).
+     * @param[in]  aVendorModel      A pointer to the Vendor Model (may be `nullptr`).
+     * @param[in]  aVendorSwVersion  A pointer to the Vendor SW Version (may be `nullptr`).
+     * @param[in]  aVendorData       A pointer to the Vendor Data (may be `nullptr`).
      * @param[in]  aCallback         A pointer to a function that is called when the join operation completes.
      * @param[in]  aContext          A pointer to application-specific context.
      *
-     * @retval OT_ERROR_NONE          Successfully started the Joiner service.
-     * @retval OT_ERROR_BUSY          The previous attempt is still on-going.
-     * @retval OT_ERROR_INVALID_STATE The IPv6 stack is not enabled or Thread stack is fully enabled.
+     * @retval kErrorNone          Successfully started the Joiner service.
+     * @retval kErrorBusy          The previous attempt is still on-going.
+     * @retval kErrorInvalidState  The IPv6 stack is not enabled or Thread stack is fully enabled.
      *
      */
-    otError Start(const char *     aPskd,
-                  const char *     aProvisioningUrl,
-                  const char *     aVendorName,
-                  const char *     aVendorModel,
-                  const char *     aVendorSwVersion,
-                  const char *     aVendorData,
-                  otJoinerCallback aCallback,
-                  void *           aContext);
+    Error Start(const char *     aPskd,
+                const char *     aProvisioningUrl,
+                const char *     aVendorName,
+                const char *     aVendorModel,
+                const char *     aVendorSwVersion,
+                const char *     aVendorData,
+                otJoinerCallback aCallback,
+                void *           aContext);
 
     /**
      * This method stops the Joiner service.
@@ -147,31 +150,39 @@ public:
      *
      * @param[in]   aDiscerner  A Joiner Discerner
      *
-     * @retval OT_ERROR_NONE           The Joiner Discerner updated successfully.
-     * @retval OT_ERROR_INVALID_ARGS   @p aDiscerner is not valid (specified length is not within valid range).
-     * @retval OT_ERROR_INVALID_STATE  There is an ongoing Joining process so Joiner Discerner could not be changed.
+     * @retval kErrorNone          The Joiner Discerner updated successfully.
+     * @retval kErrorInvalidArgs   @p aDiscerner is not valid (specified length is not within valid range).
+     * @retval kErrorInvalidState  There is an ongoing Joining process so Joiner Discerner could not be changed.
      *
      */
-    otError SetDiscerner(const JoinerDiscerner &aDiscerner);
+    Error SetDiscerner(const JoinerDiscerner &aDiscerner);
 
     /**
      * This method clears any previously set Joiner Discerner.
      *
      * When cleared, Joiner ID is derived as first 64 bits of SHA-256 of factory-assigned IEEE EUI-64.
      *
-     * @retval OT_ERROR_NONE           The Joiner Discerner cleared and Joiner ID updated.
-     * @retval OT_ERROR_INVALID_STATE  There is an ongoing Joining process so Joiner Discerner could not be changed.
+     * @retval kErrorNone          The Joiner Discerner cleared and Joiner ID updated.
+     * @retval kErrorInvalidState  There is an ongoing Joining process so Joiner Discerner could not be changed.
      *
      */
-    otError ClearDiscerner(void);
+    Error ClearDiscerner(void);
+
+    /**
+     * This method converts a given Joiner state to its human-readable string representation.
+     *
+     * @param[in] aState  The Joiner state to convert.
+     *
+     * @returns A human-readable string representation of @p aState.
+     *
+     */
+    static const char *StateToString(State aState);
 
 private:
-    enum
-    {
-        kJoinerUdpPort         = OPENTHREAD_CONFIG_JOINER_UDP_PORT,
-        kConfigExtAddressDelay = 100,  ///< [milliseconds]
-        kReponseTimeout        = 4000, ///< Maximum wait time to receive response [milliseconds].
-    };
+    static constexpr uint16_t kJoinerUdpPort = OPENTHREAD_CONFIG_JOINER_UDP_PORT;
+
+    static constexpr uint32_t kConfigExtAddressDelay = 100;  // in msec.
+    static constexpr uint32_t kReponseTimeout        = 4000; ///< Max wait time to receive response (in msec).
 
     struct JoinerRouter
     {
@@ -191,8 +202,8 @@ private:
     static void HandleJoinerFinalizeResponse(void *               aContext,
                                              otMessage *          aMessage,
                                              const otMessageInfo *aMessageInfo,
-                                             otError              aResult);
-    void HandleJoinerFinalizeResponse(Coap::Message &aMessage, const Ip6::MessageInfo *aMessageInfo, otError aResult);
+                                             Error                aResult);
+    void HandleJoinerFinalizeResponse(Coap::Message *aMessage, const Ip6::MessageInfo *aMessageInfo, Error aResult);
 
     static void HandleJoinerEntrust(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo);
     void        HandleJoinerEntrust(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo);
@@ -200,24 +211,22 @@ private:
     static void HandleTimer(Timer &aTimer);
     void        HandleTimer(void);
 
-    static const char *StateToString(State aState);
-
     void    SetState(State aState);
     void    SetIdFromIeeeEui64(void);
     void    SaveDiscoveredJoinerRouter(const Mle::DiscoverScanner::ScanResult &aResult);
-    void    TryNextJoinerRouter(otError aPrevError);
-    otError Connect(JoinerRouter &aRouter);
-    void    Finish(otError aError);
+    void    TryNextJoinerRouter(Error aPrevError);
+    Error   Connect(JoinerRouter &aRouter);
+    void    Finish(Error aError);
     uint8_t CalculatePriority(int8_t aRssi, bool aSteeringDataAllowsAny);
 
-    otError PrepareJoinerFinalizeMessage(const char *aProvisioningUrl,
-                                         const char *aVendorName,
-                                         const char *aVendorModel,
-                                         const char *aVendorSwVersion,
-                                         const char *aVendorData);
-    void    FreeJoinerFinalizeMessage(void);
-    void    SendJoinerFinalize(void);
-    void    SendJoinerEntrustResponse(const Coap::Message &aRequest, const Ip6::MessageInfo &aRequestInfo);
+    Error PrepareJoinerFinalizeMessage(const char *aProvisioningUrl,
+                                       const char *aVendorName,
+                                       const char *aVendorModel,
+                                       const char *aVendorSwVersion,
+                                       const char *aVendorData);
+    void  FreeJoinerFinalizeMessage(void);
+    void  SendJoinerFinalize(void);
+    void  SendJoinerEntrustResponse(const Coap::Message &aRequest, const Ip6::MessageInfo &aRequestInfo);
 
 #if OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE
     void LogCertMessage(const char *aText, const Coap::Message &aMessage) const;
@@ -241,6 +250,11 @@ private:
 };
 
 } // namespace MeshCoP
+
+DefineMapEnum(otJoinerState, MeshCoP::Joiner::State);
+
 } // namespace ot
+
+#endif // OPENTHREAD_CONFIG_JOINER_ENABLE
 
 #endif // JOINER_HPP_

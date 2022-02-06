@@ -62,12 +62,6 @@ using ot::Encoding::BigEndian::HostSwap32;
  *
  */
 
-enum
-{
-    kNumResetTlvTypes = 1,
-    kNumTlvTypes      = 18,
-};
-
 /**
  * This class implements MLE TLV generation and parsing.
  *
@@ -80,7 +74,7 @@ public:
      * MLE TLV Types.
      *
      */
-    enum Type
+    enum Type : uint8_t
     {
         kExtMacAddress   = OT_NETWORK_DIAGNOSTIC_TLV_EXT_ADDRESS,
         kAddress16       = OT_NETWORK_DIAGNOSTIC_TLV_SHORT_ADDRESS,
@@ -366,11 +360,8 @@ public:
     void SetSedDatagramCount(uint8_t aSedDatagramCount) { mSedDatagramCount = aSedDatagramCount; }
 
 private:
-    enum
-    {
-        kParentPriorityOffset = 6,
-        kParentPriorityMask   = 3 << kParentPriorityOffset,
-    };
+    static constexpr uint8_t kParentPriorityOffset = 6;
+    static constexpr uint8_t kParentPriorityMask   = 3 << kParentPriorityOffset;
 
     uint8_t  mParentPriority;
     uint8_t  mLinkQuality3;
@@ -537,15 +528,13 @@ public:
     }
 
 private:
-    enum
-    {
-        kLinkQualityOutOffset = 6,
-        kLinkQualityOutMask   = 3 << kLinkQualityOutOffset,
-        kLinkQualityInOffset  = 4,
-        kLinkQualityInMask    = 3 << kLinkQualityInOffset,
-        kRouteCostOffset      = 0,
-        kRouteCostMask        = 0xf << kRouteCostOffset,
-    };
+    static constexpr uint8_t kLinkQualityOutOffset = 6;
+    static constexpr uint8_t kLinkQualityOutMask   = 3 << kLinkQualityOutOffset;
+    static constexpr uint8_t kLinkQualityInOffset  = 4;
+    static constexpr uint8_t kLinkQualityInMask    = 3 << kLinkQualityInOffset;
+    static constexpr uint8_t kRouteCostOffset      = 0;
+    static constexpr uint8_t kRouteCostMask        = 0xf << kRouteCostOffset;
+
     uint8_t          mRouterIdSequence;
     Mle::RouterIdSet mRouterIdMask;
     uint8_t          mRouteData[Mle::kMaxRouterId + 1];
@@ -1040,18 +1029,11 @@ public:
     }
 
 private:
-    /**
-     * Masks for fields.
-     *
-     */
-    enum
-    {
-        kTimeoutMask    = 0xf800,
-        kTimeoutOffset  = 11,
-        kReservedMask   = 0x0600,
-        kReservedOffset = 9,
-        kChildIdMask    = 0x1ff
-    };
+    static constexpr uint8_t  kTimeoutOffset  = 11;
+    static constexpr uint8_t  kReservedOffset = 9;
+    static constexpr uint16_t kTimeoutMask    = 0xf800;
+    static constexpr uint16_t kReservedMask   = 0x0600;
+    static constexpr uint16_t kChildIdMask    = 0x1f;
 
     uint16_t mTimeoutRsvChildId;
     uint8_t  mMode;
@@ -1098,6 +1080,7 @@ public:
      * @param[in]  aIndex  The index into the Child Table list.
      *
      * @returns  A reference to the Child Table entry.
+     *
      */
     ChildTableEntry &GetEntry(uint16_t aIndex)
     {
@@ -1112,16 +1095,17 @@ public:
      * @param[in]   aOffset     The offset of the ChildTableTLV in aMessage.
      * @param[in]   aIndex      The index into the Child Table list.
      *
-     * @retval  OT_ERROR_NOT_FOUND  No such entry is found.
-     * @retval  OT_ERROR_NONE       Successfully read the entry.
+     * @retval  kErrorNotFound   No such entry is found.
+     * @retval  kErrorNone       Successfully read the entry.
+     *
      */
-    otError ReadEntry(ChildTableEntry &aEntry, const Message &aMessage, uint16_t aOffset, uint8_t aIndex) const
+    Error ReadEntry(ChildTableEntry &aEntry, const Message &aMessage, uint16_t aOffset, uint8_t aIndex) const
     {
         return ((aIndex < GetNumEntries()) &&
                 (aMessage.Read(aOffset + sizeof(ChildTableTlv) + (aIndex * sizeof(ChildTableEntry)), aEntry) ==
-                 OT_ERROR_NONE))
-                   ? OT_ERROR_NONE
-                   : OT_ERROR_INVALID_ARGS;
+                 kErrorNone))
+                   ? kErrorNone
+                   : kErrorInvalidArgs;
     }
 
 } OT_TOOL_PACKED_END;

@@ -34,12 +34,14 @@ bin_PROGRAMS                                                           = \
 
 CPPFLAGS_COMMON                                                       += \
     -I$(top_srcdir)/include                                              \
+    -I$(top_srcdir)/src                                                  \
     -I$(top_srcdir)/src/core                                             \
     -I$(top_srcdir)/examples/platforms                                   \
     $(NULL)
 
 LDADD_COMMON                                                          += \
     $(top_builddir)/third_party/paho/libpaho.a                           \
+    $(top_builddir)/third_party/tcplp/libtcplp.a                         \
     $(NULL)
 
 LDFLAGS_COMMON                                                        += \
@@ -50,6 +52,7 @@ LIBTOOLFLAGS_COMMON                                                   += \
 
 SOURCES_COMMON                                                        += \
     main.c                                                               \
+    ncp.c                                                                \
     $(NULL)
 
 LDADD_MBEDTLS                                                          = \
@@ -77,10 +80,12 @@ LDADD_COMMON                                                          += \
     $(NULL)
 endif # OPENTHREAD_ENABLE_NCP_SPINEL_ENCRYPTER
 
+if OPENTHREAD_ENABLE_NCP
 if OPENTHREAD_ENABLE_FTD
 bin_PROGRAMS                                                          += \
     ot-ncp-ftd                                                           \
     $(NULL)
+endif
 endif
 
 ot_ncp_ftd_CPPFLAGS                                                    = \
@@ -111,10 +116,12 @@ ot_ncp_ftd_SOURCES                                                     = \
     $(SOURCES_COMMON)                                                    \
     $(NULL)
 
+if OPENTHREAD_ENABLE_NCP
 if OPENTHREAD_ENABLE_MTD
 bin_PROGRAMS                                                          += \
     ot-ncp-mtd                                                           \
     $(NULL)
+endif
 endif
 
 ot_ncp_mtd_CPPFLAGS                                                    = \

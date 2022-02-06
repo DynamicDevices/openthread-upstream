@@ -71,7 +71,14 @@ public:
      * neighbor is being added or removed.
      *
      */
-    typedef otNeighborTableEvent Event;
+    enum Event : uint8_t
+    {
+        kChildAdded       = OT_NEIGHBOR_TABLE_EVENT_CHILD_ADDED,        ///< A child is being added.
+        kChildRemoved     = OT_NEIGHBOR_TABLE_EVENT_CHILD_REMOVED,      ///< A child is being removed.
+        kChildModeChanged = OT_NEIGHBOR_TABLE_EVENT_CHILD_MODE_CHANGED, ///< An existing child's mode changed.
+        kRouterAdded      = OT_NEIGHBOR_TABLE_EVENT_ROUTER_ADDED,       ///< A router is being added.
+        kRouterRemoved    = OT_NEIGHBOR_TABLE_EVENT_ROUTER_REMOVED,     ///< A router is being removed.
+    };
 
     /**
      * This constructor initializes the `NeighborTable` instance.
@@ -88,7 +95,7 @@ public:
      * @param[in]  aShortAddress  A short address.
      * @param[in]  aFilter        A neighbor state filter
      *
-     * @returns A pointer to the `Neighbor` corresponding to @p aShortAddress, nullptr otherwise.
+     * @returns A pointer to the `Neighbor` corresponding to @p aShortAddress, `nullptr` otherwise.
      *
      */
     Neighbor *FindParent(Mac::ShortAddress     aShortAddress,
@@ -101,7 +108,7 @@ public:
      * @param[in]  aExtAddress   A MAC Extended Address.
      * @param[in]  aFilter       A neighbor state filter
      *
-     * @returns A pointer to the `Neighbor` corresponding to @p aExtAddress, nullptr otherwise.
+     * @returns A pointer to the `Neighbor` corresponding to @p aExtAddress, `nullptr` otherwise.
      *
      */
     Neighbor *FindParent(const Mac::ExtAddress &aExtAddress,
@@ -114,7 +121,7 @@ public:
      * @param[in]  aMacAddress  A MAC address.
      * @param[in]  aFilter      A neighbor state filter
      *
-     * @returns A pointer to the `Neighbor` corresponding to @p aMacAddress, nullptr otherwise.
+     * @returns A pointer to the `Neighbor` corresponding to @p aMacAddress, `nullptr` otherwise.
      *
      */
     Neighbor *FindParent(const Mac::Address &  aMacAddress,
@@ -126,7 +133,7 @@ public:
      * @param[in]  aShortAddress  A short address.
      * @param[in]  aFilter        A neighbor state filter.
      *
-     * @returns A pointer to the `Neighbor` corresponding to @p aShortAddress, nullptr otherwise.
+     * @returns A pointer to the `Neighbor` corresponding to @p aShortAddress, `nullptr` otherwise.
      *
      */
     Neighbor *FindNeighbor(Mac::ShortAddress     aShortAddress,
@@ -138,7 +145,7 @@ public:
      * @param[in]  aExtAddress   A MAC Extended Address.
      * @param[in]  aFilter       A neighbor state filter.
      *
-     * @returns A pointer to the `Neighbor` corresponding to @p aExtAddress, nullptr otherwise.
+     * @returns A pointer to the `Neighbor` corresponding to @p aExtAddress, `nullptr` otherwise.
      *
      */
     Neighbor *FindNeighbor(const Mac::ExtAddress &aExtAddress,
@@ -150,7 +157,7 @@ public:
      * @param[in]  aMacAddress  A MAC address.
      * @param[in]  aFilter      A neighbor state filter.
      *
-     * @returns A pointer to the `Neighbor` corresponding to @p aMacAddress, nullptr otherwise.
+     * @returns A pointer to the `Neighbor` corresponding to @p aMacAddress, `nullptr` otherwise.
      *
      */
     Neighbor *FindNeighbor(const Mac::Address &  aMacAddress,
@@ -164,7 +171,7 @@ public:
      * @param[in]  aIp6Address  An IPv6 address.
      * @pram[in]   aFilter      A neighbor state filter.
      *
-     * @returns A pointer to the `Neighbor` corresponding to @p aIp6Address, nullptr otherwise.
+     * @returns A pointer to the `Neighbor` corresponding to @p aIp6Address, `nullptr` otherwise.
      *
      */
     Neighbor *FindNeighbor(const Ip6::Address &  aIp6Address,
@@ -176,7 +183,7 @@ public:
      *
      * @param[in]  aMacAddress  A MAC address.
      *
-     * @returns A pointer to the Neighbor corresponding to @p aMacAddress, nullptr otherwise.
+     * @returns A pointer to the Neighbor corresponding to @p aMacAddress, `nullptr` otherwise.
      *
      */
     Neighbor *FindRxOnlyNeighborRouter(const Mac::Address &aMacAddress);
@@ -191,16 +198,16 @@ public:
                                  it should be set to OT_NEIGHBOR_INFO_ITERATOR_INIT.
      * @param[out]    aNeighInfo The neighbor information.
      *
-     * @retval OT_ERROR_NONE          Successfully found the next neighbor entry in table.
-     * @retval OT_ERROR_NOT_FOUND     No subsequent neighbor entry exists in the table.
+     * @retval kErrorNone         Successfully found the next neighbor entry in table.
+     * @retval kErrorNotFound     No subsequent neighbor entry exists in the table.
      *
      */
-    otError GetNextNeighborInfo(otNeighborInfoIterator &aIterator, Neighbor::Info &aNeighInfo);
+    Error GetNextNeighborInfo(otNeighborInfoIterator &aIterator, Neighbor::Info &aNeighInfo);
 
     /**
      * This method registers the "neighbor table changed" callback function.
      *
-     * The provided callback (if non-nullptr) will be invoked when a child/router entry is being added/remove to/from
+     * The provided callback (if non-`nullptr`) will be invoked when a child/router entry is being added/remove to/from
      * the neighbor table. Subsequent calls to this method will overwrite the previous callback.
      *
      * @param[in] aCallback    A pointer to callback handler function.
@@ -213,7 +220,7 @@ public:
      *
      * This method invokes the `NeighborTable::Callback` and also signals the change through a related `Notifier` event.
      *
-     * @param[in] aEvent     The event to emit (child/router added/removed).
+     * @param[in] aEvent     The event to emit (child/router added/removed, or child mode changed).
      * @param[in] aNeighbor  The neighbor that is being added/removed.
      *
      */

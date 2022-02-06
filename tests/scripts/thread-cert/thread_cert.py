@@ -27,16 +27,18 @@
 #  POSSIBILITY OF SUCH DAMAGE.
 #
 
+import binascii
 import json
 import logging
 import os
 import signal
+import stat
 import subprocess
 import sys
 import time
 import traceback
 import unittest
-from typing import Optional, Callable
+from typing import Optional, Callable, Union, Any
 
 import config
 import debug
@@ -55,15 +57,21 @@ ENV_THREAD_VERSION = os.getenv('THREAD_VERSION', '1.1')
 
 DEFAULT_PARAMS = {
     'is_mtd': False,
+    'is_ftd': False,
     'is_bbr': False,
     'is_otbr': False,
     'is_host': False,
     'mode': 'rdn',
-    'panid': 0xface,
     'allowlist': None,
     'version': ENV_THREAD_VERSION,
+    'panid': 0xface,
 }
 """Default configurations when creating nodes."""
+
+FTD_DEFAULT_PARAMS = {
+    'is_ftd': True,
+    'router_selection_jitter': config.DEFAULT_ROUTER_SELECTION_JITTER,
+}
 
 EXTENDED_ADDRESS_BASE = 0x166e0a0000000000
 """Extended address base to keep U/L bit 1. The value is borrowed from Thread Test Harness."""
@@ -92,6 +100,8 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
     USE_MESSAGE_FACTORY = True
     TOPOLOGY = None
     CASE_WIRESHARK_PREFS = None
+    SUPPORT_THREAD_1_1 = True
+    PACKET_VERIFICATION = config.PACKET_VERIFICATION_DEFAULT
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -99,9 +109,19 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
         self._start_time = None
-        self._do_packet_verification = PACKET_VERIFICATION and hasattr(self, 'verify')
+        self._do_packet_verification = PACKET_VERIFICATION and hasattr(self, 'verify') \
+                                       and self.PACKET_VERIFICATION == PACKET_VERIFICATION
+
+    def skipTest(self, reason: Any) -> None:
+        self._testSkipped = True
+        super(TestCase, self).skipTest(reason)
 
     def setUp(self):
+        self._testSkipped = False
+
+        if ENV_THREAD_VERSION == '1.1' and not self.SUPPORT_THREAD_1_1:
+            self.skipTest('Thread 1.1 not supported.')
+
         try:
             self._setUp()
         except:
@@ -151,12 +171,15 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
                 version=params['version'],
                 is_bbr=params['is_bbr'],
             )
+            if 'boot_delay' in params:
+                self.simulator.go(params['boot_delay'])
 
             self.nodes[i] = node
 
             if node.is_host:
                 continue
 
+            self.nodes[i].set_networkkey(binascii.hexlify(config.DEFAULT_NETWORK_KEY).decode())
             self.nodes[i].set_panid(params['panid'])
             self.nodes[i].set_mode(params['mode'])
 
@@ -164,13 +187,14 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
                 self.nodes[i].set_preferred_partition_id(params['partition_id'])
             if 'channel' in params:
                 self.nodes[i].set_channel(params['channel'])
-            if 'masterkey' in params:
-                self.nodes[i].set_masterkey(params['masterkey'])
+            if 'networkkey' in params:
+                self.nodes[i].set_networkkey(params['networkkey'])
             if 'network_name' in params:
                 self.nodes[i].set_network_name(params['network_name'])
 
-            if 'router_selection_jitter' in params:
+            if params['is_ftd']:
                 self.nodes[i].set_router_selection_jitter(params['router_selection_jitter'])
+
             if 'router_upgrade_threshold' in params:
                 self.nodes[i].set_router_upgrade_threshold(params['router_upgrade_threshold'])
             if 'router_downgrade_threshold' in params:
@@ -184,11 +208,14 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
                 self.nodes[i].set_timeout(params['timeout'])
 
             if 'active_dataset' in params:
+                if 'network_key' not in params['active_dataset']:
+                    params['active_dataset']['network_key'] = binascii.hexlify(config.DEFAULT_NETWORK_KEY).decode()
                 self.nodes[i].set_active_dataset(params['active_dataset']['timestamp'],
                                                  panid=params['active_dataset'].get('panid'),
                                                  channel=params['active_dataset'].get('channel'),
                                                  channel_mask=params['active_dataset'].get('channel_mask'),
-                                                 master_key=params['active_dataset'].get('master_key'))
+                                                 network_key=params['active_dataset'].get('network_key'),
+                                                 security_policy=params['active_dataset'].get('security_policy'))
 
             if 'pending_dataset' in params:
                 self.nodes[i].set_pending_dataset(params['pending_dataset']['pendingtimestamp'],
@@ -214,10 +241,13 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
             if 'bbr_registration_jitter' in params:
                 self.nodes[i].set_bbr_registration_jitter(params['bbr_registration_jitter'])
 
+            if 'router_id_range' in params:
+                self.nodes[i].set_router_id_range(params['router_id_range'][0], params['router_id_range'][1])
+
         # we have to add allowlist after nodes are all created
         for i, params in initial_topology.items():
             allowlist = params['allowlist']
-            if not allowlist:
+            if allowlist is None:
                 continue
 
             for j in allowlist:
@@ -241,29 +271,35 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
                 f'{self.test_name}: Packet Verification not available on {os.uname().sysname} (Linux only).')
 
         if self._do_packet_verification:
-            time.sleep(3)
+            self.simulator.go(3)
 
         if self._has_backbone_traffic():
             # Stop Backbone sniffer before stopping nodes so that we don't capture Codecov Uploading traffic
             self._stop_backbone_sniffer()
 
         for node in list(self.nodes.values()):
-            node.stop()
-            node.destroy()
+            try:
+                node.stop()
+            except:
+                traceback.print_exc()
+            finally:
+                node.destroy()
 
         self.simulator.stop()
 
-        if self._has_backbone_traffic():
-            self._remove_backbone_network()
-            pcap_filename = self._merge_thread_backbone_pcaps()
-        else:
-            pcap_filename = self._get_thread_pcap_filename()
-
         if self._do_packet_verification:
+
+            if self._has_backbone_traffic():
+                self._remove_backbone_network()
+                pcap_filename = self._merge_thread_backbone_pcaps()
+            else:
+                pcap_filename = self._get_thread_pcap_filename()
+
             self._test_info['pcap'] = pcap_filename
 
             test_info_path = self._output_test_info()
-            self._verify_packets(test_info_path)
+            if not self._testSkipped:
+                self._verify_packets(test_info_path)
 
     def flush_all(self):
         """Flush away all captured messages of all nodes.
@@ -306,6 +342,10 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
 
         for i, node in self.nodes.items():
             ipaddrs = node.get_addrs()
+
+            if hasattr(node, 'get_ether_addrs'):
+                ipaddrs += node.get_ether_addrs()
+
             test_info['ipaddrs'][i] = ipaddrs
             if not node.is_host:
                 mleid = node.get_mleid()
@@ -334,6 +374,32 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
                 continue
 
             test_info['rlocs'][i] = node.get_rloc()
+
+    def collect_omrs(self):
+        if not self._do_packet_verification:
+            return
+
+        test_info = self._test_info
+        test_info['omrs'] = {}
+
+        for i, node in self.nodes.items():
+            if node.is_host:
+                continue
+
+            test_info['omrs'][i] = node.get_ip6_address(config.ADDRESS_TYPE.OMR)
+
+    def collect_duas(self):
+        if not self._do_packet_verification:
+            return
+
+        test_info = self._test_info
+        test_info['duas'] = {}
+
+        for i, node in self.nodes.items():
+            if node.is_host:
+                continue
+
+            test_info['duas'][i] = node.get_ip6_address(config.ADDRESS_TYPE.DUA)
 
     def collect_leader_aloc(self, node):
         if not self._do_packet_verification:
@@ -416,17 +482,22 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
             # BBRs must use thread version 1.2
             assert params.get('version', '1.2') == '1.2', params
             params['version'] = '1.2'
+            params.setdefault('bbr_registration_jitter', config.DEFAULT_BBR_REGISTRATION_JITTER)
         elif params.get('is_host'):
             # Hosts must not specify thread version
             assert params.get('version', '') == '', params
             params['version'] = ''
 
-        if params:
-            params = dict(DEFAULT_PARAMS, **params)
-        else:
-            params = DEFAULT_PARAMS.copy()
+        is_ftd = (not params.get('is_mtd') and not params.get('is_host'))
 
-        return params
+        effective_params = DEFAULT_PARAMS.copy()
+
+        if is_ftd:
+            effective_params.update(FTD_DEFAULT_PARAMS)
+
+        effective_params.update(params)
+
+        return effective_params
 
     def _has_backbone_traffic(self):
         for param in self.TOPOLOGY.values():
@@ -461,6 +532,7 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
         time.sleep(0.2)
         assert self._dumpcap_proc.poll() is None, 'tshark terminated unexpectedly'
         logging.info('Backbone sniffer launched successfully: pid=%s', self._dumpcap_proc.pid)
+        os.chmod(pcap_file, stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
 
     def _get_backbone_pcap_filename(self):
         backbone_pcap = self.test_name + '_backbone.pcap'
@@ -495,5 +567,20 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
             if timeout <= 0:
                 raise RuntimeError(f'wait failed after {timeout} seconds')
 
-    def wait_node_state(self, nodeid: int, state: str, timeout: int):
-        self.wait_until(lambda: self.nodes[nodeid].get_state() == state, timeout)
+    def wait_node_state(self, node: Union[int, Node], state: str, timeout: int):
+        node = self.nodes[node] if isinstance(node, int) else node
+        self.wait_until(lambda: node.get_state() == state, timeout)
+
+    def wait_route_established(self, node1: int, node2: int, timeout=10):
+        node2_addr = self.nodes[node2].get_ip6_address(config.ADDRESS_TYPE.RLOC)
+
+        while timeout > 0:
+
+            if self.nodes[node1].ping(node2_addr):
+                break
+
+            self.simulator.go(1)
+            timeout -= 1
+
+        else:
+            raise Exception("Route between node %d and %d is not established" % (node1, node2))

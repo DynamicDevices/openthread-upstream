@@ -36,6 +36,8 @@
 
 #include "openthread-core-config.h"
 
+#if OPENTHREAD_CONFIG_DHCP6_SERVER_ENABLE || OPENTHREAD_CONFIG_DHCP6_CLIENT_ENABLE
+
 #include "common/clearable.hpp"
 #include "common/equatable.hpp"
 #include "common/message.hpp"
@@ -59,18 +61,10 @@ using ot::Encoding::BigEndian::HostSwap32;
  *
  */
 
-/**
- * DHCPv6 constant
- *
- */
-enum
-{
-
-    kDhcpClientPort       = 546,
-    kDhcpServerPort       = 547,
-    kHardwareTypeEui64    = 27,
-    kHardwareTypeEthernet = 1,
-};
+constexpr uint16_t kDhcpClientPort       = 546;
+constexpr uint16_t kDhcpServerPort       = 547;
+constexpr uint16_t kHardwareTypeEui64    = 27;
+constexpr uint16_t kHardwareTypeEthernet = 1;
 
 /**
  * DHCPv6 Message Types
@@ -104,19 +98,16 @@ OT_TOOL_PACKED_BEGIN
 class TransactionId : public Equatable<TransactionId>, public Clearable<TransactionId>
 {
 public:
-    enum : uint16_t
-    {
-        kSize = 3, // Transaction Id size (in bytes).
-    };
+    static constexpr uint16_t kSize = 3; ///< Transaction Id size (in bytes).
 
     /**
      * This method generates a cryptographically secure random sequence to populate the transaction identifier.
      *
-     * @retval OT_ERROR_NONE     Successfully generated a random transaction identifier.
-     * @retval OT_ERROR_FAILED   Failed to generate random sequence.
+     * @retval kErrorNone     Successfully generated a random transaction identifier.
+     * @retval kErrorFailed   Failed to generate random sequence.
      *
      */
-    otError GenerateRandom(void) { return Random::Crypto::FillBuffer(m8, kSize); }
+    Error GenerateRandom(void) { return Random::Crypto::FillBuffer(m8, kSize); }
 
 private:
     uint8_t m8[kSize];
@@ -278,17 +269,17 @@ public:
     }
 
     /**
-     * This method returns the client Duid Type.
+     * This method returns the client DUID Type.
      *
-     * @returns The client Duid Type.
+     * @returns The client DUID Type.
      *
      */
     DuidType GetDuidType(void) const { return static_cast<DuidType>(HostSwap16(mDuidType)); }
 
     /**
-     * This method sets the client Duid Type.
+     * This method sets the client DUID Type.
      *
-     * @param[in]  aDuidType  The client Duid Type.
+     * @param[in]  aDuidType  The client DUID Type.
      *
      */
     void SetDuidType(DuidType aDuidType) { mDuidType = HostSwap16(static_cast<uint16_t>(aDuidType)); }
@@ -349,33 +340,33 @@ public:
     }
 
     /**
-     * This method returns the server Duid Type.
+     * This method returns the server DUID Type.
      *
-     * @returns The server Duid Type.
+     * @returns The server DUID Type.
      *
      */
     DuidType GetDuidType(void) const { return static_cast<DuidType>(HostSwap16(mDuidType)); }
 
     /**
-     * This method sets the server Duid Type.
+     * This method sets the server DUID Type.
      *
-     * @param[in]  aDuidType  The server Duid Type.
+     * @param[in]  aDuidType  The server DUID Type.
      *
      */
     void SetDuidType(DuidType aDuidType) { mDuidType = HostSwap16(static_cast<uint16_t>(aDuidType)); }
 
     /**
-     * This method returns the server Duid HardwareType.
+     * This method returns the server DUID HardwareType.
      *
-     * @returns The server Duid HardwareType.
+     * @returns The server DUID HardwareType.
      *
      */
     uint16_t GetDuidHardwareType(void) const { return HostSwap16(mDuidHardwareType); }
 
     /**
-     * This method sets the server Duid HardwareType.
+     * This method sets the server DUID HardwareType.
      *
-     * @param[in]  aDuidHardwareType  The server Duid HardwareType.
+     * @param[in]  aDuidHardwareType  The server DUID HardwareType.
      *
      */
     void SetDuidHardwareType(uint16_t aDuidHardwareType) { mDuidHardwareType = HostSwap16(aDuidHardwareType); }
@@ -413,11 +404,8 @@ OT_TOOL_PACKED_BEGIN
 class IaNa : public Option
 {
 public:
-    enum : uint32_t
-    {
-        kDefaultT1 = 0xffffffffU, ///< Default T1 value.
-        kDefaultT2 = 0xffffffffU, ///< Default T2 value.
-    };
+    static constexpr uint32_t kDefaultT1 = 0xffffffffU; ///< Default T1 value.
+    static constexpr uint32_t kDefaultT2 = 0xffffffffU; ///< Default T2 value.
 
     /**
      * This method initializes the DHCPv6 Option.
@@ -491,11 +479,8 @@ OT_TOOL_PACKED_BEGIN
 class IaAddress : public Option
 {
 public:
-    enum : uint32_t
-    {
-        kDefaultPreferredLifetime = 0xffffffffU, ///< Default preferred lifetime.
-        kDefaultValidLiftetime    = 0xffffffffU, ///< Default valid lifetime.
-    };
+    static constexpr uint32_t kDefaultPreferredLifetime = 0xffffffffU; ///< Default preferred lifetime.
+    static constexpr uint32_t kDefaultValidLiftetime    = 0xffffffffU; ///< Default valid lifetime.
 
     /**
      * This method initializes the DHCPv6 Option.
@@ -684,5 +669,7 @@ public:
 
 } // namespace Dhcp6
 } // namespace ot
+
+#endif // #if OPENTHREAD_CONFIG_DHCP6_SERVER_ENABLE || OPENTHREAD_CONFIG_DHCP6_CLIENT_ENABLE
 
 #endif // DHCP6_HPP_

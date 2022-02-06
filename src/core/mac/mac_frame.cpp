@@ -50,6 +50,13 @@ using ot::Encoding::LittleEndian::ReadUint32;
 using ot::Encoding::LittleEndian::WriteUint16;
 using ot::Encoding::LittleEndian::WriteUint32;
 
+void HeaderIe::Init(uint16_t aId, uint8_t aLen)
+{
+    Init();
+    SetId(aId);
+    SetLength(aLen);
+}
+
 void Frame::InitMacHeader(uint16_t aFcf, uint8_t aSecurityControl)
 {
     mLength = CalculateAddrFieldSize(aFcf);
@@ -79,13 +86,13 @@ uint16_t Frame::GetFrameControlField(void) const
     return ReadUint16(mPsdu);
 }
 
-otError Frame::ValidatePsdu(void) const
+Error Frame::ValidatePsdu(void) const
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindPayloadIndex();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
-    VerifyOrExit((index + GetFooterLength()) <= mLength, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
+    VerifyOrExit((index + GetFooterLength()) <= mLength, error = kErrorParse);
 
 exit:
     return error;
@@ -159,12 +166,12 @@ bool Frame::IsDstPanIdPresent(uint16_t aFcf)
     return present;
 }
 
-otError Frame::GetDstPanId(PanId &aPanId) const
+Error Frame::GetDstPanId(PanId &aPanId) const
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindDstPanIdIndex();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
     aPanId = ReadUint16(&mPsdu[index]);
 
 exit:
@@ -184,12 +191,12 @@ uint8_t Frame::FindDstAddrIndex(void) const
     return kFcfSize + kDsnSize + (IsDstPanIdPresent() ? sizeof(PanId) : 0);
 }
 
-otError Frame::GetDstAddr(Address &aAddress) const
+Error Frame::GetDstAddr(Address &aAddress) const
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindDstAddrIndex();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
 
     switch (GetFrameControlField() & kFcfDstAddrMask)
     {
@@ -297,24 +304,24 @@ bool Frame::IsSrcPanIdPresent(uint16_t aFcf)
     return srcPanIdPresent;
 }
 
-otError Frame::GetSrcPanId(PanId &aPanId) const
+Error Frame::GetSrcPanId(PanId &aPanId) const
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindSrcPanIdIndex();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
     aPanId = ReadUint16(&mPsdu[index]);
 
 exit:
     return error;
 }
 
-otError Frame::SetSrcPanId(PanId aPanId)
+Error Frame::SetSrcPanId(PanId aPanId)
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindSrcPanIdIndex();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
     WriteUint16(aPanId, &mPsdu[index]);
 
 exit:
@@ -352,13 +359,13 @@ uint8_t Frame::FindSrcAddrIndex(void) const
     return index;
 }
 
-otError Frame::GetSrcAddr(Address &aAddress) const
+Error Frame::GetSrcAddr(Address &aAddress) const
 {
-    otError  error = OT_ERROR_NONE;
+    Error    error = kErrorNone;
     uint8_t  index = FindSrcAddrIndex();
     uint16_t fcf   = GetFrameControlField();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
 
     switch (fcf & kFcfSrcAddrMask)
     {
@@ -416,12 +423,12 @@ void Frame::SetSrcAddr(const Address &aAddress)
     }
 }
 
-otError Frame::GetSecurityControlField(uint8_t &aSecurityControlField) const
+Error Frame::GetSecurityControlField(uint8_t &aSecurityControlField) const
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindSecurityHeaderIndex();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
 
     aSecurityControlField = mPsdu[index];
 
@@ -450,12 +457,12 @@ exit:
     return index;
 }
 
-otError Frame::GetSecurityLevel(uint8_t &aSecurityLevel) const
+Error Frame::GetSecurityLevel(uint8_t &aSecurityLevel) const
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindSecurityHeaderIndex();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
 
     aSecurityLevel = mPsdu[index] & kSecLevelMask;
 
@@ -463,12 +470,12 @@ exit:
     return error;
 }
 
-otError Frame::GetKeyIdMode(uint8_t &aKeyIdMode) const
+Error Frame::GetKeyIdMode(uint8_t &aKeyIdMode) const
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindSecurityHeaderIndex();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
 
     aKeyIdMode = mPsdu[index] & kKeyIdModeMask;
 
@@ -476,12 +483,12 @@ exit:
     return error;
 }
 
-otError Frame::GetFrameCounter(uint32_t &aFrameCounter) const
+Error Frame::GetFrameCounter(uint32_t &aFrameCounter) const
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindSecurityHeaderIndex();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
 
     // Security Control
     index += kSecurityControlSize;
@@ -502,6 +509,8 @@ void Frame::SetFrameCounter(uint32_t aFrameCounter)
     index += kSecurityControlSize;
 
     WriteUint32(aFrameCounter, &mPsdu[index]);
+
+    static_cast<Mac::TxFrame *>(this)->SetIsHeaderUpdated(true);
 }
 
 const uint8_t *Frame::GetKeySource(void) const
@@ -551,13 +560,13 @@ void Frame::SetKeySource(const uint8_t *aKeySource)
     memcpy(&mPsdu[index + kSecurityControlSize + kFrameCounterSize], aKeySource, keySourceLength);
 }
 
-otError Frame::GetKeyId(uint8_t &aKeyId) const
+Error Frame::GetKeyId(uint8_t &aKeyId) const
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t keySourceLength;
     uint8_t index = FindSecurityHeaderIndex();
 
-    VerifyOrExit(index != kInvalidIndex);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
 
     keySourceLength = GetKeySourceLength(mPsdu[index] & kKeyIdModeMask);
 
@@ -579,11 +588,12 @@ void Frame::SetKeyId(uint8_t aKeyId)
     mPsdu[index + kSecurityControlSize + kFrameCounterSize + keySourceLength] = aKeyId;
 }
 
-otError Frame::GetCommandId(uint8_t &aCommandId) const
+Error Frame::GetCommandId(uint8_t &aCommandId) const
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindPayloadIndex();
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
 
     aCommandId = mPsdu[IsVersion2015() ? index : (index - 1)];
 
@@ -591,12 +601,12 @@ exit:
     return error;
 }
 
-otError Frame::SetCommandId(uint8_t aCommandId)
+Error Frame::SetCommandId(uint8_t aCommandId)
 {
-    otError error = OT_ERROR_NONE;
+    Error   error = kErrorNone;
     uint8_t index = FindPayloadIndex();
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_PARSE);
+    VerifyOrExit(index != kInvalidIndex, error = kErrorParse);
 
     mPsdu[IsVersion2015() ? index : (index - 1)] = aCommandId;
 
@@ -829,7 +839,7 @@ uint8_t Frame::FindPayloadIndex(void) const
             index += ie->GetLength();
             VerifyOrExit(index + footerLength <= mLength, index = kInvalidIndex);
 
-            if (ie->GetId() == kHeaderIeTermination2)
+            if (ie->GetId() == Termination2Ie::kHeaderIeId)
             {
                 break;
             }
@@ -886,24 +896,58 @@ exit:
     return index;
 }
 
-otError Frame::AppendHeaderIe(HeaderIe *aIeList, uint8_t aIeCount)
+#if OPENTHREAD_CONFIG_MAC_HEADER_IE_SUPPORT
+template <typename IeType> Error Frame::AppendHeaderIeAt(uint8_t &aIndex)
 {
-    otError  error = OT_ERROR_NONE;
-    uint16_t index = FindHeaderIeIndex();
+    Error error = kErrorNone;
 
-    VerifyOrExit(index != kInvalidIndex, error = OT_ERROR_NOT_FOUND);
+    SuccessOrExit(error = InitIeHeaderAt(aIndex, IeType::kHeaderIeId, IeType::kIeContentSize));
 
-    for (uint8_t i = 0; i < aIeCount; i++)
-    {
-        memcpy(&mPsdu[index], &aIeList[i], sizeof(HeaderIe));
-
-        index += sizeof(HeaderIe) + aIeList[i].GetLength();
-        mLength += sizeof(HeaderIe) + aIeList[i].GetLength();
-    }
+    InitIeContentAt<IeType>(aIndex);
 
 exit:
     return error;
 }
+
+Error Frame::InitIeHeaderAt(uint8_t &aIndex, uint8_t ieId, uint8_t ieContentSize)
+{
+    Error error = kErrorNone;
+
+    if (aIndex == 0)
+    {
+        aIndex = FindHeaderIeIndex();
+    }
+
+    VerifyOrExit(aIndex != kInvalidIndex, error = kErrorNotFound);
+
+    reinterpret_cast<HeaderIe *>(mPsdu + aIndex)->Init(ieId, ieContentSize);
+    aIndex += sizeof(HeaderIe);
+
+    mLength += sizeof(HeaderIe) + ieContentSize;
+exit:
+    return error;
+}
+
+#if OPENTHREAD_CONFIG_TIME_SYNC_ENABLE
+template <> void Frame::InitIeContentAt<TimeIe>(uint8_t &aIndex)
+{
+    reinterpret_cast<TimeIe *>(mPsdu + aIndex)->Init();
+    aIndex += sizeof(TimeIe);
+}
+#endif
+
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+template <> void Frame::InitIeContentAt<CslIe>(uint8_t &aIndex)
+{
+    aIndex += sizeof(CslIe);
+}
+#endif
+
+template <> void Frame::InitIeContentAt<Termination2Ie>(uint8_t &aIndex)
+{
+    OT_UNUSED_VARIABLE(aIndex);
+}
+#endif // OPENTHREAD_CONFIG_MAC_HEADER_IE_SUPPORT
 
 const uint8_t *Frame::GetHeaderIe(uint8_t aIeId) const
 {
@@ -933,7 +977,7 @@ exit:
     return header;
 }
 
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE || OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
 const uint8_t *Frame::GetThreadIe(uint8_t aSubType) const
 {
     uint8_t        index        = FindHeaderIeIndex();
@@ -948,7 +992,7 @@ const uint8_t *Frame::GetThreadIe(uint8_t aSubType) const
     {
         const HeaderIe *ie = reinterpret_cast<const HeaderIe *>(&mPsdu[index]);
 
-        if (ie->GetId() == kHeaderIeVendor)
+        if (ie->GetId() == VendorIeHeader::kHeaderIeId)
         {
             const VendorIeHeader *vendorIe =
                 reinterpret_cast<const VendorIeHeader *>(reinterpret_cast<const uint8_t *>(ie) + sizeof(HeaderIe));
@@ -965,14 +1009,14 @@ const uint8_t *Frame::GetThreadIe(uint8_t aSubType) const
 exit:
     return header;
 }
-#endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE || OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
 
 #endif // OPENTHREAD_CONFIG_MAC_HEADER_IE_SUPPORT
 
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
 void Frame::SetCslIe(uint16_t aCslPeriod, uint16_t aCslPhase)
 {
-    uint8_t *cur = GetHeaderIe(Frame::kHeaderIeCsl);
+    uint8_t *cur = GetHeaderIe(CslIe::kHeaderIeId);
     CslIe *  csl;
 
     VerifyOrExit(cur != nullptr);
@@ -985,7 +1029,7 @@ exit:
 }
 #endif // OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
 
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
 void Frame::SetEnhAckProbingIe(const uint8_t *aValue, uint8_t aLen)
 {
     uint8_t *cur = GetThreadIe(ThreadIe::kEnhAckProbingIe);
@@ -994,7 +1038,7 @@ void Frame::SetEnhAckProbingIe(const uint8_t *aValue, uint8_t aLen)
 
     memcpy(cur + sizeof(HeaderIe) + sizeof(VendorIeHeader), aValue, aLen);
 }
-#endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
 
 #if OPENTHREAD_CONFIG_TIME_SYNC_ENABLE
 const TimeIe *Frame::GetTimeIe(void) const
@@ -1002,7 +1046,7 @@ const TimeIe *Frame::GetTimeIe(void) const
     const TimeIe * timeIe = nullptr;
     const uint8_t *cur    = nullptr;
 
-    cur = GetHeaderIe(kHeaderIeVendor);
+    cur = GetHeaderIe(VendorIeHeader::kHeaderIeId);
     VerifyOrExit(cur != nullptr);
 
     cur += sizeof(HeaderIe);
@@ -1019,7 +1063,7 @@ exit:
 #if OPENTHREAD_CONFIG_MULTI_RADIO
 uint16_t Frame::GetMtu(void) const
 {
-    uint16_t mtu;
+    uint16_t mtu = 0;
 
     switch (GetRadioType())
     {
@@ -1034,9 +1078,6 @@ uint16_t Frame::GetMtu(void) const
         mtu = Trel::Link::kMtuSize;
         break;
 #endif
-
-    default:
-        OT_ASSERT(false);
     }
 
     return mtu;
@@ -1044,7 +1085,7 @@ uint16_t Frame::GetMtu(void) const
 
 uint8_t Frame::GetFcsSize(void) const
 {
-    uint8_t fcsSize;
+    uint8_t fcsSize = 0;
 
     switch (GetRadioType())
     {
@@ -1059,9 +1100,6 @@ uint8_t Frame::GetFcsSize(void) const
         fcsSize = Trel::Link::kFcsSize;
         break;
 #endif
-
-    default:
-        OT_ASSERT(false);
     }
 
     return fcsSize;
@@ -1077,6 +1115,17 @@ uint8_t Frame::GetFcsSize(void) const
 {
     return Trel::Link::kFcsSize;
 }
+#endif
+
+// Explicit instantiation
+#if OPENTHREAD_CONFIG_MAC_HEADER_IE_SUPPORT
+#if OPENTHREAD_CONFIG_TIME_SYNC_ENABLE
+template Error Frame::AppendHeaderIeAt<TimeIe>(uint8_t &aIndex);
+#endif
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+template Error Frame::AppendHeaderIeAt<CslIe>(uint8_t &aIndex);
+#endif
+template Error Frame::AppendHeaderIeAt<Termination2Ie>(uint8_t &aIndex);
 #endif
 
 void TxFrame::CopyFrom(const TxFrame &aFromFrame)
@@ -1170,9 +1219,9 @@ void TxFrame::GenerateImmAck(const RxFrame &aFrame, bool aIsFramePending)
 }
 
 #if OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2
-otError TxFrame::GenerateEnhAck(const RxFrame &aFrame, bool aIsFramePending, const uint8_t *aIeData, uint8_t aIeLength)
+Error TxFrame::GenerateEnhAck(const RxFrame &aFrame, bool aIsFramePending, const uint8_t *aIeData, uint8_t aIeLength)
 {
-    otError error = OT_ERROR_NONE;
+    Error error = kErrorNone;
 
     uint16_t fcf = kFcfFrameAck | kFcfFrameVersion2015 | kFcfSrcAddrNone;
     Address  address;
@@ -1237,7 +1286,7 @@ otError TxFrame::GenerateEnhAck(const RxFrame &aFrame, bool aIsFramePending, con
         }
         else
         {
-            ExitNow(error = OT_ERROR_PARSE);
+            ExitNow(error = kErrorParse);
         }
 
         SetDstPanId(panId);
@@ -1280,15 +1329,15 @@ exit:
 }
 #endif // OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2
 
-otError RxFrame::ProcessReceiveAesCcm(const ExtAddress &aExtAddress, const Key &aMacKey)
+Error RxFrame::ProcessReceiveAesCcm(const ExtAddress &aExtAddress, const KeyMaterial &aMacKey)
 {
 #if OPENTHREAD_RADIO
     OT_UNUSED_VARIABLE(aExtAddress);
     OT_UNUSED_VARIABLE(aMacKey);
 
-    return OT_ERROR_NONE;
+    return kErrorNone;
 #else
-    otError        error        = OT_ERROR_SECURITY;
+    Error          error        = kErrorSecurity;
     uint32_t       frameCounter = 0;
     uint8_t        securityLevel;
     uint8_t        nonce[Crypto::AesCcm::kNonceSize];
@@ -1296,7 +1345,7 @@ otError RxFrame::ProcessReceiveAesCcm(const ExtAddress &aExtAddress, const Key &
     uint8_t        tagLength;
     Crypto::AesCcm aesCcm;
 
-    VerifyOrExit(GetSecurityEnabled(), error = OT_ERROR_NONE);
+    VerifyOrExit(GetSecurityEnabled(), error = kErrorNone);
 
     SuccessOrExit(GetSecurityLevel(securityLevel));
     SuccessOrExit(GetFrameCounter(frameCounter));
@@ -1321,7 +1370,7 @@ otError RxFrame::ProcessReceiveAesCcm(const ExtAddress &aExtAddress, const Key &
     VerifyOrExit(memcmp(tag, GetFooter(), tagLength) == 0);
 #endif
 
-    error = OT_ERROR_NONE;
+    error = kErrorNone;
 
 exit:
     return error;
@@ -1338,26 +1387,26 @@ Frame::InfoString Frame::ToInfoString(void) const
     uint8_t    commandId, type;
     Address    src, dst;
 
-    IgnoreError(string.Append("len:%d, seqnum:%d, type:", mLength, GetSequence()));
+    string.Append("len:%d, seqnum:%d, type:", mLength, GetSequence());
 
     type = GetType();
 
     switch (type)
     {
     case kFcfFrameBeacon:
-        IgnoreError(string.Append("Beacon"));
+        string.Append("Beacon");
         break;
 
     case kFcfFrameData:
-        IgnoreError(string.Append("Data"));
+        string.Append("Data");
         break;
 
     case kFcfFrameAck:
-        IgnoreError(string.Append("Ack"));
+        string.Append("Ack");
         break;
 
     case kFcfFrameMacCmd:
-        if (GetCommandId(commandId) != OT_ERROR_NONE)
+        if (GetCommandId(commandId) != kErrorNone)
         {
             commandId = 0xff;
         }
@@ -1365,34 +1414,33 @@ Frame::InfoString Frame::ToInfoString(void) const
         switch (commandId)
         {
         case kMacCmdDataRequest:
-            IgnoreError(string.Append("Cmd(DataReq)"));
+            string.Append("Cmd(DataReq)");
             break;
 
         case kMacCmdBeaconRequest:
-            IgnoreError(string.Append("Cmd(BeaconReq)"));
+            string.Append("Cmd(BeaconReq)");
             break;
 
         default:
-            IgnoreError(string.Append("Cmd(%d)", commandId));
+            string.Append("Cmd(%d)", commandId);
             break;
         }
 
         break;
 
     default:
-        IgnoreError(string.Append("%d", type));
+        string.Append("%d", type);
         break;
     }
 
     IgnoreError(GetSrcAddr(src));
     IgnoreError(GetDstAddr(dst));
 
-    IgnoreError(string.Append(", src:%s, dst:%s, sec:%s, ackreq:%s", src.ToString().AsCString(),
-                              dst.ToString().AsCString(), GetSecurityEnabled() ? "yes" : "no",
-                              GetAckRequest() ? "yes" : "no"));
+    string.Append(", src:%s, dst:%s, sec:%s, ackreq:%s", src.ToString().AsCString(), dst.ToString().AsCString(),
+                  ToYesNo(GetSecurityEnabled()), ToYesNo(GetAckRequest()));
 
 #if OPENTHREAD_CONFIG_MULTI_RADIO
-    IgnoreError(string.Append(", radio:%s", RadioTypeToString(GetRadioType())));
+    string.Append(", radio:%s", RadioTypeToString(GetRadioType()));
 #endif
 
     return string;
@@ -1401,12 +1449,14 @@ Frame::InfoString Frame::ToInfoString(void) const
 BeaconPayload::InfoString BeaconPayload::ToInfoString(void) const
 {
     NetworkName name;
+    InfoString  string;
 
     IgnoreError(name.Set(GetNetworkName()));
 
-    return InfoString("name:%s, xpanid:%s, id:%d, ver:%d, joinable:%s, native:%s", name.GetAsCString(),
-                      mExtendedPanId.ToString().AsCString(), GetProtocolId(), GetProtocolVersion(),
-                      IsJoiningPermitted() ? "yes" : "no", IsNative() ? "yes" : "no");
+    string.Append("name:%s, xpanid:%s, id:%d, ver:%d, joinable:%s, native:%s", name.GetAsCString(),
+                  mExtendedPanId.ToString().AsCString(), GetProtocolId(), GetProtocolVersion(),
+                  ToYesNo(IsJoiningPermitted()), ToYesNo(IsNative()));
+    return string;
 }
 
 #endif // #if (OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_NOTE) && (OPENTHREAD_CONFIG_LOG_MAC == 1)

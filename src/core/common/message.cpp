@@ -33,21 +33,30 @@
 
 #include "message.hpp"
 
+#include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
+#include "common/heap.hpp"
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 #include "net/checksum.hpp"
 #include "net/ip6.hpp"
 
 #if OPENTHREAD_MTD || OPENTHREAD_FTD
 
+#if OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE && OPENTHREAD_CONFIG_PLATFORM_MESSAGE_MANAGEMENT
+#error "OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE conflicts with OPENTHREAD_CONFIG_PLATFORM_MESSAGE_MANAGEMENT."
+#endif
+
 #if OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE && !OPENTHREAD_CONFIG_DTLS_ENABLE
 #error "OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE is strongly discouraged when OPENTHREAD_CONFIG_DTLS_ENABLE is off."
 #endif
 
 namespace ot {
+
+//---------------------------------------------------------------------------------------------------------------------
+// MessagePool
 
 MessagePool::MessagePool(Instance &aInstance)
     : InstanceLocator(aInstance)
@@ -60,39 +69,27 @@ MessagePool::MessagePool(Instance &aInstance)
 #endif
 }
 
-Message *MessagePool::New(Message::Type aType, uint16_t aReserveHeader, Message::Priority aPriority)
+Message *MessagePool::Allocate(Message::Type aType, uint16_t aReserveHeader, const Message::Settings &aSettings)
 {
-    otError  error = OT_ERROR_NONE;
+    Error    error = kErrorNone;
     Message *message;
 
-    VerifyOrExit((message = static_cast<Message *>(NewBuffer(aPriority))) != nullptr);
+    VerifyOrExit((message = static_cast<Message *>(NewBuffer(aSettings.GetPriority()))) != nullptr);
 
     memset(message, 0, sizeof(*message));
     message->SetMessagePool(this);
     message->SetType(aType);
     message->SetReserved(aReserveHeader);
-    message->SetLinkSecurityEnabled(true);
+    message->SetLinkSecurityEnabled(aSettings.IsLinkSecurityEnabled());
 
-    SuccessOrExit(error = message->SetPriority(aPriority));
+    SuccessOrExit(error = message->SetPriority(aSettings.GetPriority()));
     SuccessOrExit(error = message->SetLength(0));
 
 exit:
-    if (error != OT_ERROR_NONE)
+    if (error != kErrorNone)
     {
         Free(message);
         message = nullptr;
-    }
-
-    return message;
-}
-
-Message *MessagePool::New(Message::Type aType, uint16_t aReserveHeader, const Message::Settings &aSettings)
-{
-    Message *message = New(aType, aReserveHeader, aSettings.GetPriority());
-
-    if (message)
-    {
-        message->SetLinkSecurityEnabled(aSettings.IsLinkSecurityEnabled());
     }
 
     return message;
@@ -111,7 +108,7 @@ Buffer *MessagePool::NewBuffer(Message::Priority aPriority)
 
     while ((
 #if OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE
-               buffer = static_cast<Buffer *>(GetInstance().HeapCAlloc(sizeof(Buffer), 1))
+               buffer = static_cast<Buffer *>(Heap::CAlloc(1, sizeof(Buffer)))
 #elif OPENTHREAD_CONFIG_PLATFORM_MESSAGE_MANAGEMENT
                buffer = static_cast<Buffer *>(otPlatMessagePoolNew(&GetInstance()))
 #else
@@ -143,7 +140,7 @@ void MessagePool::FreeBuffers(Buffer *aBuffer)
     {
         Buffer *next = aBuffer->GetNextBuffer();
 #if OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE
-        GetInstance().HeapFree(aBuffer);
+        Heap::Free(aBuffer);
 #elif OPENTHREAD_CONFIG_PLATFORM_MESSAGE_MANAGEMENT
         otPlatMessagePoolFree(&GetInstance(), aBuffer);
 #else
@@ -154,7 +151,7 @@ void MessagePool::FreeBuffers(Buffer *aBuffer)
     }
 }
 
-otError MessagePool::ReclaimBuffers(Message::Priority aPriority)
+Error MessagePool::ReclaimBuffers(Message::Priority aPriority)
 {
     return Get<MeshForwarder>().EvictMessage(aPriority);
 }
@@ -164,7 +161,7 @@ uint16_t MessagePool::GetFreeBufferCount(void) const
     uint16_t rval;
 
 #if OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE
-    rval = static_cast<uint16_t>(GetInstance().GetHeap().GetFreeSize() / sizeof(Buffer));
+    rval = static_cast<uint16_t>(Instance::GetHeap().GetFreeSize() / sizeof(Buffer));
 #elif OPENTHREAD_CONFIG_PLATFORM_MESSAGE_MANAGEMENT
     rval = otPlatMessagePoolNumFreeBuffers(&GetInstance());
 #else
@@ -177,31 +174,37 @@ uint16_t MessagePool::GetFreeBufferCount(void) const
 uint16_t MessagePool::GetTotalBufferCount(void) const
 {
 #if OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE
-    return static_cast<uint16_t>(GetInstance().GetHeap().GetCapacity() / sizeof(Buffer));
+    return static_cast<uint16_t>(Instance::GetHeap().GetCapacity() / sizeof(Buffer));
 #else
     return OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS;
 #endif
 }
 
-const Message::Settings Message::Settings::kDefault(Message::kWithLinkSecurity, Message::kPriorityNormal);
+//---------------------------------------------------------------------------------------------------------------------
+// Message::Settings
+
+const otMessageSettings Message::Settings::kDefault = {kWithLinkSecurity, kPriorityNormal};
 
 Message::Settings::Settings(LinkSecurityMode aSecurityMode, Priority aPriority)
-    : mLinkSecurityEnabled(aSecurityMode == kWithLinkSecurity)
-    , mPriority(aPriority)
 {
+    mLinkSecurityEnabled = aSecurityMode;
+    mPriority            = aPriority;
 }
 
-Message::Settings::Settings(const otMessageSettings *aSettings)
-    : mLinkSecurityEnabled((aSettings != nullptr) ? aSettings->mLinkSecurityEnabled : true)
-    , mPriority((aSettings != nullptr) ? static_cast<Priority>(aSettings->mPriority) : kPriorityNormal)
+const Message::Settings &Message::Settings::From(const otMessageSettings *aSettings)
 {
+    return (aSettings == nullptr) ? GetDefault() : AsCoreType(aSettings);
 }
 
-otError Message::ResizeMessage(uint16_t aLength)
-{
-    otError error = OT_ERROR_NONE;
+//---------------------------------------------------------------------------------------------------------------------
+// Message
 
-    // add buffers
+Error Message::ResizeMessage(uint16_t aLength)
+{
+    // This method adds or frees message buffers to meet the
+    // requested length.
+
+    Error    error     = kErrorNone;
     Buffer * curBuffer = this;
     Buffer * lastBuffer;
     uint16_t curLength = kHeadBufferDataSize;
@@ -211,14 +214,13 @@ otError Message::ResizeMessage(uint16_t aLength)
         if (curBuffer->GetNextBuffer() == nullptr)
         {
             curBuffer->SetNextBuffer(GetMessagePool()->NewBuffer(GetPriority()));
-            VerifyOrExit(curBuffer->GetNextBuffer() != nullptr, error = OT_ERROR_NO_BUFS);
+            VerifyOrExit(curBuffer->GetNextBuffer() != nullptr, error = kErrorNoBufs);
         }
 
         curBuffer = curBuffer->GetNextBuffer();
         curLength += kBufferDataSize;
     }
 
-    // remove buffers
     lastBuffer = curBuffer;
     curBuffer  = curBuffer->GetNextBuffer();
     lastBuffer->SetNextBuffer(nullptr);
@@ -258,17 +260,17 @@ exit:
     return next;
 }
 
-otError Message::SetLength(uint16_t aLength)
+Error Message::SetLength(uint16_t aLength)
 {
-    otError  error              = OT_ERROR_NONE;
+    Error    error              = kErrorNone;
     uint16_t totalLengthRequest = GetReserved() + aLength;
 
-    VerifyOrExit(totalLengthRequest >= GetReserved(), error = OT_ERROR_INVALID_ARGS);
+    VerifyOrExit(totalLengthRequest >= GetReserved(), error = kErrorInvalidArgs);
 
     SuccessOrExit(error = ResizeMessage(totalLengthRequest));
     GetMetadata().mLength = aLength;
 
-    // Correct offset in case shorter length is set.
+    // Correct the offset in case shorter length is set.
     if (GetOffset() > aLength)
     {
         SetOffset(aLength);
@@ -327,20 +329,21 @@ bool Message::IsSubTypeMle(void) const
     return rval;
 }
 
-otError Message::SetPriority(Priority aPriority)
+Error Message::SetPriority(Priority aPriority)
 {
-    otError        error         = OT_ERROR_NONE;
-    uint8_t        priority      = static_cast<uint8_t>(aPriority);
-    PriorityQueue *priorityQueue = nullptr;
+    Error          error    = kErrorNone;
+    uint8_t        priority = static_cast<uint8_t>(aPriority);
+    PriorityQueue *priorityQueue;
 
-    VerifyOrExit(priority < kNumPriorities, error = OT_ERROR_INVALID_ARGS);
+    VerifyOrExit(priority < kNumPriorities, error = kErrorInvalidArgs);
 
     VerifyOrExit(IsInAQueue(), GetMetadata().mPriority = priority);
     VerifyOrExit(GetMetadata().mPriority != priority);
 
-    if (GetMetadata().mInPriorityQ)
+    priorityQueue = GetPriorityQueue();
+
+    if (priorityQueue != nullptr)
     {
-        priorityQueue = GetMetadata().mQueue.mPriority;
         priorityQueue->Dequeue(*this);
     }
 
@@ -355,9 +358,26 @@ exit:
     return error;
 }
 
-otError Message::AppendBytes(const void *aBuf, uint16_t aLength)
+const char *Message::PriorityToString(Priority aPriority)
 {
-    otError  error     = OT_ERROR_NONE;
+    static const char *const kPriorityStrings[] = {
+        "low",    // (0) kPriorityLow
+        "normal", // (1) kPriorityNormal
+        "high",   // (2) kPriorityHigh
+        "net",    // (3) kPriorityNet
+    };
+
+    static_assert(kPriorityLow == 0, "kPriorityLow value is incorrect");
+    static_assert(kPriorityNormal == 1, "kPriorityNormal value is incorrect");
+    static_assert(kPriorityHigh == 2, "kPriorityHigh value is incorrect");
+    static_assert(kPriorityNet == 3, "kPriorityNet value is incorrect");
+
+    return kPriorityStrings[aPriority];
+}
+
+Error Message::AppendBytes(const void *aBuf, uint16_t aLength)
+{
+    Error    error     = kErrorNone;
     uint16_t oldLength = GetLength();
 
     SuccessOrExit(error = SetLength(GetLength() + aLength));
@@ -367,14 +387,36 @@ exit:
     return error;
 }
 
-otError Message::PrependBytes(const void *aBuf, uint16_t aLength)
+Error Message::AppendBytesFromMessage(const Message &aMessage, uint16_t aOffset, uint16_t aLength)
 {
-    otError error     = OT_ERROR_NONE;
+    Error    error       = kErrorNone;
+    uint16_t writeOffset = GetLength();
+    Chunk    chunk;
+
+    VerifyOrExit(aMessage.GetLength() >= aOffset + aLength, error = kErrorParse);
+    SuccessOrExit(error = SetLength(GetLength() + aLength));
+
+    aMessage.GetFirstChunk(aOffset, aLength, chunk);
+
+    while (chunk.GetLength() > 0)
+    {
+        WriteBytes(writeOffset, chunk.GetBytes(), chunk.GetLength());
+        writeOffset += chunk.GetLength();
+        aMessage.GetNextChunk(aLength, chunk);
+    }
+
+exit:
+    return error;
+}
+
+Error Message::PrependBytes(const void *aBuf, uint16_t aLength)
+{
+    Error   error     = kErrorNone;
     Buffer *newBuffer = nullptr;
 
     while (aLength > GetReserved())
     {
-        VerifyOrExit((newBuffer = GetMessagePool()->NewBuffer(GetPriority())) != nullptr, error = OT_ERROR_NO_BUFS);
+        VerifyOrExit((newBuffer = GetMessagePool()->NewBuffer(GetPriority())) != nullptr, error = kErrorNoBufs);
 
         newBuffer->SetNextBuffer(GetNextBuffer());
         SetNextBuffer(newBuffer);
@@ -423,12 +465,12 @@ void Message::GetFirstChunk(uint16_t aOffset, uint16_t &aLength, Chunk &aChunk) 
 {
     // This method gets the first message chunk (contiguous data
     // buffer) corresponding to a given offset and length. On exit
-    // `aChunk` is updated such that `aChunk.GetData()` gives the
+    // `aChunk` is updated such that `aChunk.GetBytes()` gives the
     // pointer to the start of chunk and `aChunk.GetLength()` gives
     // its length. The `aLength` is also decreased by the chunk
     // length.
 
-    VerifyOrExit(aOffset < GetLength(), aChunk.mLength = 0);
+    VerifyOrExit(aOffset < GetLength(), aChunk.SetLength(0));
 
     if (aOffset + aLength >= GetLength())
     {
@@ -437,14 +479,13 @@ void Message::GetFirstChunk(uint16_t aOffset, uint16_t &aLength, Chunk &aChunk) 
 
     aOffset += GetReserved();
 
-    aChunk.mBuffer = this;
+    aChunk.SetBuffer(this);
 
     // Special case for the first buffer
 
     if (aOffset < kHeadBufferDataSize)
     {
-        aChunk.mData   = GetFirstData() + aOffset;
-        aChunk.mLength = kHeadBufferDataSize - aOffset;
+        aChunk.Init(GetFirstData() + aOffset, kHeadBufferDataSize - aOffset);
         ExitNow();
     }
 
@@ -454,13 +495,13 @@ void Message::GetFirstChunk(uint16_t aOffset, uint16_t &aLength, Chunk &aChunk) 
 
     while (true)
     {
-        aChunk.mBuffer = aChunk.mBuffer->GetNextBuffer();
-        OT_ASSERT(aChunk.mBuffer != nullptr);
+        aChunk.SetBuffer(aChunk.GetBuffer()->GetNextBuffer());
+
+        OT_ASSERT(aChunk.GetBuffer() != nullptr);
 
         if (aOffset < kBufferDataSize)
         {
-            aChunk.mData   = aChunk.mBuffer->GetData() + aOffset;
-            aChunk.mLength = kBufferDataSize - aOffset;
+            aChunk.Init(aChunk.GetBuffer()->GetData() + aOffset, kBufferDataSize - aOffset);
             ExitNow();
         }
 
@@ -468,12 +509,12 @@ void Message::GetFirstChunk(uint16_t aOffset, uint16_t &aLength, Chunk &aChunk) 
     }
 
 exit:
-    if (aChunk.mLength > aLength)
+    if (aChunk.GetLength() > aLength)
     {
-        aChunk.mLength = aLength;
+        aChunk.SetLength(aLength);
     }
 
-    aLength -= aChunk.mLength;
+    aLength -= aChunk.GetLength();
 }
 
 void Message::GetNextChunk(uint16_t &aLength, Chunk &aChunk) const
@@ -484,20 +525,20 @@ void Message::GetNextChunk(uint16_t &aLength, Chunk &aChunk) const
     // is decreased by the chunk length. If there is no more
     // chunk, `aChunk.GetLength()` would be zero.
 
-    VerifyOrExit(aLength > 0, aChunk.mLength = 0);
+    VerifyOrExit(aLength > 0, aChunk.SetLength(0));
 
-    aChunk.mBuffer = aChunk.mBuffer->GetNextBuffer();
-    OT_ASSERT(aChunk.mBuffer != nullptr);
+    aChunk.SetBuffer(aChunk.GetBuffer()->GetNextBuffer());
 
-    aChunk.mData   = aChunk.mBuffer->GetData();
-    aChunk.mLength = kBufferDataSize;
+    OT_ASSERT(aChunk.GetBuffer() != nullptr);
 
-    if (aChunk.mLength > aLength)
+    aChunk.Init(aChunk.GetBuffer()->GetData(), kBufferDataSize);
+
+    if (aChunk.GetLength() > aLength)
     {
-        aChunk.mLength = aLength;
+        aChunk.SetLength(aLength);
     }
 
-    aLength -= aChunk.mLength;
+    aLength -= aChunk.GetLength();
 
 exit:
     return;
@@ -512,7 +553,7 @@ uint16_t Message::ReadBytes(uint16_t aOffset, void *aBuf, uint16_t aLength) cons
 
     while (chunk.GetLength() > 0)
     {
-        memcpy(bufPtr, chunk.GetData(), chunk.GetLength());
+        chunk.CopyBytesTo(bufPtr);
         bufPtr += chunk.GetLength();
         GetNextChunk(aLength, chunk);
     }
@@ -520,15 +561,58 @@ uint16_t Message::ReadBytes(uint16_t aOffset, void *aBuf, uint16_t aLength) cons
     return static_cast<uint16_t>(bufPtr - reinterpret_cast<uint8_t *>(aBuf));
 }
 
-otError Message::Read(uint16_t aOffset, void *aBuf, uint16_t aLength) const
+Error Message::Read(uint16_t aOffset, void *aBuf, uint16_t aLength) const
 {
-    return (ReadBytes(aOffset, aBuf, aLength) == aLength) ? OT_ERROR_NONE : OT_ERROR_PARSE;
+    return (ReadBytes(aOffset, aBuf, aLength) == aLength) ? kErrorNone : kErrorParse;
+}
+
+bool Message::CompareBytes(uint16_t aOffset, const void *aBuf, uint16_t aLength, ByteMatcher aMatcher) const
+{
+    uint16_t       bytesToCompare = aLength;
+    const uint8_t *bufPtr         = reinterpret_cast<const uint8_t *>(aBuf);
+    Chunk          chunk;
+
+    GetFirstChunk(aOffset, aLength, chunk);
+
+    while (chunk.GetLength() > 0)
+    {
+        VerifyOrExit(chunk.MatchesBytesIn(bufPtr, aMatcher));
+        bufPtr += chunk.GetLength();
+        bytesToCompare -= chunk.GetLength();
+        GetNextChunk(aLength, chunk);
+    }
+
+exit:
+    return (bytesToCompare == 0);
+}
+
+bool Message::CompareBytes(uint16_t       aOffset,
+                           const Message &aOtherMessage,
+                           uint16_t       aOtherOffset,
+                           uint16_t       aLength,
+                           ByteMatcher    aMatcher) const
+{
+    uint16_t bytesToCompare = aLength;
+    Chunk    chunk;
+
+    GetFirstChunk(aOffset, aLength, chunk);
+
+    while (chunk.GetLength() > 0)
+    {
+        VerifyOrExit(aOtherMessage.CompareBytes(aOtherOffset, chunk.GetBytes(), chunk.GetLength(), aMatcher));
+        aOtherOffset += chunk.GetLength();
+        bytesToCompare -= chunk.GetLength();
+        GetNextChunk(aLength, chunk);
+    }
+
+exit:
+    return (bytesToCompare == 0);
 }
 
 void Message::WriteBytes(uint16_t aOffset, const void *aBuf, uint16_t aLength)
 {
     const uint8_t *bufPtr = reinterpret_cast<const uint8_t *>(aBuf);
-    WritableChunk  chunk;
+    MutableChunk   chunk;
 
     OT_ASSERT(aOffset + aLength <= GetLength());
 
@@ -536,7 +620,7 @@ void Message::WriteBytes(uint16_t aOffset, const void *aBuf, uint16_t aLength)
 
     while (chunk.GetLength() > 0)
     {
-        memmove(chunk.GetData(), bufPtr, chunk.GetLength());
+        memmove(chunk.GetBytes(), bufPtr, chunk.GetLength());
         bufPtr += chunk.GetLength();
         GetNextChunk(aLength, chunk);
     }
@@ -558,7 +642,7 @@ uint16_t Message::CopyTo(uint16_t aSourceOffset, uint16_t aDestinationOffset, ui
 
     while (chunk.GetLength() > 0)
     {
-        aMessage.WriteBytes(aDestinationOffset, chunk.GetData(), chunk.GetLength());
+        aMessage.WriteBytes(aDestinationOffset, chunk.GetBytes(), chunk.GetLength());
         aDestinationOffset += chunk.GetLength();
         bytesCopied += chunk.GetLength();
         GetNextChunk(aLength, chunk);
@@ -569,12 +653,13 @@ uint16_t Message::CopyTo(uint16_t aSourceOffset, uint16_t aDestinationOffset, ui
 
 Message *Message::Clone(uint16_t aLength) const
 {
-    otError  error = OT_ERROR_NONE;
+    Error    error = kErrorNone;
     Message *messageCopy;
+    Settings settings(IsLinkSecurityEnabled() ? kWithLinkSecurity : kNoLinkSecurity, GetPriority());
     uint16_t offset;
 
-    VerifyOrExit((messageCopy = GetMessagePool()->New(GetType(), GetReserved(), GetPriority())) != nullptr,
-                 error = OT_ERROR_NO_BUFS);
+    messageCopy = GetMessagePool()->Allocate(GetType(), GetReserved(), settings);
+    VerifyOrExit(messageCopy != nullptr, error = kErrorNoBufs);
     SuccessOrExit(error = messageCopy->SetLength(aLength));
     CopyTo(0, 0, aLength, *messageCopy);
 
@@ -583,7 +668,6 @@ Message *Message::Clone(uint16_t aLength) const
     messageCopy->SetOffset(offset);
 
     messageCopy->SetSubType(GetSubType());
-    messageCopy->SetLinkSecurityEnabled(IsLinkSecurityEnabled());
 #if OPENTHREAD_CONFIG_TIME_SYNC_ENABLE
     messageCopy->SetTimeSync(IsTimeSync());
 #endif
@@ -618,7 +702,7 @@ void Message::SetLinkInfo(const ThreadLinkInfo &aLinkInfo)
     SetLinkSecurityEnabled(aLinkInfo.mLinkSecurity);
     SetPanId(aLinkInfo.mPanId);
     AddRss(aLinkInfo.mRss);
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
     AddLqi(aLinkInfo.mLqi);
 #endif
 #if OPENTHREAD_CONFIG_TIME_SYNC_ENABLE
@@ -641,15 +725,18 @@ bool Message::IsTimeSync(void) const
 
 void Message::SetMessageQueue(MessageQueue *aMessageQueue)
 {
-    GetMetadata().mQueue.mMessage = aMessageQueue;
-    GetMetadata().mInPriorityQ    = false;
+    GetMetadata().mQueue       = aMessageQueue;
+    GetMetadata().mInPriorityQ = false;
 }
 
 void Message::SetPriorityQueue(PriorityQueue *aPriorityQueue)
 {
-    GetMetadata().mQueue.mPriority = aPriorityQueue;
-    GetMetadata().mInPriorityQ     = true;
+    GetMetadata().mQueue       = aPriorityQueue;
+    GetMetadata().mInPriorityQ = true;
 }
+
+//---------------------------------------------------------------------------------------------------------------------
+// MessageQueue
 
 MessageQueue::MessageQueue(void)
 {
@@ -716,6 +803,22 @@ void MessageQueue::Dequeue(Message &aMessage)
     aMessage.SetMessageQueue(nullptr);
 }
 
+void MessageQueue::DequeueAndFree(Message &aMessage)
+{
+    Dequeue(aMessage);
+    aMessage.Free();
+}
+
+void MessageQueue::DequeueAndFreeAll(void)
+{
+    Message *message;
+
+    while ((message = GetHead()) != nullptr)
+    {
+        DequeueAndFree(*message);
+    }
+}
+
 void MessageQueue::GetInfo(uint16_t &aMessageCount, uint16_t &aBufferCount) const
 {
     aMessageCount = 0;
@@ -728,6 +831,9 @@ void MessageQueue::GetInfo(uint16_t &aMessageCount, uint16_t &aBufferCount) cons
     }
 }
 
+//---------------------------------------------------------------------------------------------------------------------
+// PriorityQueue
+
 PriorityQueue::PriorityQueue(void)
 {
     for (Message *&tail : mTails)
@@ -738,6 +844,10 @@ PriorityQueue::PriorityQueue(void)
 
 Message *PriorityQueue::FindFirstNonNullTail(Message::Priority aStartPriorityLevel) const
 {
+    // Find the first non-`nullptr` tail starting from the given priority
+    // level and moving forward (wrapping from priority value
+    // `kNumPriorities` -1 back to 0).
+
     Message *tail = nullptr;
     uint8_t  priority;
 
@@ -852,7 +962,23 @@ void PriorityQueue::Dequeue(Message &aMessage)
     aMessage.Next()         = nullptr;
     aMessage.Prev()         = nullptr;
 
-    aMessage.SetMessageQueue(nullptr);
+    aMessage.SetPriorityQueue(nullptr);
+}
+
+void PriorityQueue::DequeueAndFree(Message &aMessage)
+{
+    Dequeue(aMessage);
+    aMessage.Free();
+}
+
+void PriorityQueue::DequeueAndFreeAll(void)
+{
+    Message *message;
+
+    while ((message = GetHead()) != nullptr)
+    {
+        DequeueAndFree(*message);
+    }
 }
 
 void PriorityQueue::GetInfo(uint16_t &aMessageCount, uint16_t &aBufferCount) const

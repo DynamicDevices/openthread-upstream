@@ -78,7 +78,6 @@ class TestDuaDad(thread_cert.TestCase):
             'allowlist': [SBBR, ROUTER1],
             'is_otbr': True,
             'version': '1.2',
-            'router_selection_jitter': 1,
             'channel': CH1,
             'prefer_router_id': 0x1,  # Use prefer_router_id to avoid Router ID conflicts in the two channels.
         },
@@ -87,7 +86,6 @@ class TestDuaDad(thread_cert.TestCase):
             'allowlist': [PBBR, ROUTER1],
             'is_otbr': True,
             'version': '1.2',
-            'router_selection_jitter': 1,
             'channel': CH1,
             'prefer_router_id': 0x2,
         },
@@ -95,7 +93,6 @@ class TestDuaDad(thread_cert.TestCase):
             'name': 'ROUTER1',
             'allowlist': [PBBR, SBBR],
             'version': '1.2',
-            'router_selection_jitter': 1,
             'channel': CH1,
             'prefer_router_id': 0x3,
         },
@@ -107,14 +104,12 @@ class TestDuaDad(thread_cert.TestCase):
             'name': 'PBBR2',
             'is_otbr': True,
             'version': '1.2',
-            'router_selection_jitter': 1,
             'channel': CH2,
             'prefer_router_id': 0x4,
         },
         ROUTER2: {
             'name': 'ROUTER2',
             'version': '1.2',
-            'router_selection_jitter': 1,
             'channel': CH2,
             'prefer_router_id': 0x5,
         },
@@ -261,7 +256,7 @@ class TestDuaDad(thread_cert.TestCase):
         ba.must_verify("""
             set(thread_bl.tlv.type) == {tlvs}
             and thread_bl.tlv.last_transaction_time > 0
-            and thread_meshcop.tlv.net_name == {NET_NAME}
+            and thread_meshcop.tlv.net_name == [{NET_NAME}]
         """,
                        tlvs={0, 3, 6, 12},
                        **pv.vars)

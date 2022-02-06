@@ -28,16 +28,9 @@
 
 add_library(openthread-ncp-ftd)
 
-set_target_properties(
-    openthread-ncp-ftd
-    PROPERTIES
-        C_STANDARD 99
-        CXX_STANDARD 11
-)
-
 target_compile_definitions(openthread-ncp-ftd PRIVATE
     OPENTHREAD_FTD=1
-    OPENTHREAD_CONFIG_NCP_UART_ENABLE=1
+    OPENTHREAD_CONFIG_NCP_HDLC_ENABLE=1
 )
 
 target_compile_options(openthread-ncp-ftd PRIVATE
@@ -53,7 +46,6 @@ target_link_libraries(openthread-ncp-ftd
     PUBLIC
         openthread-ftd
     PRIVATE
-        ${OT_PLATFORM_LIB}
         ${OT_MBEDTLS}
         openthread-hdlc
         openthread-spinel-ncp

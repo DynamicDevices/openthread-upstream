@@ -40,64 +40,68 @@
 
 #include <openthread/dataset.h>
 
-#include "utils/lookup_table.hpp"
+#include "cli/cli_output.hpp"
 
 namespace ot {
 namespace Cli {
-
-class Interpreter;
 
 /**
  * This class implements the Dataset CLI interpreter.
  *
  */
-class Dataset
+class Dataset : private OutputWrapper
 {
 public:
-    explicit Dataset(Interpreter &aInterpreter)
-        : mInterpreter(aInterpreter)
+    typedef Utils::CmdLineParser::Arg Arg;
+
+    explicit Dataset(Output &aOutput)
+        : OutputWrapper(aOutput)
     {
     }
 
     /**
      * This method interprets a list of CLI arguments.
      *
-     * @param[in]  aArgsLength  The number of elements in @p aArgs.
      * @param[in]  aArgs        An array of command line arguments.
      *
      */
-    otError Process(uint8_t aArgsLength, char *aArgs[]);
+    otError Process(Arg aArgs[]);
 
 private:
-    struct Command
-    {
-        const char *mName;
-        otError (Dataset::*mHandler)(uint8_t aArgsLength, char *aArgs[]);
-    };
+    using Command = CommandEntry<Dataset>;
 
     otError Print(otOperationalDataset &aDataset);
 
-    otError ProcessHelp(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessActive(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessActiveTimestamp(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessChannel(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessChannelMask(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessClear(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessCommit(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessDelay(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessExtPanId(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessInit(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessMasterKey(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessMeshLocalPrefix(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessNetworkName(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessPanId(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessPending(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessPendingTimestamp(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessMgmtSetCommand(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessMgmtGetCommand(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessPskc(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessSecurityPolicy(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessSet(uint8_t aArgsLength, char *aArgs[]);
+    otError ProcessHelp(Arg aArgs[]);
+    otError ProcessActive(Arg aArgs[]);
+    otError ProcessActiveTimestamp(Arg aArgs[]);
+    otError ProcessChannel(Arg aArgs[]);
+    otError ProcessChannelMask(Arg aArgs[]);
+    otError ProcessClear(Arg aArgs[]);
+    otError ProcessCommit(Arg aArgs[]);
+    otError ProcessDelay(Arg aArgs[]);
+    otError ProcessExtPanId(Arg aArgs[]);
+    otError ProcessInit(Arg aArgs[]);
+    otError ProcessMeshLocalPrefix(Arg aArgs[]);
+    otError ProcessNetworkName(Arg aArgs[]);
+    otError ProcessNetworkKey(Arg aArgs[]);
+    otError ProcessPanId(Arg aArgs[]);
+    otError ProcessPending(Arg aArgs[]);
+    otError ProcessPendingTimestamp(Arg aArgs[]);
+    otError ProcessMgmtSetCommand(Arg aArgs[]);
+    otError ProcessMgmtGetCommand(Arg aArgs[]);
+    otError ProcessPskc(Arg aArgs[]);
+    otError ProcessSecurityPolicy(Arg aArgs[]);
+    otError ProcessSet(Arg aArgs[]);
+
+#if OPENTHREAD_CONFIG_DATASET_UPDATER_ENABLE && OPENTHREAD_FTD
+    otError     ProcessUpdater(Arg aArgs[]);
+    static void HandleDatasetUpdater(otError aError, void *aContext);
+    void        HandleDatasetUpdater(otError aError);
+#endif
+
+    void    OutputSecurityPolicy(const otSecurityPolicy &aSecurityPolicy);
+    otError ParseSecurityPolicy(otSecurityPolicy &aSecurityPolicy, Arg *&aArgs);
 
     static constexpr Command sCommands[] = {
         {"active", &Dataset::ProcessActive},
@@ -110,10 +114,10 @@ private:
         {"extpanid", &Dataset::ProcessExtPanId},
         {"help", &Dataset::ProcessHelp},
         {"init", &Dataset::ProcessInit},
-        {"masterkey", &Dataset::ProcessMasterKey},
         {"meshlocalprefix", &Dataset::ProcessMeshLocalPrefix},
         {"mgmtgetcommand", &Dataset::ProcessMgmtGetCommand},
         {"mgmtsetcommand", &Dataset::ProcessMgmtSetCommand},
+        {"networkkey", &Dataset::ProcessNetworkKey},
         {"networkname", &Dataset::ProcessNetworkName},
         {"panid", &Dataset::ProcessPanId},
         {"pending", &Dataset::ProcessPending},
@@ -121,11 +125,12 @@ private:
         {"pskc", &Dataset::ProcessPskc},
         {"securitypolicy", &Dataset::ProcessSecurityPolicy},
         {"set", &Dataset::ProcessSet},
+#if OPENTHREAD_CONFIG_DATASET_UPDATER_ENABLE && OPENTHREAD_FTD
+        {"updater", &Dataset::ProcessUpdater},
+#endif
     };
 
-    static_assert(Utils::LookupTable::IsSorted(sCommands), "Command Table is not sorted");
-
-    Interpreter &mInterpreter;
+    static_assert(BinarySearch::IsSorted(sCommands), "Command Table is not sorted");
 
     static otOperationalDataset sDataset;
 };

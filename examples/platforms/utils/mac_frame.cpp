@@ -91,6 +91,26 @@ bool otMacFrameIsAckRequested(const otRadioFrame *aFrame)
     return static_cast<const Mac::Frame *>(aFrame)->GetAckRequest();
 }
 
+static void GetOtMacAddress(const Mac::Address &aInAddress, otMacAddress *aOutAddress)
+{
+    switch (aInAddress.GetType())
+    {
+    case Mac::Address::kTypeNone:
+        aOutAddress->mType = OT_MAC_ADDRESS_TYPE_NONE;
+        break;
+
+    case Mac::Address::kTypeShort:
+        aOutAddress->mType                  = OT_MAC_ADDRESS_TYPE_SHORT;
+        aOutAddress->mAddress.mShortAddress = aInAddress.GetShort();
+        break;
+
+    case Mac::Address::kTypeExtended:
+        aOutAddress->mType                = OT_MAC_ADDRESS_TYPE_EXTENDED;
+        aOutAddress->mAddress.mExtAddress = aInAddress.GetExtended();
+        break;
+    }
+}
+
 otError otMacFrameGetSrcAddr(const otRadioFrame *aFrame, otMacAddress *aMacAddress)
 {
     otError      error;
@@ -99,22 +119,21 @@ otError otMacFrameGetSrcAddr(const otRadioFrame *aFrame, otMacAddress *aMacAddre
     error = static_cast<const Mac::Frame *>(aFrame)->GetSrcAddr(address);
     SuccessOrExit(error);
 
-    switch (address.GetType())
-    {
-    case Mac::Address::kTypeNone:
-        aMacAddress->mType = OT_MAC_ADDRESS_TYPE_NONE;
-        break;
+    GetOtMacAddress(address, aMacAddress);
 
-    case Mac::Address::kTypeShort:
-        aMacAddress->mType                  = OT_MAC_ADDRESS_TYPE_SHORT;
-        aMacAddress->mAddress.mShortAddress = address.GetShort();
-        break;
+exit:
+    return error;
+}
 
-    case Mac::Address::kTypeExtended:
-        aMacAddress->mType                = OT_MAC_ADDRESS_TYPE_EXTENDED;
-        aMacAddress->mAddress.mExtAddress = address.GetExtended();
-        break;
-    }
+otError otMacFrameGetDstAddr(const otRadioFrame *aFrame, otMacAddress *aMacAddress)
+{
+    otError      error;
+    Mac::Address address;
+
+    error = static_cast<const Mac::Frame *>(aFrame)->GetDstAddr(address);
+    SuccessOrExit(error);
+
+    GetOtMacAddress(address, aMacAddress);
 
 exit:
     return error;
@@ -211,21 +230,21 @@ uint8_t otMacFrameGenerateCslIeTemplate(uint8_t *aDest)
 {
     assert(aDest != nullptr);
 
-    reinterpret_cast<Mac::HeaderIe *>(aDest)->SetId(Mac::Frame::kHeaderIeCsl);
+    reinterpret_cast<Mac::HeaderIe *>(aDest)->SetId(Mac::CslIe::kHeaderIeId);
     reinterpret_cast<Mac::HeaderIe *>(aDest)->SetLength(sizeof(Mac::CslIe));
 
     return sizeof(Mac::HeaderIe) + sizeof(Mac::CslIe);
 }
 #endif
 
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
 uint8_t otMacFrameGenerateEnhAckProbingIe(uint8_t *aDest, const uint8_t *aIeData, uint8_t aIeDataLength)
 {
     uint8_t len = sizeof(Mac::VendorIeHeader) + aIeDataLength;
 
     assert(aDest != nullptr);
 
-    reinterpret_cast<Mac::HeaderIe *>(aDest)->SetId(Mac::Frame::kHeaderIeVendor);
+    reinterpret_cast<Mac::HeaderIe *>(aDest)->SetId(Mac::ThreadIe::kHeaderIeId);
     reinterpret_cast<Mac::HeaderIe *>(aDest)->SetLength(len);
 
     aDest += sizeof(Mac::HeaderIe);
@@ -248,4 +267,4 @@ void otMacFrameSetEnhAckProbingIe(otRadioFrame *aFrame, const uint8_t *aData, ui
 
     reinterpret_cast<Mac::Frame *>(aFrame)->SetEnhAckProbingIe(aData, aDataLen);
 }
-#endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE

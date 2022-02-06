@@ -31,13 +31,13 @@
  *   This file includes definitions for handling indirect transmission.
  */
 
-#if OPENTHREAD_FTD
-
 #include "indirect_sender.hpp"
+
+#if OPENTHREAD_FTD
 
 #include "common/code_utils.hpp"
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 #include "common/message.hpp"
 #include "thread/mesh_forwarder.hpp"
@@ -65,7 +65,7 @@ IndirectSender::IndirectSender(Instance &aInstance)
     , mEnabled(false)
     , mSourceMatchController(aInstance)
     , mDataPollHandler(aInstance)
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
     , mCslTxScheduler(aInstance)
 #endif
 {
@@ -82,7 +82,7 @@ void IndirectSender::Stop(void)
     }
 
     mDataPollHandler.Clear();
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
     mCslTxScheduler.Clear();
 #endif
 
@@ -109,6 +109,7 @@ void IndirectSender::AddMessageForSleepyChild(Message &aMessage, Child &aChild)
         if (supervisionMessage != nullptr)
         {
             IgnoreError(RemoveMessageFromSleepyChild(*supervisionMessage, aChild));
+            Get<MeshForwarder>().RemoveMessageIfNoPendingTx(*supervisionMessage);
         }
     }
 
@@ -118,12 +119,12 @@ exit:
     return;
 }
 
-otError IndirectSender::RemoveMessageFromSleepyChild(Message &aMessage, Child &aChild)
+Error IndirectSender::RemoveMessageFromSleepyChild(Message &aMessage, Child &aChild)
 {
-    otError  error      = OT_ERROR_NONE;
+    Error    error      = kErrorNone;
     uint16_t childIndex = Get<ChildTable>().GetChildIndex(aChild);
 
-    VerifyOrExit(aMessage.GetChildMask(childIndex), error = OT_ERROR_NOT_FOUND);
+    VerifyOrExit(aMessage.GetChildMask(childIndex), error = kErrorNotFound);
 
     aMessage.ClearChildMask(childIndex);
     mSourceMatchController.DecrementMessageCount(aChild);
@@ -147,23 +148,14 @@ void IndirectSender::ClearAllMessagesForSleepyChild(Child &aChild)
 
         message->ClearChildMask(Get<ChildTable>().GetChildIndex(aChild));
 
-        if (!message->IsChildPending() && !message->GetDirectTransmission())
-        {
-            if (Get<MeshForwarder>().mSendMessage == message)
-            {
-                Get<MeshForwarder>().mSendMessage = nullptr;
-            }
-
-            Get<MeshForwarder>().mSendQueue.Dequeue(*message);
-            message->Free();
-        }
+        Get<MeshForwarder>().RemoveMessageIfNoPendingTx(*message);
     }
 
     aChild.SetIndirectMessage(nullptr);
     mSourceMatchController.ResetMessageCount(aChild);
 
     mDataPollHandler.RequestFrameChange(DataPollHandler::kPurgeFrame, aChild);
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
     mCslTxScheduler.Update();
 #endif
 
@@ -208,7 +200,7 @@ void IndirectSender::HandleChildModeChange(Child &aChild, Mle::DeviceMode aOldMo
         mSourceMatchController.ResetMessageCount(aChild);
 
         mDataPollHandler.RequestFrameChange(DataPollHandler::kPurgeFrame, aChild);
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
         mCslTxScheduler.Update();
 #endif
     }
@@ -250,7 +242,7 @@ void IndirectSender::RequestMessageUpdate(Child &aChild)
 
     if ((curMessage != nullptr) && !curMessage->GetChildMask(Get<ChildTable>().GetChildIndex(aChild)))
     {
-        // Set the indirect message for this child to nullptr to ensure
+        // Set the indirect message for this child to `nullptr` to ensure
         // it is not processed on `HandleSentFrameToChild()` callback.
 
         aChild.SetIndirectMessage(nullptr);
@@ -263,7 +255,7 @@ void IndirectSender::RequestMessageUpdate(Child &aChild)
 
         aChild.SetWaitingForMessageUpdate(true);
         mDataPollHandler.RequestFrameChange(DataPollHandler::kPurgeFrame, aChild);
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
         mCslTxScheduler.Update();
 #endif
 
@@ -278,24 +270,25 @@ void IndirectSender::RequestMessageUpdate(Child &aChild)
 
     if (curMessage == nullptr)
     {
-        // Current message is nullptr, but new message is not.
+        // Current message is `nullptr`, but new message is not.
         // We have a new indirect message.
 
         UpdateIndirectMessage(aChild);
         ExitNow();
     }
 
-    // Current message and new message differ and are both non-nullptr.
-    // We need to request the frame to be replaced. The current
-    // indirect message can be replaced only if it is the first
-    // fragment. If a next fragment frame for message is already
-    // prepared, we wait for the entire message to be delivered.
+    // Current message and new message differ and are both
+    // non-`nullptr`. We need to request the frame to be replaced.
+    // The current indirect message can be replaced only if it is
+    // the first fragment. If a next fragment frame for message is
+    // already prepared, we wait for the entire message to be
+    // delivered.
 
     VerifyOrExit(aChild.GetIndirectFragmentOffset() == 0);
 
     aChild.SetWaitingForMessageUpdate(true);
     mDataPollHandler.RequestFrameChange(DataPollHandler::kReplaceFrame, aChild);
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
     mCslTxScheduler.Update();
 #endif
 
@@ -321,7 +314,7 @@ void IndirectSender::UpdateIndirectMessage(Child &aChild)
     aChild.SetIndirectFragmentOffset(0);
     aChild.SetIndirectTxSuccess(true);
 
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
     mCslTxScheduler.Update();
 #endif
 
@@ -332,20 +325,21 @@ void IndirectSender::UpdateIndirectMessage(Child &aChild)
         mDataPollHandler.HandleNewFrame(aChild);
 
         aChild.GetMacAddress(childAddress);
-        Get<MeshForwarder>().LogMessage(MeshForwarder::kMessagePrepareIndirect, *message, &childAddress, OT_ERROR_NONE);
+        Get<MeshForwarder>().LogMessage(MeshForwarder::kMessagePrepareIndirect, *message, &childAddress, kErrorNone);
     }
 }
 
-otError IndirectSender::PrepareFrameForChild(Mac::TxFrame &aFrame, FrameContext &aContext, Child &aChild)
+Error IndirectSender::PrepareFrameForChild(Mac::TxFrame &aFrame, FrameContext &aContext, Child &aChild)
 {
-    otError  error   = OT_ERROR_NONE;
+    Error    error   = kErrorNone;
     Message *message = aChild.GetIndirectMessage();
 
-    VerifyOrExit(mEnabled, error = OT_ERROR_ABORT);
+    VerifyOrExit(mEnabled, error = kErrorAbort);
 
     if (message == nullptr)
     {
         PrepareEmptyFrame(aFrame, aChild, /* aAckRequest */ true);
+        aContext.mMessageNextOffset = 0;
         ExitNow();
     }
 
@@ -422,7 +416,7 @@ void IndirectSender::PrepareEmptyFrame(Mac::TxFrame &aFrame, Child &aChild, bool
 
 void IndirectSender::HandleSentFrameToChild(const Mac::TxFrame &aFrame,
                                             const FrameContext &aContext,
-                                            otError             aError,
+                                            Error               aError,
                                             Child &             aChild)
 {
     Message *message    = aChild.GetIndirectMessage();
@@ -430,15 +424,35 @@ void IndirectSender::HandleSentFrameToChild(const Mac::TxFrame &aFrame,
 
     VerifyOrExit(mEnabled);
 
+#if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE
+    if (aError == kErrorNone)
+    {
+        Get<Utils::ChildSupervisor>().UpdateOnSend(aChild);
+    }
+#endif
+
+    // A zero `nextOffset` indicates that the sent frame is an empty
+    // frame generated by `PrepareFrameForChild()` when there was no
+    // indirect message in the send queue for the child. This can happen
+    // in the (not common) case where the radio platform does not
+    // support the "source address match" feature and always includes
+    // "frame pending" flag in acks to data poll frames. In such a case,
+    // `IndirectSender` prepares and sends an empty frame to the child
+    // after it sends a data poll. Here in `HandleSentFrameToChild()` we
+    // exit quickly if we detect the "send done" is for the empty frame
+    // to ensure we do not update any newly added indirect message after
+    // preparing the empty frame.
+
+    VerifyOrExit(nextOffset != 0);
+
     switch (aError)
     {
-    case OT_ERROR_NONE:
-        Get<Utils::ChildSupervisor>().UpdateOnSend(aChild);
+    case kErrorNone:
         break;
 
-    case OT_ERROR_NO_ACK:
-    case OT_ERROR_CHANNEL_ACCESS_FAILURE:
-    case OT_ERROR_ABORT:
+    case kErrorNoAck:
+    case kErrorChannelAccessFailure:
+    case kErrorAbort:
 
         aChild.SetIndirectTxSuccess(false);
 
@@ -463,7 +477,7 @@ void IndirectSender::HandleSentFrameToChild(const Mac::TxFrame &aFrame,
     {
         aChild.SetIndirectFragmentOffset(nextOffset);
         mDataPollHandler.HandleNewFrame(aChild);
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
         mCslTxScheduler.Update();
 #endif
         ExitNow();
@@ -473,7 +487,7 @@ void IndirectSender::HandleSentFrameToChild(const Mac::TxFrame &aFrame,
     {
         // The indirect tx of this message to the child is done.
 
-        otError      txError    = aError;
+        Error        txError    = aError;
         uint16_t     childIndex = Get<ChildTable>().GetChildIndex(aChild);
         Mac::Address macDest;
 
@@ -501,9 +515,9 @@ void IndirectSender::HandleSentFrameToChild(const Mac::TxFrame &aFrame,
         // represents the error status of the last fragment frame
         // transmission.
 
-        if (!aChild.GetIndirectTxSuccess() && (txError == OT_ERROR_NONE))
+        if (!aChild.GetIndirectTxSuccess() && (txError == kErrorNone))
         {
-            txError = OT_ERROR_FAILED;
+            txError = kErrorFailed;
         }
 #endif
 
@@ -531,11 +545,7 @@ void IndirectSender::HandleSentFrameToChild(const Mac::TxFrame &aFrame,
             mSourceMatchController.DecrementMessageCount(aChild);
         }
 
-        if (!message->GetDirectTransmission() && !message->IsChildPending())
-        {
-            Get<MeshForwarder>().mSendQueue.Dequeue(*message);
-            message->Free();
-        }
+        Get<MeshForwarder>().RemoveMessageIfNoPendingTx(*message);
     }
 
     UpdateIndirectMessage(aChild);

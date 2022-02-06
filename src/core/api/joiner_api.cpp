@@ -33,14 +33,16 @@
 
 #include "openthread-core-config.h"
 
+#if OPENTHREAD_CONFIG_JOINER_ENABLE
+
 #include <openthread/joiner.h>
 
-#include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/as_core_type.hpp"
+#include "common/debug.hpp"
+#include "common/locator_getters.hpp"
 
 using namespace ot;
 
-#if OPENTHREAD_CONFIG_JOINER_ENABLE
 otError otJoinerStart(otInstance *     aInstance,
                       const char *     aPskd,
                       const char *     aProvisioningUrl,
@@ -51,41 +53,33 @@ otError otJoinerStart(otInstance *     aInstance,
                       otJoinerCallback aCallback,
                       void *           aContext)
 {
-    Instance &instance = *static_cast<Instance *>(aInstance);
-
-    return instance.Get<MeshCoP::Joiner>().Start(aPskd, aProvisioningUrl, aVendorName, aVendorModel, aVendorSwVersion,
-                                                 aVendorData, aCallback, aContext);
+    return AsCoreType(aInstance).Get<MeshCoP::Joiner>().Start(aPskd, aProvisioningUrl, aVendorName, aVendorModel,
+                                                              aVendorSwVersion, aVendorData, aCallback, aContext);
 }
 
 void otJoinerStop(otInstance *aInstance)
 {
-    Instance &instance = *static_cast<Instance *>(aInstance);
-
-    instance.Get<MeshCoP::Joiner>().Stop();
+    AsCoreType(aInstance).Get<MeshCoP::Joiner>().Stop();
 }
 
 otJoinerState otJoinerGetState(otInstance *aInstance)
 {
-    Instance &instance = *static_cast<Instance *>(aInstance);
-
-    return static_cast<otJoinerState>(instance.Get<MeshCoP::Joiner>().GetState());
+    return MapEnum(AsCoreType(aInstance).Get<MeshCoP::Joiner>().GetState());
 }
 
 const otExtAddress *otJoinerGetId(otInstance *aInstance)
 {
-    Instance &instance = *static_cast<Instance *>(aInstance);
-
-    return &instance.Get<MeshCoP::Joiner>().GetId();
+    return &AsCoreType(aInstance).Get<MeshCoP::Joiner>().GetId();
 }
 
 otError otJoinerSetDiscerner(otInstance *aInstance, otJoinerDiscerner *aDiscerner)
 {
-    otError          error  = OT_ERROR_NONE;
-    MeshCoP::Joiner &joiner = static_cast<Instance *>(aInstance)->Get<MeshCoP::Joiner>();
+    Error            error  = kErrorNone;
+    MeshCoP::Joiner &joiner = AsCoreType(aInstance).Get<MeshCoP::Joiner>();
 
     if (aDiscerner != nullptr)
     {
-        error = joiner.SetDiscerner(*static_cast<const MeshCoP::JoinerDiscerner *>(aDiscerner));
+        error = joiner.SetDiscerner(AsCoreType(aDiscerner));
     }
     else
     {
@@ -97,9 +91,14 @@ otError otJoinerSetDiscerner(otInstance *aInstance, otJoinerDiscerner *aDiscerne
 
 const otJoinerDiscerner *otJoinerGetDiscerner(otInstance *aInstance)
 {
-    Instance &instance = *static_cast<Instance *>(aInstance);
+    return AsCoreType(aInstance).Get<MeshCoP::Joiner>().GetDiscerner();
+}
 
-    return instance.Get<MeshCoP::Joiner>().GetDiscerner();
+const char *otJoinerStateToString(otJoinerState aState)
+{
+    OT_ASSERT(aState <= OT_JOINER_STATE_JOINED);
+
+    return MeshCoP::Joiner::StateToString(MapEnum(aState));
 }
 
 #endif // OPENTHREAD_CONFIG_JOINER_ENABLE

@@ -70,22 +70,18 @@ class Cert_8_2_05_JoinerRouter(thread_cert.TestCase):
     TOPOLOGY = {
         COMMISSIONER: {
             'name': 'COMMISSIONER',
-            'masterkey': '00112233445566778899aabbccddeeff',
+            'networkkey': '00112233445566778899aabbccddeeff',
             'mode': 'rdn',
-            'panid': 0xface,
-            'router_selection_jitter': 1
         },
         JOINER_ROUTER: {
             'name': 'JOINER_ROUTER',
-            'masterkey': 'deadbeefdeadbeefdeadbeefdeadbeef',
+            'networkkey': 'deadbeefdeadbeefdeadbeefdeadbeef',
             'mode': 'rdn',
-            'router_selection_jitter': 1
         },
         JOINER: {
             'name': 'JOINER',
-            'masterkey': 'deadbeefdeadbeefdeadbeefdeadbeef',
+            'networkkey': 'deadbeefdeadbeefdeadbeefdeadbeef',
             'mode': 'rdn',
-            'router_selection_jitter': 1
         },
     }
 
@@ -106,8 +102,8 @@ class Cert_8_2_05_JoinerRouter(thread_cert.TestCase):
         self.nodes[JOINER_ROUTER].joiner_start(PSKD, URL_1)
         self.simulator.go(10)
         self.assertEqual(
-            self.nodes[JOINER_ROUTER].get_masterkey(),
-            self.nodes[COMMISSIONER].get_masterkey(),
+            self.nodes[JOINER_ROUTER].get_networkkey(),
+            self.nodes[COMMISSIONER].get_networkkey(),
         )
 
         self.nodes[JOINER_ROUTER].thread_start()
@@ -128,8 +124,8 @@ class Cert_8_2_05_JoinerRouter(thread_cert.TestCase):
         commissioner_messages = self.simulator.get_messages_sent_by(COMMISSIONER)
 
         self.assertEqual(
-            self.nodes[JOINER].get_masterkey(),
-            self.nodes[COMMISSIONER].get_masterkey(),
+            self.nodes[JOINER].get_networkkey(),
+            self.nodes[COMMISSIONER].get_networkkey(),
         )
         # check commissioner sends JOIN_FIN.rsp with reject
         command.check_commissioner_commissioning_messages(commissioner_messages.commissioning_messages,

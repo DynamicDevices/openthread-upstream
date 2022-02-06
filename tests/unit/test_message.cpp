@@ -26,6 +26,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "common/appender.hpp"
 #include "common/debug.hpp"
 #include "common/instance.hpp"
 #include "common/message.hpp"
@@ -53,21 +54,25 @@ void TestMessage(void)
     uint8_t      readBuffer[kMaxSize];
     uint8_t      zeroBuffer[kMaxSize];
 
+    printf("TestMessage\n");
+
     memset(zeroBuffer, 0, sizeof(zeroBuffer));
 
     instance = static_cast<Instance *>(testInitInstance());
-    VerifyOrQuit(instance != nullptr, "Null OpenThread instance\n");
+    VerifyOrQuit(instance != nullptr);
 
     messagePool = &instance->Get<MessagePool>();
 
     Random::NonCrypto::FillBuffer(writeBuffer, kMaxSize);
 
-    VerifyOrQuit((message = messagePool->New(Message::kTypeIp6, 0)) != nullptr, "Message::New failed");
-    SuccessOrQuit(message->SetLength(kMaxSize), "Message::SetLength failed");
+    VerifyOrQuit((message = messagePool->Allocate(Message::kTypeIp6)) != nullptr);
+    SuccessOrQuit(message->SetLength(kMaxSize));
     message->WriteBytes(0, writeBuffer, kMaxSize);
-    SuccessOrQuit(message->Read(0, readBuffer, kMaxSize), "Message::Read failed");
-    VerifyOrQuit(memcmp(writeBuffer, readBuffer, kMaxSize) == 0, "Message compare failed");
-    VerifyOrQuit(message->GetLength() == kMaxSize, "Message::GetLength failed");
+    SuccessOrQuit(message->Read(0, readBuffer, kMaxSize));
+    VerifyOrQuit(memcmp(writeBuffer, readBuffer, kMaxSize) == 0);
+    VerifyOrQuit(message->CompareBytes(0, readBuffer, kMaxSize));
+    VerifyOrQuit(message->Compare(0, readBuffer));
+    VerifyOrQuit(message->GetLength() == kMaxSize);
 
     for (uint16_t offset = 0; offset < kMaxSize; offset++)
     {
@@ -80,13 +85,32 @@ void TestMessage(void)
 
             message->WriteBytes(offset, &writeBuffer[offset], length);
 
-            SuccessOrQuit(message->Read(0, readBuffer, kMaxSize), "Message::Read failed");
-            VerifyOrQuit(memcmp(writeBuffer, readBuffer, kMaxSize) == 0, "Message compare failed");
+            SuccessOrQuit(message->Read(0, readBuffer, kMaxSize));
+            VerifyOrQuit(memcmp(writeBuffer, readBuffer, kMaxSize) == 0);
+            VerifyOrQuit(message->Compare(0, writeBuffer));
 
             memset(readBuffer, 0, sizeof(readBuffer));
-            SuccessOrQuit(message->Read(offset, readBuffer, length), "Message::Read failed");
-            VerifyOrQuit(memcmp(readBuffer, &writeBuffer[offset], length) == 0, "Message compare failed");
-            VerifyOrQuit(memcmp(&readBuffer[length], zeroBuffer, kMaxSize - length) == 0, "Message read after length");
+            SuccessOrQuit(message->Read(offset, readBuffer, length));
+            VerifyOrQuit(memcmp(readBuffer, &writeBuffer[offset], length) == 0);
+            VerifyOrQuit(memcmp(&readBuffer[length], zeroBuffer, kMaxSize - length) == 0, "read after length");
+
+            VerifyOrQuit(message->CompareBytes(offset, &writeBuffer[offset], length));
+
+            if (length == 0)
+            {
+                continue;
+            }
+
+            // Change the first byte, and then last byte, and verify that
+            // `CompareBytes()` correctly fails.
+
+            writeBuffer[offset]++;
+            VerifyOrQuit(!message->CompareBytes(offset, &writeBuffer[offset], length));
+            writeBuffer[offset]--;
+
+            writeBuffer[offset + length - 1]++;
+            VerifyOrQuit(!message->CompareBytes(offset, &writeBuffer[offset], length));
+            writeBuffer[offset + length - 1]--;
         }
 
         // Verify `ReadBytes()` behavior when requested read length goes beyond available bytes in the message.
@@ -97,19 +121,23 @@ void TestMessage(void)
 
             memset(readBuffer, 0, sizeof(readBuffer));
             readLength = message->ReadBytes(offset, readBuffer, length);
-            VerifyOrQuit(readLength <= length, "Message::ReadBytes() returned longer length");
-            VerifyOrQuit(readLength == kMaxSize - offset, "Message::Read failed");
-            VerifyOrQuit(memcmp(readBuffer, &writeBuffer[offset], readLength) == 0, "Message compare failed");
+
+            VerifyOrQuit(readLength < length, "Message::ReadBytes() returned longer length");
+            VerifyOrQuit(readLength == kMaxSize - offset);
+            VerifyOrQuit(memcmp(readBuffer, &writeBuffer[offset], readLength) == 0);
             VerifyOrQuit(memcmp(&readBuffer[readLength], zeroBuffer, kMaxSize - readLength) == 0, "read after length");
+
+            VerifyOrQuit(!message->CompareBytes(offset, readBuffer, length));
+            VerifyOrQuit(message->CompareBytes(offset, readBuffer, readLength));
         }
     }
 
-    VerifyOrQuit(message->GetLength() == kMaxSize, "Message::GetLength failed");
+    VerifyOrQuit(message->GetLength() == kMaxSize);
 
     // Test `Message::CopyTo()` behavior.
 
-    VerifyOrQuit((message2 = messagePool->New(Message::kTypeIp6, 0)) != nullptr, "Message::New failed");
-    SuccessOrQuit(message2->SetLength(kMaxSize), "Message::SetLength failed");
+    VerifyOrQuit((message2 = messagePool->Allocate(Message::kTypeIp6)) != nullptr);
+    SuccessOrQuit(message2->SetLength(kMaxSize));
 
     for (uint16_t srcOffset = 0; srcOffset < kMaxSize; srcOffset += kOffsetStep)
     {
@@ -132,14 +160,16 @@ void TestMessage(void)
                     VerifyOrQuit(bytesCopied == kMaxSize - srcOffset, "CopyTo() failed");
                 }
 
-                SuccessOrQuit(message2->Read(0, readBuffer, kMaxSize), "Message::Read failed");
+                SuccessOrQuit(message2->Read(0, readBuffer, kMaxSize));
 
                 VerifyOrQuit(memcmp(&readBuffer[0], zeroBuffer, dstOffset) == 0, "read before length");
-                VerifyOrQuit(memcmp(&readBuffer[dstOffset], &writeBuffer[srcOffset], bytesCopied) == 0,
-                             "Compare failed");
+                VerifyOrQuit(memcmp(&readBuffer[dstOffset], &writeBuffer[srcOffset], bytesCopied) == 0);
                 VerifyOrQuit(
                     memcmp(&readBuffer[dstOffset + bytesCopied], zeroBuffer, kMaxSize - bytesCopied - dstOffset) == 0,
                     "read after length");
+
+                VerifyOrQuit(message->CompareBytes(srcOffset, *message2, dstOffset, bytesCopied));
+                VerifyOrQuit(message2->CompareBytes(dstOffset, *message, srcOffset, bytesCopied));
             }
         }
     }
@@ -155,12 +185,52 @@ void TestMessage(void)
         bytesCopied = message->CopyTo(srcOffset, 0, kMaxSize, *message);
         VerifyOrQuit(bytesCopied == kMaxSize - srcOffset, "CopyTo() failed");
 
-        SuccessOrQuit(message->Read(0, readBuffer, kMaxSize), "Message::Read failed");
+        SuccessOrQuit(message->Read(0, readBuffer, kMaxSize));
 
         VerifyOrQuit(memcmp(&readBuffer[0], &writeBuffer[srcOffset], bytesCopied) == 0,
                      "CopyTo() changed before srcOffset");
         VerifyOrQuit(memcmp(&readBuffer[bytesCopied], &writeBuffer[bytesCopied], kMaxSize - bytesCopied) == 0,
                      "CopyTo() write error");
+    }
+
+    // Verify `AppendBytesFromMessage()` with two different messages as source and destination.
+
+    message->WriteBytes(0, writeBuffer, kMaxSize);
+
+    for (uint16_t srcOffset = 0; srcOffset < kMaxSize; srcOffset += kOffsetStep)
+    {
+        for (uint16_t dstOffset = 0; dstOffset < kMaxSize; dstOffset += kOffsetStep)
+        {
+            for (uint16_t length = 0; length <= kMaxSize - srcOffset; length += kLengthStep)
+            {
+                IgnoreError(message2->SetLength(0));
+                SuccessOrQuit(message2->AppendBytes(zeroBuffer, dstOffset));
+
+                SuccessOrQuit(message2->AppendBytesFromMessage(*message, srcOffset, length));
+
+                VerifyOrQuit(message2->CompareBytes(dstOffset, *message, srcOffset, length));
+            }
+
+            VerifyOrQuit(message2->AppendBytesFromMessage(*message, srcOffset, kMaxSize - srcOffset + 1) ==
+                         kErrorParse);
+        }
+    }
+
+    // Verify `AppendBytesFromMessage()` with the same message as source and destination.
+
+    for (uint16_t srcOffset = 0; srcOffset < kMaxSize; srcOffset += kOffsetStep)
+    {
+        uint16_t size = kMaxSize;
+
+        for (uint16_t length = 0; length <= kMaxSize - srcOffset; length++)
+        {
+            // Reset the `message` to its original size.
+            IgnoreError(message->SetLength(size));
+
+            SuccessOrQuit(message->AppendBytesFromMessage(*message, srcOffset, length));
+
+            VerifyOrQuit(message->CompareBytes(size, *message, srcOffset, length));
+        }
     }
 
     message->Free();
@@ -169,11 +239,101 @@ void TestMessage(void)
     testFreeInstance(instance);
 }
 
+void TestAppender(void)
+{
+    const uint8_t kData1[] = {0x01, 0x02, 0x03, 0x04};
+    const uint8_t kData2[] = {0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa};
+
+    static constexpr uint16_t kMaxBufferSize = sizeof(kData1) * 2 + sizeof(kData2);
+
+    Instance *              instance;
+    Message *               message;
+    uint8_t                 buffer[kMaxBufferSize];
+    uint8_t                 zeroBuffer[kMaxBufferSize];
+    Appender                bufAppender(buffer, sizeof(buffer));
+    Data<kWithUint16Length> data;
+
+    printf("TestAppender\n");
+
+    instance = static_cast<Instance *>(testInitInstance());
+    VerifyOrQuit(instance != nullptr);
+
+    message = instance->Get<MessagePool>().Allocate(Message::kTypeIp6);
+    VerifyOrQuit(message != nullptr);
+
+    memset(buffer, 0, sizeof(buffer));
+    memset(zeroBuffer, 0, sizeof(zeroBuffer));
+
+    // Test Buffer Appender
+    VerifyOrQuit(bufAppender.GetType() == Appender::kBuffer);
+    VerifyOrQuit(bufAppender.GetBufferStart() == buffer);
+    VerifyOrQuit(bufAppender.GetAppendedLength() == 0);
+
+    SuccessOrQuit(bufAppender.AppendBytes(kData1, sizeof(kData1)));
+    DumpBuffer("Data1", buffer, sizeof(buffer));
+    VerifyOrQuit(bufAppender.GetAppendedLength() == sizeof(kData1));
+    VerifyOrQuit(bufAppender.GetBufferStart() == buffer);
+    VerifyOrQuit(memcmp(buffer, kData1, sizeof(kData1)) == 0);
+    VerifyOrQuit(memcmp(buffer + sizeof(kData1), zeroBuffer, sizeof(buffer) - sizeof(kData1)) == 0);
+
+    SuccessOrQuit(bufAppender.AppendBytes(kData2, sizeof(kData2)));
+    DumpBuffer("Data1+Data2", buffer, sizeof(buffer));
+    VerifyOrQuit(bufAppender.GetAppendedLength() == sizeof(kData1) + sizeof(kData2));
+    VerifyOrQuit(bufAppender.GetBufferStart() == buffer);
+    VerifyOrQuit(memcmp(buffer, kData1, sizeof(kData1)) == 0);
+    VerifyOrQuit(memcmp(buffer + sizeof(kData1), kData2, sizeof(kData2)) == 0);
+    VerifyOrQuit(memcmp(buffer + sizeof(kData1) + sizeof(kData2), zeroBuffer,
+                        sizeof(buffer) - sizeof(kData1) - sizeof(kData2)) == 0);
+
+    VerifyOrQuit(bufAppender.Append(kData2) == kErrorNoBufs);
+
+    SuccessOrQuit(bufAppender.AppendBytes(kData1, sizeof(kData1)));
+    DumpBuffer("Data1+Data2+Data1", buffer, sizeof(buffer));
+    VerifyOrQuit(bufAppender.GetAppendedLength() == sizeof(kData1) + sizeof(kData2) + sizeof(kData1));
+    VerifyOrQuit(bufAppender.GetBufferStart() == buffer);
+    VerifyOrQuit(memcmp(buffer, kData1, sizeof(kData1)) == 0);
+    VerifyOrQuit(memcmp(buffer + sizeof(kData1), kData2, sizeof(kData2)) == 0);
+    VerifyOrQuit(memcmp(buffer + sizeof(kData1) + sizeof(kData2), kData1, sizeof(kData1)) == 0);
+
+    VerifyOrQuit(bufAppender.Append<uint8_t>(0) == kErrorNoBufs);
+
+    bufAppender.GetAsData(data);
+    VerifyOrQuit(data.GetBytes() == buffer);
+    VerifyOrQuit(data.GetLength() == sizeof(buffer));
+
+    // Test Message Appender
+
+    SuccessOrQuit(message->Append(kData2));
+    VerifyOrQuit(message->Compare(0, kData2));
+
+    {
+        Appender msgAppender(*message);
+        uint16_t offset = message->GetLength();
+
+        VerifyOrQuit(msgAppender.GetType() == Appender::kMessage);
+
+        SuccessOrQuit(msgAppender.AppendBytes(kData1, sizeof(kData1)));
+        VerifyOrQuit(msgAppender.GetAppendedLength() == sizeof(kData1));
+
+        VerifyOrQuit(message->GetLength() == sizeof(kData2) + sizeof(kData1));
+        VerifyOrQuit(message->Compare(offset, kData1));
+
+        SuccessOrQuit(msgAppender.AppendBytes(kData2, sizeof(kData2)));
+        VerifyOrQuit(msgAppender.GetAppendedLength() == sizeof(kData1) + sizeof(kData2));
+        VerifyOrQuit(message->Compare(offset, kData1));
+        VerifyOrQuit(message->Compare(offset + sizeof(kData1), kData2));
+    }
+
+    message->Free();
+    testFreeInstance(instance);
+}
+
 } // namespace ot
 
 int main(void)
 {
     ot::TestMessage();
+    ot::TestAppender();
     printf("All tests passed\n");
     return 0;
 }

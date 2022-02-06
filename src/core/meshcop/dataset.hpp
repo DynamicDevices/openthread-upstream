@@ -39,7 +39,9 @@
 
 #include <openthread/dataset.h>
 
+#include "common/as_core_type.hpp"
 #include "common/clearable.hpp"
+#include "common/const_cast.hpp"
 #include "common/locator.hpp"
 #include "common/message.hpp"
 #include "common/timer.hpp"
@@ -59,18 +61,15 @@ class Dataset
     friend class DatasetLocal;
 
 public:
-    enum
-    {
-        kMaxSize      = OT_OPERATIONAL_DATASET_MAX_LENGTH, ///< Maximum size of MeshCoP Dataset (bytes)
-        kMaxValueSize = 16,                                ///< Maximum size of each Dataset TLV value (bytes)
-        kMaxGetTypes  = 64,                                ///< Maximum number of types in MGMT_GET.req
-    };
+    static constexpr uint8_t kMaxSize      = OT_OPERATIONAL_DATASET_MAX_LENGTH; ///< Max size of MeshCoP Dataset (bytes)
+    static constexpr uint8_t kMaxValueSize = 16;                                ///< Max size of a TLV value (bytes)
+    static constexpr uint8_t kMaxGetTypes  = 64;                                ///< Max number of types in MGMT_GET.req
 
     /**
      * This enumeration represents the Dataset type (active or pending).
      *
      */
-    enum Type
+    enum Type : uint8_t
     {
         kActive,  ///< Active Dataset
         kPending, ///< Pending Dataset
@@ -100,12 +99,12 @@ public:
         bool IsPendingTimestampPresent(void) const { return mIsPendingTimestampPresent; }
 
         /**
-         * This method indicates whether or not the Network Master Key is present in the Dataset.
+         * This method indicates whether or not the Network Key is present in the Dataset.
          *
-         * @returns TRUE if Network Master Key is present, FALSE otherwise.
+         * @returns TRUE if Network Key is present, FALSE otherwise.
          *
          */
-        bool IsMasterKeyPresent(void) const { return mIsMasterKeyPresent; }
+        bool IsNetworkKeyPresent(void) const { return mIsNetworkKeyPresent; }
 
         /**
          * This method indicates whether or not the Network Name is present in the Dataset.
@@ -250,46 +249,46 @@ public:
         }
 
         /**
-         * This method indicates whether or not the Network Master Key is present in the Dataset.
+         * This method indicates whether or not the Network Key is present in the Dataset.
          *
-         * @returns TRUE if Network Master Key is present, FALSE otherwise.
+         * @returns TRUE if Network Key is present, FALSE otherwise.
          *
          */
-        bool IsMasterKeyPresent(void) const { return mComponents.mIsMasterKeyPresent; }
+        bool IsNetworkKeyPresent(void) const { return mComponents.mIsNetworkKeyPresent; }
 
         /**
-         * This method gets the Network Master Key in the Dataset.
+         * This method gets the Network Key in the Dataset.
          *
-         * This method MUST be used when Network Master Key component is present in the Dataset, otherwise its behavior
+         * This method MUST be used when Network Key component is present in the Dataset, otherwise its behavior
          * is undefined.
          *
-         * @returns The Network Master Key in the Dataset.
+         * @returns The Network Key in the Dataset.
          *
          */
-        const MasterKey &GetMasterKey(void) const { return static_cast<const MasterKey &>(mMasterKey); }
+        const NetworkKey &GetNetworkKey(void) const { return AsCoreType(&mNetworkKey); }
 
         /**
-         * This method sets the Network Master Key in the Dataset.
+         * This method sets the Network Key in the Dataset.
          *
-         * @param[in] aMasterKey  A Master Key.
+         * @param[in] aNetworkKey  A Network Key.
          *
          */
-        void SetMasterKey(const MasterKey &aMasterKey)
+        void SetNetworkKey(const NetworkKey &aNetworkKey)
         {
-            mMasterKey                      = aMasterKey;
-            mComponents.mIsMasterKeyPresent = true;
+            mNetworkKey                      = aNetworkKey;
+            mComponents.mIsNetworkKeyPresent = true;
         }
 
         /**
-         * This method returns a reference to the Network Master Key in the Dataset to be updated by caller.
+         * This method returns a reference to the Network Key in the Dataset to be updated by caller.
          *
-         * @returns A reference to the Network Master Key in the Dataset.
+         * @returns A reference to the Network Key in the Dataset.
          *
          */
-        MasterKey &UpdateMasterKey(void)
+        NetworkKey &UpdateNetworkKey(void)
         {
-            mComponents.mIsMasterKeyPresent = true;
-            return static_cast<MasterKey &>(mMasterKey);
+            mComponents.mIsNetworkKeyPresent = true;
+            return AsCoreType(&mNetworkKey);
         }
 
         /**
@@ -309,10 +308,7 @@ public:
          * @returns The Network Name in the Dataset.
          *
          */
-        const Mac::NetworkName &GetNetworkName(void) const
-        {
-            return static_cast<const Mac::NetworkName &>(mNetworkName);
-        }
+        const Mac::NetworkName &GetNetworkName(void) const { return AsCoreType(&mNetworkName); }
 
         /**
          * This method sets the Network Name in the Dataset.
@@ -322,7 +318,7 @@ public:
          */
         void SetNetworkName(const Mac::NameData &aNetworkNameData)
         {
-            IgnoreError(static_cast<Mac::NetworkName &>(mNetworkName).Set(aNetworkNameData));
+            IgnoreError(AsCoreType(&mNetworkName).Set(aNetworkNameData));
             mComponents.mIsNetworkNamePresent = true;
         }
 
@@ -343,10 +339,7 @@ public:
          * @returns The Extended PAN ID in the Dataset.
          *
          */
-        const Mac::ExtendedPanId &GetExtendedPanId(void) const
-        {
-            return static_cast<const Mac::ExtendedPanId &>(mExtendedPanId);
-        }
+        const Mac::ExtendedPanId &GetExtendedPanId(void) const { return AsCoreType(&mExtendedPanId); }
 
         /**
          * This method sets the Extended PAN ID in the Dataset.
@@ -377,10 +370,7 @@ public:
          * @returns The Mesh Local Prefix in the Dataset.
          *
          */
-        const Mle::MeshLocalPrefix &GetMeshLocalPrefix(void) const
-        {
-            return static_cast<const Mle::MeshLocalPrefix &>(mMeshLocalPrefix);
-        }
+        const Mle::MeshLocalPrefix &GetMeshLocalPrefix(void) const { return AsCoreType(&mMeshLocalPrefix); }
 
         /**
          * This method sets the Mesh Local Prefix in the Dataset.
@@ -503,7 +493,7 @@ public:
          * @returns The PSKc in the Dataset.
          *
          */
-        const Pskc &GetPskc(void) const { return static_cast<const Pskc &>(mPskc); }
+        const Pskc &GetPskc(void) const { return AsCoreType(&mPskc); }
 
         /**
          * This method set the PSKc in the Dataset.
@@ -534,21 +524,7 @@ public:
          * @returns The Security Policy in the Dataset.
          *
          */
-        const otSecurityPolicy &GetSecurityPolicy(void) const { return mSecurityPolicy; }
-
-        /**
-         * This method sets the Security Policy in the Dataset.
-         *
-         * @param[in] aRotationTime  A value for Key Rotation (in units of hours).
-         * @param[in] aFlags         Security policy flags
-         *
-         */
-        void SetSecurityPolicy(uint16_t aRotationTime, uint8_t aFlags)
-        {
-            mSecurityPolicy.mRotationTime        = aRotationTime;
-            mSecurityPolicy.mFlags               = aFlags;
-            mComponents.mIsSecurityPolicyPresent = true;
-        }
+        const SecurityPolicy &GetSecurityPolicy(void) const { return AsCoreType(&mSecurityPolicy); }
 
         /**
          * This method sets the Security Policy in the Dataset.
@@ -556,7 +532,7 @@ public:
          * @param[in] aSecurityPolicy  A Security Policy to set in Dataset.
          *
          */
-        void SetSecurityPolicy(const otSecurityPolicy &aSecurityPolicy)
+        void SetSecurityPolicy(const SecurityPolicy &aSecurityPolicy)
         {
             mSecurityPolicy                      = aSecurityPolicy;
             mComponents.mIsSecurityPolicyPresent = true;
@@ -596,17 +572,17 @@ public:
         /**
          * This method populates the Dataset with random fields.
          *
-         * The Master Key, PSKc, Mesh Local Prefix, PAN ID, and Extended PAN ID are generated randomly (crypto-secure)
+         * The Network Key, PSKc, Mesh Local Prefix, PAN ID, and Extended PAN ID are generated randomly (crypto-secure)
          * with Network Name set to "OpenThread-%04x" with PAN ID appended as hex. The Channel is chosen randomly from
          * radio's preferred channel mask, Channel Mask is set from radio's supported mask, and Security Policy Flags
          * from current `KeyManager` value.
          *
          * @param[in] aInstance    The OpenThread instance.
          *
-         * @retval OT_ERROR_NONE If the Dataset was generated successfully.
+         * @retval kErrorNone If the Dataset was generated successfully.
          *
          */
-        otError GenerateRandom(Instance &aInstance);
+        Error GenerateRandom(Instance &aInstance);
 
         /**
          * This method checks whether the Dataset is a subset of another one, i.e., all the components in the current
@@ -626,10 +602,8 @@ public:
     /**
      * This constructor initializes the object.
      *
-     * @param[in]  aType       The type of the dataset, active or pending.
-     *
      */
-    explicit Dataset(Type aType);
+    Dataset(void);
 
     /**
      * This method clears the Dataset.
@@ -650,17 +624,17 @@ public:
      *
      * @param[in] aType  A TLV type.
      *
-     * @returns A pointer to the TLV or nullptr if none is found.
+     * @returns A pointer to the TLV or `nullptr` if none is found.
      *
      */
-    Tlv *GetTlv(Tlv::Type aType) { return const_cast<Tlv *>(const_cast<const Dataset *>(this)->GetTlv(aType)); }
+    Tlv *GetTlv(Tlv::Type aType) { return AsNonConst(AsConst(this)->GetTlv(aType)); }
 
     /**
      * This method returns a pointer to the TLV with a given type.
      *
      * @param[in] aType  The TLV type.
      *
-     * @returns A pointer to the TLV or nullptr if none is found.
+     * @returns A pointer to the TLV or `nullptr` if none is found.
      *
      */
     const Tlv *GetTlv(Tlv::Type aType) const;
@@ -668,23 +642,23 @@ public:
     /**
      * This template method returns a pointer to the TLV with a given template type `TlvType`
      *
-     * @returns A pointer to the TLV or nullptr if none is found.
+     * @returns A pointer to the TLV or `nullptr` if none is found.
      *
      */
     template <typename TlvType> TlvType *GetTlv(void)
     {
-        return static_cast<TlvType *>(GetTlv(static_cast<Tlv::Type>(TlvType::kType)));
+        return As<TlvType>(GetTlv(static_cast<Tlv::Type>(TlvType::kType)));
     }
 
     /**
      * This template method returns a pointer to the TLV with a given template type `TlvType`
      *
-     * @returns A pointer to the TLV or nullptr if none is found.
+     * @returns A pointer to the TLV or `nullptr` if none is found.
      *
      */
     template <typename TlvType> const TlvType *GetTlv(void) const
     {
-        return static_cast<const TlvType *>(GetTlv(static_cast<Tlv::Type>(TlvType::kType)));
+        return As<TlvType>(GetTlv(static_cast<Tlv::Type>(TlvType::kType)));
     }
 
     /**
@@ -744,31 +718,36 @@ public:
     TimeMilli GetUpdateTime(void) const { return mUpdateTime; }
 
     /**
-     * This method returns a reference to the Timestamp.
+     * This method gets the Timestamp (Active or Pending).
      *
-     * @returns A pointer to the Timestamp.
+     * @param[in]  aType       The type: active or pending.
+     * @param[out] aTimestamp  A reference to a `Timestamp` to output the value.
+     *
+     * @retval kErrorNone      Timestamp was read successfully. @p aTimestamp is updated.
+     * @retval kErrorNotFound  Could not find the requested Timestamp TLV.
      *
      */
-    const Timestamp *GetTimestamp(void) const;
+    Error GetTimestamp(Type aType, Timestamp &aTimestamp) const;
 
     /**
      * This method sets the Timestamp value.
      *
+     * @param[in] aType        The type: active or pending.
      * @param[in] aTimestamp   A Timestamp.
      *
      */
-    void SetTimestamp(const Timestamp &aTimestamp);
+    void SetTimestamp(Type aType, const Timestamp &aTimestamp);
 
     /**
      * This method sets a TLV in the Dataset.
      *
      * @param[in]  aTlv  A reference to the TLV.
      *
-     * @retval OT_ERROR_NONE     Successfully set the TLV.
-     * @retval OT_ERROR_NO_BUFS  Could not set the TLV due to insufficient buffer space.
+     * @retval kErrorNone    Successfully set the TLV.
+     * @retval kErrorNoBufs  Could not set the TLV due to insufficient buffer space.
      *
      */
-    otError SetTlv(const Tlv &aTlv);
+    Error SetTlv(const Tlv &aTlv);
 
     /**
      * This method sets a TLV with a given TLV Type and Value.
@@ -777,11 +756,11 @@ public:
      * @param[in] aValue    A pointer to TLV Value.
      * @param[in] aLength   The TLV Length in bytes (length of @p aValue).
      *
-     * @retval OT_ERROR_NONE     Successfully set the TLV.
-     * @retval OT_ERROR_NO_BUFS  Could not set the TLV due to insufficient buffer space.
+     * @retval kErrorNone    Successfully set the TLV.
+     * @retval kErrorNoBufs  Could not set the TLV due to insufficient buffer space.
      *
      */
-    otError SetTlv(Tlv::Type aType, const void *aValue, uint8_t aLength);
+    Error SetTlv(Tlv::Type aType, const void *aValue, uint8_t aLength);
 
     /**
      * This template method sets a TLV with a given TLV Type and Value.
@@ -791,11 +770,11 @@ public:
      * @param[in] aType     The TLV Type.
      * @param[in] aValue    The TLV Value (of type `ValueType`).
      *
-     * @retval OT_ERROR_NONE     Successfully set the TLV.
-     * @retval OT_ERROR_NO_BUFS  Could not set the TLV due to insufficient buffer space.
+     * @retval kErrorNone    Successfully set the TLV.
+     * @retval kErrorNoBufs  Could not set the TLV due to insufficient buffer space.
      *
      */
-    template <typename ValueType> otError SetTlv(Tlv::Type aType, const ValueType &aValue)
+    template <typename ValueType> Error SetTlv(Tlv::Type aType, const ValueType &aValue)
     {
         static_assert(!TypeTraits::IsPointer<ValueType>::kValue, "ValueType must not be a pointer");
 
@@ -809,11 +788,11 @@ public:
      * @param[in]  aOffset   The message buffer offset where the dataset starts.
      * @param[in]  aLength   The TLVs length in the message buffer in bytes.
      *
-     * @retval OT_ERROR_NONE          Successfully set the Dataset.
-     * @retval OT_ERROR_INVALID_ARGS  The values of @p aOffset and @p aLength are not valid for @p aMessage.
+     * @retval kErrorNone         Successfully set the Dataset.
+     * @retval kErrorInvalidArgs  The values of @p aOffset and @p aLength are not valid for @p aMessage.
      *
      */
-    otError Set(const Message &aMessage, uint16_t aOffset, uint8_t aLength);
+    Error Set(const Message &aMessage, uint16_t aOffset, uint8_t aLength);
 
     /**
      * This method sets the Dataset using an existing Dataset.
@@ -821,21 +800,22 @@ public:
      * If this Dataset is an Active Dataset, any Pending Timestamp and Delay Timer TLVs will be omitted in the copy
      * from @p aDataset.
      *
+     * @param[in]  aType     The type of the dataset, active or pending.
      * @param[in]  aDataset  The input Dataset.
      *
      */
-    void Set(const Dataset &aDataset);
+    void Set(Type aType, const Dataset &aDataset);
 
     /**
      * This method sets the Dataset from a given structure representation.
      *
      * @param[in]  aDatasetInfo  The input Dataset as `Dataset::Info`.
      *
-     * @retval OT_ERROR_NONE          Successfully set the Dataset.
-     * @retval OT_ERROR_INVALID_ARGS  Dataset is missing Active and/or Pending Timestamp.
+     * @retval kErrorNone         Successfully set the Dataset.
+     * @retval kErrorInvalidArgs  Dataset is missing Active and/or Pending Timestamp.
      *
      */
-    otError SetFrom(const Info &aDatasetInfo);
+    Error SetFrom(const Info &aDatasetInfo);
 
     /**
      * This method sets the Dataset using @p aDataset.
@@ -856,25 +836,26 @@ public:
     /**
      * This method appends the MLE Dataset TLV but excluding MeshCoP Sub Timestamp TLV.
      *
+     * @param[in] aType          The type of the dataset, active or pending.
      * @param[in] aMessage       A message to append to.
      *
-     * @retval OT_ERROR_NONE     Successfully append MLE Dataset TLV without MeshCoP Sub Timestamp TLV.
-     * @retval OT_ERROR_NO_BUFS  Insufficient available buffers to append the message with MLE Dataset TLV.
+     * @retval kErrorNone    Successfully append MLE Dataset TLV without MeshCoP Sub Timestamp TLV.
+     * @retval kErrorNoBufs  Insufficient available buffers to append the message with MLE Dataset TLV.
      *
      */
-    otError AppendMleDatasetTlv(Message &aMessage) const;
+    Error AppendMleDatasetTlv(Type aType, Message &aMessage) const;
 
     /**
      * This method applies the Active or Pending Dataset to the Thread interface.
      *
-     * @param[in]  aInstance           A reference to the OpenThread instance.
-     * @param[out] aIsMasterKeyUpdated A pointer to where to place whether master key was updated.
+     * @param[in]  aInstance            A reference to the OpenThread instance.
+     * @param[out] aIsNetworkKeyUpdated A pointer to where to place whether network key was updated.
      *
-     * @retval OT_ERROR_NONE   Successfully applied configuration.
-     * @retval OT_ERROR_PARSE  The dataset has at least one TLV with invalid format.
+     * @retval kErrorNone   Successfully applied configuration.
+     * @retval kErrorParse  The dataset has at least one TLV with invalid format.
      *
      */
-    otError ApplyConfiguration(Instance &aInstance, bool *aIsMasterKeyUpdated = nullptr) const;
+    Error ApplyConfiguration(Instance &aInstance, bool *aIsNetworkKeyUpdated = nullptr) const;
 
     /**
      * This method converts a Pending Dataset to an Active Dataset.
@@ -934,7 +915,6 @@ private:
     uint8_t   mTlvs[kMaxSize]; ///< The Dataset buffer
     TimeMilli mUpdateTime;     ///< Local time last updated
     uint16_t  mLength;         ///< The number of valid bytes in @var mTlvs
-    Type      mType;           ///< Active or Pending
 };
 
 /**
@@ -943,11 +923,11 @@ private:
  * @param[in] aType     The TLV Type.
  * @param[in] aValue    The TLV value (as `uint16_t`).
  *
- * @retval OT_ERROR_NONE     Successfully set the TLV.
- * @retval OT_ERROR_NO_BUFS  Could not set the TLV due to insufficient buffer space.
+ * @retval kErrorNone    Successfully set the TLV.
+ * @retval kErrorNoBufs  Could not set the TLV due to insufficient buffer space.
  *
  */
-template <> inline otError Dataset::SetTlv(Tlv::Type aType, const uint16_t &aValue)
+template <> inline Error Dataset::SetTlv(Tlv::Type aType, const uint16_t &aValue)
 {
     uint16_t value = Encoding::BigEndian::HostSwap16(aValue);
 
@@ -960,11 +940,11 @@ template <> inline otError Dataset::SetTlv(Tlv::Type aType, const uint16_t &aVal
  * @param[in] aType     The TLV Type.
  * @param[in] aValue    The TLV value (as `uint32_t`).
  *
- * @retval OT_ERROR_NONE     Successfully set the TLV.
- * @retval OT_ERROR_NO_BUFS  Could not set the TLV due to insufficient buffer space.
+ * @retval kErrorNone    Successfully set the TLV.
+ * @retval kErrorNoBufs  Could not set the TLV due to insufficient buffer space.
  *
  */
-template <> inline otError Dataset::SetTlv(Tlv::Type aType, const uint32_t &aValue)
+template <> inline Error Dataset::SetTlv(Tlv::Type aType, const uint32_t &aValue)
 {
     uint32_t value = Encoding::BigEndian::HostSwap32(aValue);
 
@@ -972,6 +952,10 @@ template <> inline otError Dataset::SetTlv(Tlv::Type aType, const uint32_t &aVal
 }
 
 } // namespace MeshCoP
+
+DefineCoreType(otOperationalDatasetComponents, MeshCoP::Dataset::Components);
+DefineCoreType(otOperationalDataset, MeshCoP::Dataset::Info);
+
 } // namespace ot
 
 #endif // MESHCOP_DATASET_HPP_

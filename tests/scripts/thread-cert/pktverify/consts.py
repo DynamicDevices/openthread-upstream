@@ -52,12 +52,21 @@ MA6 = Ipv6Addr('ff02::1')
 MAe1 = Ipv6Addr('fd0e::1234:777a:1')
 MAe2 = Ipv6Addr('::')
 MAe3 = Ipv6Addr('cafe::e0ff')
+MAS = [[Ipv6Addr(f'ff0e::{j:x}:777a:{i:x}') for j in range(16)] for i in range(16)]
 ALL_MPL_FORWARDERS_MA = Ipv6Addr('ff03::fc')
 
 LINK_LOCAL_PREFIX = Bytes("fe80")
 DEFAULT_MESH_LOCAL_PREFIX = Bytes("fd00:0db8:0000:0000")
 LEADER_ALOC_IID = Bytes("0000:00ff:fe00:fc00")
+PBBR_ALOC_IID = Bytes("0000:00ff:fe00:fc38")
 LEADER_ALOC = Ipv6Addr(DEFAULT_MESH_LOCAL_PREFIX + LEADER_ALOC_IID)
+PBBR_ALOC = Ipv6Addr(DEFAULT_MESH_LOCAL_PREFIX + PBBR_ALOC_IID)
+
+# Minimum value of the MLR Timeout parameter in the BBR Dataset
+MLR_TIMEOUT_MIN = 300
+
+# Max response delay
+MLE_MAX_RESPONSE_DELAY = 1
 
 # WPAN CMDs
 WPAN_DATA_REQUEST = 4
@@ -118,6 +127,8 @@ LEAD_PET_URI = '/c/lp'
 LEAD_KA_URI = '/c/la'
 DIAG_GET_QRY_URI = '/d/dq'
 DIAG_GET_ANS_URI = '/d/da'
+BACKBONE_QUERY_URI = '/b/bq'
+BACKBONE_ANSWER_URI = '/b/ba'
 
 # ADDR SOL Status
 ADDR_SOL_SUCCESS = 0
@@ -152,6 +163,7 @@ ACTIVE_OPERATION_DATASET_TLV = 24
 PENDING_OPERATION_DATASET_TLV = 25
 THREAD_DISCOVERY_TLV = 26
 CSL_SYNCHRONIZED_TIMEOUT = 85
+CSL_CLOCK_ACCURACY = 86
 
 # Network Layer TLVs
 NL_TARGET_EID_TLV = 0
@@ -178,7 +190,7 @@ NM_PAN_ID_TLV = 1
 NM_EXTENDED_PAN_ID_TLV = 2
 NM_NETWORK_NAME_TLV = 3
 NM_PSKC_TLV = 4
-NM_NETWORK_MASTER_KEY_TLV = 5
+NM_NETWORK_KEY_TLV = 5
 NM_NETWORK_KEY_SEQUENCE_COUNTER_TLV = 6
 NM_NETWORK_MESH_LOCAL_PREFIX_TLV = 7
 NM_STEERING_DATA_TLV = 8
@@ -293,17 +305,19 @@ REAL_LAYER_NAMES = {
     'thread_address',
     'thread_diagnostic',
     'thread_nm',
+    'thread_bcn',
     'ssdp',
     'dns',
     'igmp',
     'mdns',
+    'dns',
 }
 
-FAKE_LAYER_NAMES = {'thread_nwd', 'thread_meshcop'}
+FAKE_LAYER_NAMES = {'thread_nwd', 'thread_meshcop', 'ipv6inner'}
 
 VALID_LAYER_NAMES = REAL_LAYER_NAMES | FAKE_LAYER_NAMES
 
-AUTO_SEEK_BACK_MAX_DURATION = 0.01
+AUTO_SEEK_BACK_MAX_DURATION = 0.02
 
 # Wireshark configs
 WIRESHARK_OVERRIDE_PREFS = {
@@ -324,6 +338,27 @@ WIRESHARK_OVERRIDE_PREFS = {
 
 WIRESHARK_DECODE_AS_ENTRIES = {
     'udp.port==61631': 'coap',
+    # SRP server ports for dissecting SRP requests and responses
+    'udp.port==53535': 'dns',
+    'udp.port==53536': 'dns',
+    'udp.port==53537': 'dns',
+    'udp.port==53538': 'dns',
+    'udp.port==53539': 'dns',
+    'udp.port==53540': 'dns',
+    'udp.port==53541': 'dns',
+    'udp.port==53542': 'dns',
+    'udp.port==53543': 'dns',
+    'udp.port==53544': 'dns',
+    'udp.port==53545': 'dns',
+    'udp.port==53546': 'dns',
+    'udp.port==53547': 'dns',
+    'udp.port==53548': 'dns',
+    'udp.port==53549': 'dns',
+    'udp.port==53550': 'dns',
+    'udp.port==53551': 'dns',
+    'udp.port==53552': 'dns',
+    'udp.port==53553': 'dns',
+    'udp.port==53554': 'dns',
 }
 
 TIMEOUT_JOIN_NETWORK = 10
@@ -338,6 +373,7 @@ MAC_FRAME_VERSION_2006 = 1
 MAC_FRAME_VERSION_2015 = 2
 
 # 802.15.4 Frame Type
+MAC_FRAME_TYPE_BEACON = 0x0
 MAC_FRAME_TYPE_DATA = 0x1
 MAC_FRAME_TYPE_ACK = 0x2
 MAC_FRAME_TYPE_MAC_CMD = 0x3
@@ -347,6 +383,8 @@ CSL_DEFAULT_PERIOD = 3125  # 0.5s, 3125 in units of ten symbols
 CSL_DEFAULT_PERIOD_IN_SECOND = 0.5
 US_PER_TEN_SYMBOLS = 160
 CSL_IE_ID = 0x1a
+CSL_DEFAULT_TIMEOUT = 30
+CSL_DEFAULT_CHANNEL = 12
 
 # Thread Version TLV value
 THREAD_VERSION_1_2 = 3

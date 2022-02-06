@@ -507,22 +507,6 @@ otError otLinkSendDataRequest(otInstance *aInstance);
 bool otLinkIsInTransmitState(otInstance *aInstance);
 
 /**
- * This function enqueues an IEEE 802.15.4 out of band Frame for transmission.
- *
- * An Out of Band frame is one that was generated outside of OpenThread.
- *
- * @param[in] aInstance  A pointer to an OpenThread instance.
- * @param[in] aOobFrame  A pointer to the frame to transmit.
- *
- * @retval OT_ERROR_NONE           Successfully scheduled the frame transmission.
- * @retval OT_ERROR_ALREADY        MAC layer is busy sending a previously requested frame.
- * @retval OT_ERROR_INVALID_STATE  The MAC layer is not enabled.
- * @retval OT_ERROR_INVALID_ARGS   The argument @p aOobFrame is NULL.
- *
- */
-otError otLinkOutOfBandTransmitRequest(otInstance *aInstance, otRadioFrame *aOobFrame);
-
-/**
  * Get the IEEE 802.15.4 channel.
  *
  * @param[in] aInstance A pointer to an OpenThread instance.
@@ -879,6 +863,33 @@ void otLinkFilterClearAllRssIn(otInstance *aInstance);
  *
  */
 otError otLinkFilterGetNextRssIn(otInstance *aInstance, otMacFilterIterator *aIterator, otMacFilterEntry *aEntry);
+
+/**
+ * This function enables/disables IEEE 802.15.4 radio filter mode.
+ *
+ * This function is available when OPENTHREAD_CONFIG_MAC_FILTER_ENABLE configuration is enabled.
+ *
+ * The radio filter is mainly intended for testing. It can be used to temporarily block all tx/rx on the 802.15.4 radio.
+ * When radio filter is enabled, radio is put to sleep instead of receive (to ensure device does not receive any frame
+ * and/or potentially send ack). Also the frame transmission requests return immediately without sending the frame over
+ * the air (return "no ack" error if ack is requested, otherwise return success).
+ *
+ * @param[in] aInstance         A pointer to an OpenThread instance.
+ * @param[in] aFilterEnabled    TRUE to enable radio filter, FALSE to disable
+ *
+ */
+void otLinkSetRadioFilterEnabled(otInstance *aInstance, bool aFilterEnabled);
+
+/**
+ * This function indicates whether the IEEE 802.15.4 radio filter is enabled or not.
+ *
+ * This function is available when OPENTHREAD_CONFIG_MAC_FILTER_ENABLE configuration is enabled.
+ *
+ * @retval TRUE   If the radio filter is enabled.
+ * @retval FALSE  If the radio filter is disabled.
+ *
+ */
+bool otLinkIsRadioFilterEnabled(otInstance *aInstance);
 
 /**
  * This method converts received signal strength to link quality.

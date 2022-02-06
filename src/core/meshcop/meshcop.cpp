@@ -35,10 +35,10 @@
 
 #include "common/crc16.hpp"
 #include "common/debug.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 #include "common/string.hpp"
-#include "crypto/pbkdf2_cmac.h"
+#include "crypto/pbkdf2_cmac.hpp"
 #include "crypto/sha256.hpp"
 #include "mac/mac_types.hpp"
 #include "thread/thread_netif.hpp"
@@ -46,11 +46,11 @@
 namespace ot {
 namespace MeshCoP {
 
-otError JoinerPskd::SetFrom(const char *aPskdString)
+Error JoinerPskd::SetFrom(const char *aPskdString)
 {
-    otError error = OT_ERROR_NONE;
+    Error error = kErrorNone;
 
-    VerifyOrExit(IsPskdValid(aPskdString), error = OT_ERROR_INVALID_ARGS);
+    VerifyOrExit(IsPskdValid(aPskdString), error = kErrorInvalidArgs);
 
     Clear();
     memcpy(m8, aPskdString, StringLength(aPskdString, sizeof(m8)));
@@ -164,24 +164,24 @@ bool JoinerDiscerner::operator==(const JoinerDiscerner &aOther) const
 
 JoinerDiscerner::InfoString JoinerDiscerner::ToString(void) const
 {
-    InfoString str;
+    InfoString string;
 
     if (mLength <= sizeof(uint16_t) * CHAR_BIT)
     {
-        IgnoreError(str.Set("0x%04x", static_cast<uint16_t>(mValue)));
+        string.Append("0x%04x", static_cast<uint16_t>(mValue));
     }
     else if (mLength <= sizeof(uint32_t) * CHAR_BIT)
     {
-        IgnoreError(str.Set("0x%08x", static_cast<uint32_t>(mValue)));
+        string.Append("0x%08x", static_cast<uint32_t>(mValue));
     }
     else
     {
-        IgnoreError(str.Set("0x%x-%08x", static_cast<uint32_t>(mValue >> 32), static_cast<uint32_t>(mValue)));
+        string.Append("0x%x-%08x", static_cast<uint32_t>(mValue >> 32), static_cast<uint32_t>(mValue));
     }
 
-    IgnoreError(str.Append("/len:%d", mLength));
+    string.Append("/len:%d", mLength);
 
-    return str;
+    return string;
 }
 
 void SteeringData::Init(uint8_t aLength)
@@ -291,21 +291,21 @@ void ComputeJoinerId(const Mac::ExtAddress &aEui64, Mac::ExtAddress &aJoinerId)
     Crypto::Sha256::Hash hash;
 
     sha256.Start();
-    sha256.Update(aEui64.m8, sizeof(aEui64));
+    sha256.Update(aEui64);
     sha256.Finish(hash);
 
     memcpy(&aJoinerId, hash.GetBytes(), sizeof(aJoinerId));
     aJoinerId.SetLocal(true);
 }
 
-otError GetBorderAgentRloc(ThreadNetif &aNetif, uint16_t &aRloc)
+Error GetBorderAgentRloc(ThreadNetif &aNetif, uint16_t &aRloc)
 {
-    otError                      error = OT_ERROR_NONE;
+    Error                        error = kErrorNone;
     const BorderAgentLocatorTlv *borderAgentLocator;
 
-    borderAgentLocator = static_cast<const BorderAgentLocatorTlv *>(
+    borderAgentLocator = As<BorderAgentLocatorTlv>(
         aNetif.Get<NetworkData::Leader>().GetCommissioningDataSubTlv(Tlv::kBorderAgentLocator));
-    VerifyOrExit(borderAgentLocator != nullptr, error = OT_ERROR_NOT_FOUND);
+    VerifyOrExit(borderAgentLocator != nullptr, error = kErrorNotFound);
 
     aRloc = borderAgentLocator->GetBorderAgentLocator();
 
@@ -314,19 +314,19 @@ exit:
 }
 
 #if OPENTHREAD_FTD
-otError GeneratePskc(const char *              aPassPhrase,
-                     const Mac::NetworkName &  aNetworkName,
-                     const Mac::ExtendedPanId &aExtPanId,
-                     Pskc &                    aPskc)
+Error GeneratePskc(const char *              aPassPhrase,
+                   const Mac::NetworkName &  aNetworkName,
+                   const Mac::ExtendedPanId &aExtPanId,
+                   Pskc &                    aPskc)
 {
-    otError    error        = OT_ERROR_NONE;
+    Error      error        = kErrorNone;
     const char saltPrefix[] = "Thread";
-    uint8_t    salt[OT_PBKDF2_SALT_MAX_LEN];
+    uint8_t    salt[Crypto::Pbkdf2::kMaxSaltLength];
     uint16_t   saltLen = 0;
     uint16_t   passphraseLen;
     uint8_t    networkNameLen;
 
-    VerifyOrExit(IsValidUtf8String(aPassPhrase), error = OT_ERROR_INVALID_ARGS);
+    VerifyOrExit(IsValidUtf8String(aPassPhrase), error = kErrorInvalidArgs);
 
     passphraseLen  = static_cast<uint16_t>(StringLength(aPassPhrase, OT_COMMISSIONING_PASSPHRASE_MAX_SIZE + 1));
     networkNameLen = static_cast<uint8_t>(StringLength(aNetworkName.GetAsCString(), OT_NETWORK_NAME_MAX_SIZE + 1));
@@ -334,7 +334,7 @@ otError GeneratePskc(const char *              aPassPhrase,
     VerifyOrExit((passphraseLen >= OT_COMMISSIONING_PASSPHRASE_MIN_SIZE) &&
                      (passphraseLen <= OT_COMMISSIONING_PASSPHRASE_MAX_SIZE) &&
                      (networkNameLen <= OT_NETWORK_NAME_MAX_SIZE),
-                 error = OT_ERROR_INVALID_ARGS);
+                 error = kErrorInvalidArgs);
 
     memset(salt, 0, sizeof(salt));
     memcpy(salt, saltPrefix, sizeof(saltPrefix) - 1);
@@ -346,8 +346,8 @@ otError GeneratePskc(const char *              aPassPhrase,
     memcpy(salt + saltLen, aNetworkName.GetAsCString(), networkNameLen);
     saltLen += networkNameLen;
 
-    otPbkdf2Cmac(reinterpret_cast<const uint8_t *>(aPassPhrase), passphraseLen, reinterpret_cast<const uint8_t *>(salt),
-                 saltLen, 16384, OT_PSKC_MAX_SIZE, aPskc.m8);
+    Crypto::Pbkdf2::GenerateKey(reinterpret_cast<const uint8_t *>(aPassPhrase), passphraseLen, salt, saltLen, 16384,
+                                OT_PSKC_MAX_SIZE, aPskc.m8);
 
 exit:
     return error;
@@ -355,11 +355,11 @@ exit:
 #endif // OPENTHREAD_FTD
 
 #if (OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_WARN) && (OPENTHREAD_CONFIG_LOG_MESHCOP == 1)
-void LogError(const char *aActionText, otError aError)
+void LogError(const char *aActionText, Error aError)
 {
-    if (aError != OT_ERROR_NONE)
+    if (aError != kErrorNone)
     {
-        otLogWarnMeshCoP("Failed to %s: %s", aActionText, otThreadErrorToString(aError));
+        otLogWarnMeshCoP("Failed to %s: %s", aActionText, ErrorToString(aError));
     }
 }
 #endif

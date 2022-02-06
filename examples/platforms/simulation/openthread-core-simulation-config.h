@@ -115,7 +115,7 @@
  *
  */
 #ifndef OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_SECURITY_ENABLE
-#define OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_SECURITY_ENABLE (OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2)
+#define OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_SECURITY_ENABLE 1
 #endif
 
 /**
@@ -125,7 +125,7 @@
  *
  */
 #ifndef OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_TIMING_ENABLE
-#define OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_TIMING_ENABLE (OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2)
+#define OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_TIMING_ENABLE 1
 #endif
 #endif // OPENTHREAD_RADIO
 
@@ -156,16 +156,6 @@
 #define CLI_COAP_SECURE_USE_COAP_DEFAULT_HANDLER 1
 
 /**
- * @def OPENTHREAD_CONFIG_CSL_SAMPLE_WINDOW
- *
- * The CSL sample window in units of 10 symbols.
- *
- */
-#ifndef OPENTHREAD_CONFIG_CSL_SAMPLE_WINDOW
-#define OPENTHREAD_CONFIG_CSL_SAMPLE_WINDOW 5
-#endif
-
-/**
  * @def OPENTHREAD_CONFIG_PLATFORM_RADIO_COEX_ENABLE
  *
  * Define to 1 if you want to enable radio coexistence implemented in platform.
@@ -187,6 +177,71 @@
  */
 #ifndef OPENTHREAD_CONFIG_LOG_PLATFORM
 #define OPENTHREAD_CONFIG_LOG_PLATFORM 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_CLI_MAX_LINE_LENGTH
+ *
+ * The maximum size of the CLI line in bytes.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_CLI_MAX_LINE_LENGTH
+#define OPENTHREAD_CONFIG_CLI_MAX_LINE_LENGTH 640
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_CLI_UART_RX_BUFFER_SIZE
+ *
+ * The size of CLI UART RX buffer in bytes.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_CLI_UART_RX_BUFFER_SIZE
+#define OPENTHREAD_CONFIG_CLI_UART_RX_BUFFER_SIZE 640
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_MLE_INFORM_PREVIOUS_PARENT_ON_REATTACH
+ *
+ * Define as 1 for a child to inform its previous parent when it attaches to a new parent.
+ *
+ * If this feature is enabled, when a device attaches to a new parent, it will send an IP message (with empty payload
+ * and mesh-local IP address as the source address) to its previous parent.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_MLE_INFORM_PREVIOUS_PARENT_ON_REATTACH
+#define OPENTHREAD_CONFIG_MLE_INFORM_PREVIOUS_PARENT_ON_REATTACH 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_UPTIME_ENABLE
+ *
+ * Define to 1 to enable tracking the uptime of OpenThread instance.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_UPTIME_ENABLE
+#define OPENTHREAD_CONFIG_UPTIME_ENABLE 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME
+ *
+ * Define as 1 to prepend the current uptime to all log messages.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME
+#define OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_SRP_CLIENT_BUFFERS_MAX_SERVICES
+ *
+ * Specifies number of service entries in the SRP client service pool.
+ *
+ * This config is applicable only when `OPENTHREAD_CONFIG_SRP_CLIENT_BUFFERS_ENABLE` is enabled.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_SRP_CLIENT_BUFFERS_MAX_SERVICES
+#define OPENTHREAD_CONFIG_SRP_CLIENT_BUFFERS_MAX_SERVICES 20
 #endif
 
 #endif // OPENTHREAD_CORE_SIMULATION_CONFIG_H_

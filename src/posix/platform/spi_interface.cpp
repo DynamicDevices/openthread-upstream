@@ -105,7 +105,7 @@ void SpiInterface::OnRcpReset(void)
     usleep(static_cast<useconds_t>(mSpiResetDelay) * kUsecPerMsec);
 }
 
-otError SpiInterface::Init(const RadioUrl &aRadioUrl)
+otError SpiInterface::Init(const Url::Url &aRadioUrl)
 {
     const char *spiGpioIntDevice;
     const char *spiGpioResetDevice;
@@ -285,7 +285,7 @@ void SpiInterface::InitResetPin(const char *aCharDev, uint8_t aLine)
 
     otLogDebgPlat("InitResetPin: charDev=%s, line=%" PRIu8, aCharDev, aLine);
 
-    VerifyOrDie((aCharDev != nullptr) && (aLine < GPIOHANDLES_MAX), OT_EXIT_INVALID_ARGUMENTS);
+    VerifyOrDie(aCharDev != nullptr, OT_EXIT_INVALID_ARGUMENTS);
     VerifyOrDie((fd = open(aCharDev, O_RDWR)) != -1, OT_EXIT_ERROR_ERRNO);
     mResetGpioValueFd = SetupGpioHandle(fd, aLine, GPIOHANDLE_REQUEST_OUTPUT, label);
 
@@ -299,7 +299,7 @@ void SpiInterface::InitIntPin(const char *aCharDev, uint8_t aLine)
 
     otLogDebgPlat("InitIntPin: charDev=%s, line=%" PRIu8, aCharDev, aLine);
 
-    VerifyOrDie((aCharDev != nullptr) && (aLine < GPIOHANDLES_MAX), OT_EXIT_INVALID_ARGUMENTS);
+    VerifyOrDie(aCharDev != nullptr, OT_EXIT_INVALID_ARGUMENTS);
     VerifyOrDie((fd = open(aCharDev, O_RDWR)) != -1, OT_EXIT_ERROR_ERRNO);
 
     mIntGpioValueFd = SetupGpioEvent(fd, aLine, GPIOHANDLE_REQUEST_INPUT, GPIOEVENT_REQUEST_FALLING_EDGE, label);
@@ -445,29 +445,20 @@ otError SpiInterface::PushPullSpi(void)
         // Go ahead and try to immediately send a frame if we have it queued up.
         txFrame.SetHeaderDataLen(mSpiTxPayloadSize);
 
-        if (mSpiTxPayloadSize > spiTransferBytes)
-        {
-            spiTransferBytes = mSpiTxPayloadSize;
-        }
+        spiTransferBytes = OT_MAX(spiTransferBytes, mSpiTxPayloadSize);
     }
 
     if (mSpiSlaveDataLen != 0)
     {
         // In a previous transaction the slave indicated it had something to send us. Make sure our transaction
         // is large enough to handle it.
-        if (mSpiSlaveDataLen > spiTransferBytes)
-        {
-            spiTransferBytes = mSpiSlaveDataLen;
-        }
+        spiTransferBytes = OT_MAX(spiTransferBytes, mSpiSlaveDataLen);
     }
     else
     {
         // Set up a minimum transfer size to allow small frames the slave wants to send us to be handled in a
         // single transaction.
-        if (spiTransferBytes < mSpiSmallPacketSize)
-        {
-            spiTransferBytes = mSpiSmallPacketSize;
-        }
+        spiTransferBytes = OT_MAX(spiTransferBytes, mSpiSmallPacketSize);
     }
 
     txFrame.SetHeaderAcceptLen(spiTransferBytes);
@@ -537,8 +528,8 @@ otError SpiInterface::PushPullSpi(void)
 
                 otLogWarnPlat("Garbage in header : %02X %02X %02X %02X %02X", spiRxFrame[0], spiRxFrame[1],
                               spiRxFrame[2], spiRxFrame[3], spiRxFrame[4]);
-                otDumpWarn(OT_LOG_REGION_PLATFORM, "SPI-TX", mSpiTxFrameBuffer, spiTransferBytes);
-                otDumpWarn(OT_LOG_REGION_PLATFORM, "SPI-RX", spiRxFrameBuffer, spiTransferBytes);
+                otDumpDebg(OT_LOG_REGION_PLATFORM, "SPI-TX", mSpiTxFrameBuffer, spiTransferBytes);
+                otDumpDebg(OT_LOG_REGION_PLATFORM, "SPI-RX", spiRxFrameBuffer, spiTransferBytes);
             }
 
             mSpiTxRefusedCount++;
@@ -556,8 +547,8 @@ otError SpiInterface::PushPullSpi(void)
 
             otLogWarnPlat("Garbage in header : %02X %02X %02X %02X %02X", spiRxFrame[0], spiRxFrame[1], spiRxFrame[2],
                           spiRxFrame[3], spiRxFrame[4]);
-            otDumpWarn(OT_LOG_REGION_PLATFORM, "SPI-TX", mSpiTxFrameBuffer, spiTransferBytes);
-            otDumpWarn(OT_LOG_REGION_PLATFORM, "SPI-RX", spiRxFrameBuffer, spiTransferBytes);
+            otDumpDebg(OT_LOG_REGION_PLATFORM, "SPI-TX", mSpiTxFrameBuffer, spiTransferBytes);
+            otDumpDebg(OT_LOG_REGION_PLATFORM, "SPI-RX", spiRxFrameBuffer, spiTransferBytes);
 
             ExitNow();
         }

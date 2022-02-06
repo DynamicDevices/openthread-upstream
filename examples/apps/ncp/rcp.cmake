@@ -28,15 +28,21 @@
 
 add_executable(ot-rcp
     main.c
+    ncp.c
 )
 
 target_include_directories(ot-rcp PRIVATE ${COMMON_INCLUDES})
 
+if(NOT DEFINED OT_PLATFORM_LIB_RCP)
+    set(OT_PLATFORM_LIB_RCP ${OT_PLATFORM_LIB})
+endif()
+
 target_link_libraries(ot-rcp PRIVATE
     openthread-rcp
-    ${OT_PLATFORM_LIB}
+    ${OT_PLATFORM_LIB_RCP}
     openthread-radio
-    ${OT_PLATFORM_LIB}
+    ${OT_PLATFORM_LIB_RCP}
+    openthread-rcp
     ot-config
 )
 

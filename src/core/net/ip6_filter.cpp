@@ -37,18 +37,19 @@
 
 #include "common/code_utils.hpp"
 #include "common/instance.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 #include "meshcop/meshcop.hpp"
 #include "net/ip6.hpp"
-#include "net/tcp.hpp"
+#include "net/tcp6.hpp"
 #include "net/udp6.hpp"
 #include "thread/mle.hpp"
 
 namespace ot {
 namespace Ip6 {
 
-Filter::Filter(void)
-    : mAllowNativeCommissioner(true)
+Filter::Filter(Instance &aInstance)
+    : InstanceLocator(aInstance)
 {
     memset(mUnsecurePorts, 0, sizeof(mUnsecurePorts));
 }
@@ -73,6 +74,12 @@ bool Filter::Accept(Message &aMessage) const
     // Allow only link-local unicast or multicast
     VerifyOrExit(ip6.GetDestination().IsLinkLocal() || ip6.GetDestination().IsLinkLocalMulticast());
 
+    // Allow all link-local IPv6 datagrams when Thread is not enabled
+    if (Get<Mle::MleRouter>().GetRole() == Mle::kRoleDisabled)
+    {
+        ExitNow(rval = true);
+    }
+
     switch (ip6.GetNextHeader())
     {
     case kProtoUdp:
@@ -87,11 +94,14 @@ bool Filter::Accept(Message &aMessage) const
             ExitNow(rval = true);
         }
 
+#if OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE
         // Allow native commissioner traffic
-        if (mAllowNativeCommissioner && dstport == MeshCoP::kBorderAgentUdpPort)
+        if (Get<KeyManager>().GetSecurityPolicy().mNativeCommissioningEnabled &&
+            dstport == Get<MeshCoP::BorderAgent>().GetUdpPort())
         {
             ExitNow(rval = true);
         }
+#endif
         break;
 
     case kProtoTcp:
@@ -120,11 +130,11 @@ exit:
     return rval;
 }
 
-otError Filter::AddUnsecurePort(uint16_t aPort)
+Error Filter::AddUnsecurePort(uint16_t aPort)
 {
-    otError error = OT_ERROR_NONE;
+    Error error = kErrorNone;
 
-    VerifyOrExit(aPort != 0, error = OT_ERROR_INVALID_ARGS);
+    VerifyOrExit(aPort != 0, error = kErrorInvalidArgs);
 
     for (uint16_t unsecurePort : mUnsecurePorts)
     {
@@ -144,17 +154,17 @@ otError Filter::AddUnsecurePort(uint16_t aPort)
         }
     }
 
-    ExitNow(error = OT_ERROR_NO_BUFS);
+    ExitNow(error = kErrorNoBufs);
 
 exit:
     return error;
 }
 
-otError Filter::RemoveUnsecurePort(uint16_t aPort)
+Error Filter::RemoveUnsecurePort(uint16_t aPort)
 {
-    otError error = OT_ERROR_NONE;
+    Error error = kErrorNone;
 
-    VerifyOrExit(aPort != 0, error = OT_ERROR_INVALID_ARGS);
+    VerifyOrExit(aPort != 0, error = kErrorInvalidArgs);
 
     for (int i = 0; i < kMaxUnsecurePorts; i++)
     {
@@ -174,7 +184,7 @@ otError Filter::RemoveUnsecurePort(uint16_t aPort)
         }
     }
 
-    ExitNow(error = OT_ERROR_NOT_FOUND);
+    ExitNow(error = kErrorNotFound);
 
 exit:
     return error;

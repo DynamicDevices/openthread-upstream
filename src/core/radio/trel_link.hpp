@@ -36,16 +36,17 @@
 
 #include "openthread-core-config.h"
 
+#if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
+
 #include "common/encoding.hpp"
 #include "common/locator.hpp"
+#include "common/notifier.hpp"
 #include "common/tasklet.hpp"
 #include "common/timer.hpp"
 #include "mac/mac_frame.hpp"
 #include "mac/mac_types.hpp"
 #include "radio/trel_interface.hpp"
 #include "radio/trel_packet.hpp"
-
-#if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
 
 namespace ot {
 
@@ -70,14 +71,12 @@ namespace Trel {
 class Link : public InstanceLocator
 {
     friend class ot::Instance;
+    friend class ot::Notifier;
     friend class Interface;
 
 public:
-    enum
-    {
-        kMtuSize = 1280 - 48 - sizeof(Header), ///< MTU size for TREL frame.
-        kFcsSize = 0,                          ///< FCS size for TREL frame.
-    };
+    static constexpr uint16_t kMtuSize = 1280 - 48 - sizeof(Header); ///< MTU size for TREL frame.
+    static constexpr uint8_t  kFcsSize = 0;                          ///< FCS size for TREL frame.
 
     /**
      * This constructor initializes the `Link` object.
@@ -150,13 +149,10 @@ public:
     void Send(void);
 
 private:
-    enum
-    {
-        kMaxHeaderSize   = sizeof(Header),
-        k154AckFrameSize = 3 + kFcsSize,
-        kRxRssi          = -20, // The RSSI value used for received frames on TREL radio link.
-        kAckWaitWindow   = 750, // (in msec)
-    };
+    static constexpr uint16_t kMaxHeaderSize   = sizeof(Header);
+    static constexpr uint16_t k154AckFrameSize = 3 + kFcsSize;
+    static constexpr int8_t   kRxRssi          = -20; // The RSSI value used for received frames on TREL radio link.
+    static constexpr uint32_t kAckWaitWindow   = 750; // (in msec)
 
     enum State : uint8_t
     {
@@ -166,15 +162,17 @@ private:
         kStateTransmit,
     };
 
+    void AfterInit(void);
     void SetState(State aState);
     void BeginTransmit(void);
-    void InvokeSendDone(otError aError) { InvokeSendDone(aError, nullptr); }
-    void InvokeSendDone(otError aError, Mac::RxFrame *aAckFrame);
+    void InvokeSendDone(Error aError) { InvokeSendDone(aError, nullptr); }
+    void InvokeSendDone(Error aError, Mac::RxFrame *aAckFrame);
     void ProcessReceivedPacket(Packet &aPacket);
     void HandleAck(Packet &aAckPacket);
     void SendAck(Packet &aRxPacket);
-    void ReportDeferredAckStatus(Neighbor &aNeighbor, otError aError);
+    void ReportDeferredAckStatus(Neighbor &aNeighbor, Error aError);
     void HandleTimer(Neighbor &aNeighbor);
+    void HandleNotifierEvents(Events aEvents);
 
     static void HandleTxTasklet(Tasklet &aTasklet);
     void        HandleTxTasklet(void);

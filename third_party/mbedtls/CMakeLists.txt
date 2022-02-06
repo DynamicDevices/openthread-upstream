@@ -42,6 +42,9 @@ if(UNIFDEF_EXE)
 endif()
 find_program(SED_EXE sed)
 
+string(REPLACE "-Wconversion" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+string(REPLACE "-Wconversion" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+
 add_subdirectory(repo)
 
 if(UNIFDEFALL_EXE AND SED_EXE AND UNIFDEF_VERSION VERSION_GREATER_EQUAL 2.10)
@@ -69,7 +72,10 @@ else()
     configure_file(mbedtls-config.h openthread-mbedtls-config.h COPYONLY)
 endif()
 
-target_include_directories(ot-config INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(ot-config
+    INTERFACE
+        ${CMAKE_CURRENT_BINARY_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/repo/include)
 
 target_compile_definitions(mbedtls
     PUBLIC
@@ -79,7 +85,7 @@ target_compile_definitions(mbedtls
 )
 target_include_directories(mbedtls
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/repo/include
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/repo/include>
     PRIVATE
         ${OT_PUBLIC_INCLUDES}
         $<TARGET_PROPERTY:ot-config,INTERFACE_INCLUDE_DIRECTORIES>
@@ -93,7 +99,7 @@ target_compile_definitions(mbedx509
 )
 target_include_directories(mbedx509
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/repo/include
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/repo/include>
     PRIVATE
         ${OT_PUBLIC_INCLUDES}
         $<TARGET_PROPERTY:ot-config,INTERFACE_INCLUDE_DIRECTORIES>
@@ -107,7 +113,7 @@ target_compile_definitions(mbedcrypto
 )
 target_include_directories(mbedcrypto
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/repo/include
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/repo/include>
     PRIVATE
         ${OT_PUBLIC_INCLUDES}
         $<TARGET_PROPERTY:ot-config,INTERFACE_INCLUDE_DIRECTORIES>

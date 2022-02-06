@@ -61,21 +61,16 @@ class Cert_5_1_12_NewRouterSync(thread_cert.TestCase):
         LEADER: {
             'name': 'LEADER',
             'mode': 'rdn',
-            'panid': 0xface,
             'allowlist': [ROUTER1, ROUTER2]
         },
         ROUTER1: {
             'name': 'ROUTER_1',
             'mode': 'rdn',
-            'panid': 0xface,
-            'router_selection_jitter': 1,
             'allowlist': [LEADER]
         },
         ROUTER2: {
             'name': 'ROUTER_2',
             'mode': 'rdn',
-            'panid': 0xface,
-            'router_selection_jitter': 1,
             'allowlist': [LEADER]
         },
     }
@@ -199,10 +194,8 @@ class Cert_5_1_12_NewRouterSync(thread_cert.TestCase):
                                   LINK_MARGIN_TLV,
                                   RESPONSE_TLV,
                                   SOURCE_ADDRESS_TLV,
-                                  VERSION_TLV,
-                                  TLV_REQUEST_TLV,
-                                  LINK_MARGIN_TLV
-                                   } <= set(p.mle.tlv.type) and\
+                                  VERSION_TLV
+                                  } <= set(p.mle.tlv.type) and\
                        p.mle.tlv.link_margin is not nullField
                        ).\
                        must_next()

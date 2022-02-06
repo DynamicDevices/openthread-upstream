@@ -28,10 +28,39 @@
 
 #include "radio.hpp"
 
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "utils/otns.hpp"
 
 namespace ot {
+
+#if OPENTHREAD_RADIO
+void Radio::Init(void)
+{
+#if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+    SuccessOrAssert(EnableCsl(0, Mac::kShortAddrInvalid, nullptr));
+#endif
+
+    EnableSrcMatch(false);
+    ClearSrcMatchShortEntries();
+    ClearSrcMatchExtEntries();
+
+    if (IsEnabled())
+    {
+        SuccessOrAssert(Sleep());
+        SuccessOrAssert(Disable());
+    }
+
+    SetPanId(Mac::kPanIdBroadcast);
+    SetExtendedAddress(Mac::ExtAddress{});
+    SetShortAddress(Mac::kShortAddrInvalid);
+    SetMacKey(0, 0, Mac::KeyMaterial{}, Mac::KeyMaterial{}, Mac::KeyMaterial{});
+    SetMacFrameCounter(0);
+
+    SetPromiscuous(false);
+#endif // OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
+}
+#endif // OPENTHREAD_RADIO
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
 
@@ -53,7 +82,7 @@ void Radio::SetShortAddress(Mac::ShortAddress aShortAddress)
 #endif
 }
 
-otError Radio::Transmit(Mac::TxFrame &aFrame)
+Error Radio::Transmit(Mac::TxFrame &aFrame)
 {
 #if (OPENTHREAD_MTD || OPENTHREAD_FTD) && OPENTHREAD_CONFIG_OTNS_ENABLE
     Get<Utils::Otns>().EmitTransmit(aFrame);

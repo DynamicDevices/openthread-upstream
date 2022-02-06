@@ -35,14 +35,14 @@
 
 #include <openthread/logging.h>
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 
 using namespace ot;
 
 otLogLevel otLoggingGetLevel(void)
 {
-#if OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE && !OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
-    return Instance::Get().GetLogLevel();
+#if OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
+    return Instance::GetLogLevel();
 #else
     return static_cast<otLogLevel>(OPENTHREAD_CONFIG_LOG_LEVEL);
 #endif
@@ -51,15 +51,15 @@ otLogLevel otLoggingGetLevel(void)
 #if OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
 otError otLoggingSetLevel(otLogLevel aLogLevel)
 {
-    otError error = OT_ERROR_NONE;
+    Error error = kErrorNone;
 
     if (aLogLevel <= OT_LOG_LEVEL_DEBG && aLogLevel >= OT_LOG_LEVEL_NONE)
     {
-        Instance::Get().SetLogLevel(aLogLevel);
+        Instance::SetLogLevel(aLogLevel);
     }
     else
     {
-        error = OT_ERROR_INVALID_ARGS;
+        error = kErrorInvalidArgs;
     }
 
     return error;

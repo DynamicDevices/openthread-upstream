@@ -28,16 +28,9 @@
 
 add_library(openthread-ncp-mtd)
 
-set_target_properties(
-    openthread-ncp-mtd
-    PROPERTIES
-        C_STANDARD 99
-        CXX_STANDARD 11
-)
-
 target_compile_definitions(openthread-ncp-mtd PRIVATE
     OPENTHREAD_MTD=1
-    OPENTHREAD_CONFIG_NCP_UART_ENABLE=1
+    OPENTHREAD_CONFIG_NCP_HDLC_ENABLE=1
 )
 
 target_compile_options(openthread-ncp-mtd PRIVATE

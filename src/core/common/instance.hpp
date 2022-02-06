@@ -39,70 +39,51 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include <openthread/error.h>
 #include <openthread/heap.h>
 #include <openthread/platform/logging.h>
-#if OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
+#if OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
 #include <openthread/platform/memory.h>
 #endif
 
+#include "common/as_core_type.hpp"
+#include "common/error.hpp"
+#include "common/extension.hpp"
+#include "common/message.hpp"
 #include "common/non_copyable.hpp"
 #include "common/random_manager.hpp"
 #include "common/tasklet.hpp"
 #include "common/time_ticker.hpp"
 #include "common/timer.hpp"
+#include "common/uptime.hpp"
 #include "diags/factory_diags.hpp"
-#include "radio/radio.hpp"
-
-#if OPENTHREAD_RADIO || OPENTHREAD_CONFIG_LINK_RAW_ENABLE
-#include "common/message.hpp"
 #include "mac/link_raw.hpp"
-#endif
+#include "radio/radio.hpp"
+#include "utils/otns.hpp"
+
 #if OPENTHREAD_FTD || OPENTHREAD_MTD
 #include "mqttsn/mqttsn_client.hpp"
+#include "backbone_router/bbr_leader.hpp"
+#include "backbone_router/bbr_local.hpp"
+#include "border_router/routing_manager.hpp"
 #include "common/code_utils.hpp"
-#include "crypto/mbedtls.hpp"
-#include "thread/tmf.hpp"
-#if !OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
-#include "utils/heap.hpp"
-#endif
 #include "common/notifier.hpp"
 #include "common/settings.hpp"
+#include "crypto/mbedtls.hpp"
 #include "meshcop/border_agent.hpp"
+#include "meshcop/dataset_updater.hpp"
 #include "net/ip6.hpp"
 #include "thread/announce_sender.hpp"
+#include "thread/link_metrics.hpp"
 #include "thread/link_quality.hpp"
 #include "thread/thread_netif.hpp"
-#if OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE && OPENTHREAD_FTD
+#include "thread/tmf.hpp"
 #include "utils/channel_manager.hpp"
-#endif
-#if OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE
 #include "utils/channel_monitor.hpp"
-#endif
-#if (OPENTHREAD_CONFIG_DATASET_UPDATER_ENABLE || OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE) && OPENTHREAD_FTD
-#include "utils/dataset_updater.hpp"
-#endif
-
-#if (OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2)
-#include "backbone_router/bbr_leader.hpp"
-
-#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-#include "backbone_router/bbr_local.hpp"
-#endif
-
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
-#include "thread/link_metrics.hpp"
-#endif
-
-#endif // (OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2)
-
+#include "utils/heap.hpp"
+#include "utils/history_tracker.hpp"
+#include "utils/ping_sender.hpp"
 #endif // OPENTHREAD_FTD || OPENTHREAD_MTD
-#if OPENTHREAD_ENABLE_VENDOR_EXTENSION
-#include "common/extension.hpp"
-#endif
-#if OPENTHREAD_CONFIG_OTNS_ENABLE
-#include "utils/otns.hpp"
-#endif
+
 /**
  * @addtogroup core-instance
  *
@@ -186,16 +167,24 @@ public:
      */
     void Reset(void);
 
+#if OPENTHREAD_RADIO
+    /**
+     * This method resets the internal states of the radio.
+     *
+     */
+    void ResetRadioStack(void);
+#endif
+
     /**
      * This method returns the active log level.
      *
      * @returns The log level.
      *
      */
-    otLogLevel GetLogLevel(void) const
+    static otLogLevel GetLogLevel(void)
 #if OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
     {
-        return mLogLevel;
+        return sLogLevel;
     }
 #else
     {
@@ -210,10 +199,10 @@ public:
      * @param[in] aLogLevel  A log level.
      *
      */
-    void SetLogLevel(otLogLevel aLogLevel)
+    static void SetLogLevel(otLogLevel aLogLevel)
     {
         OT_ASSERT(aLogLevel <= OT_LOG_LEVEL_DEBG && aLogLevel >= OT_LOG_LEVEL_NONE);
-        mLogLevel = aLogLevel;
+        sLogLevel = aLogLevel;
     }
 #endif
 
@@ -237,47 +226,21 @@ public:
      *
      * Erase is successful/allowed only if the device is in `disabled` state/role.
      *
-     * @retval OT_ERROR_NONE           All persistent info/state was erased successfully.
-     * @retval OT_ERROR_INVALID_STATE  Device is not in `disabled` state/role.
+     * @retval kErrorNone          All persistent info/state was erased successfully.
+     * @retval kErrorInvalidState  Device is not in `disabled` state/role.
      *
      */
-    otError ErasePersistentInfo(void);
+    Error ErasePersistentInfo(void);
 
-#if OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
-    void HeapFree(void *aPointer)
-    {
-        OT_ASSERT(mFree != nullptr);
-
-        mFree(aPointer);
-    }
-
-    void *HeapCAlloc(size_t aCount, size_t aSize)
-    {
-        OT_ASSERT(mCAlloc != nullptr);
-
-        return mCAlloc(aCount, aSize);
-    }
-
-    static void HeapSetCAllocFree(otHeapCAllocFn aCAlloc, otHeapFreeFn aFree)
-    {
-        mFree   = aFree;
-        mCAlloc = aCAlloc;
-    }
-#elif !OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
-    void  HeapFree(void *aPointer) { mHeap.Free(aPointer); }
-    void *HeapCAlloc(size_t aCount, size_t aSize) { return mHeap.CAlloc(aCount, aSize); }
-
+#if !OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
     /**
      * This method returns a reference to the Heap object.
      *
      * @returns A reference to the Heap object.
      *
      */
-    Utils::Heap &GetHeap(void) { return mHeap; }
-#else
-    void  HeapFree(void *aPointer) { otPlatFree(aPointer); }
-    void *HeapCAlloc(size_t aCount, size_t aSize) { return otPlatCAlloc(aCount, aSize); }
-#endif // OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
+    static Utils::Heap &GetHeap(void) { return sHeap; }
+#endif
 
 #if OPENTHREAD_CONFIG_COAP_API_ENABLE
     /**
@@ -297,6 +260,29 @@ public:
      *
      */
     Coap::CoapSecure &GetApplicationCoapSecure(void) { return mApplicationCoapSecure; }
+#endif
+
+#if OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE
+    /**
+     * This method enables/disables the "DNS name compressions" mode.
+     *
+     * By default DNS name compression is enabled. When disabled, DNS names are appended as full and never compressed.
+     * This is applicable to OpenThread's DNS and SRP client/server modules.
+     *
+     * This is intended for testing only and available under a `REFERENCE_DEVICE` config.
+     *
+     * @param[in] aEnabled   TRUE to enable the "DNS name compression" mode, FALSE to disable.
+     *
+     */
+    static void SetDnsNameCompressionEnabled(bool aEnabled) { sDnsNameCompressionEnabled = aEnabled; }
+
+    /**
+     * This method indicates whether the "DNS name compression" mode is enabled or not.
+     *
+     * @returns TRUE if the "DNS name compressions" mode is enabled, FALSE otherwise.
+     *
+     */
+    static bool IsDnsNameCompressionEnabled(void) { return sDnsNameCompressionEnabled; }
 #endif
 
 #endif // OPENTHREAD_MTD || OPENTHREAD_FTD
@@ -326,20 +312,17 @@ private:
     // Tasklet and Timer Schedulers are first to ensure other
     // objects/classes can use them from their constructors.
 
-    TaskletScheduler    mTaskletScheduler;
-    TimerMilliScheduler mTimerMilliScheduler;
+    Tasklet::Scheduler    mTaskletScheduler;
+    TimerMilli::Scheduler mTimerMilliScheduler;
 #if OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE
-    TimerMicroScheduler mTimerMicroScheduler;
+    TimerMicro::Scheduler mTimerMicroScheduler;
 #endif
 
 #if OPENTHREAD_MTD || OPENTHREAD_FTD
     // RandomManager is initialized before other objects. Note that it
     // requires MbedTls which itself may use Heap.
-#if OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
-    static otHeapFreeFn   mFree;
-    static otHeapCAllocFn mCAlloc;
-#elif !OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
-    Utils::Heap  mHeap;
+#if !OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
+    static Utils::Heap sHeap;
 #endif
     Crypto::MbedTls mMbedTls;
 #endif // OPENTHREAD_MTD || OPENTHREAD_FTD
@@ -350,6 +333,9 @@ private:
     // (particularly, SubMac and Mac) to allow them to use its methods
     // from their constructor.
     Radio mRadio;
+#if OPENTHREAD_CONFIG_UPTIME_ENABLE
+    Uptime mUptime;
+#endif
 
 #if OPENTHREAD_MTD || OPENTHREAD_FTD
     // Notifier, TimeTicker, Settings, and MessagePool are initialized
@@ -372,6 +358,10 @@ private:
     Coap::CoapSecure mApplicationCoapSecure;
 #endif
 
+#if OPENTHREAD_CONFIG_PING_SENDER_ENABLE
+    Utils::PingSender mPingSender;
+#endif
+
 #if OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE
     Utils::ChannelMonitor mChannelMonitor;
 #endif
@@ -380,8 +370,12 @@ private:
     Utils::ChannelManager mChannelManager;
 #endif
 
+#if OPENTHREAD_CONFIG_HISTORY_TRACKER_ENABLE
+    Utils::HistoryTracker mHistoryTracker;
+#endif
+
 #if (OPENTHREAD_CONFIG_DATASET_UPDATER_ENABLE || OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE) && OPENTHREAD_FTD
-    Utils::DatasetUpdater mDatasetUpdater;
+    MeshCoP::DatasetUpdater mDatasetUpdater;
 #endif
 
 #if OPENTHREAD_CONFIG_ANNOUNCE_SENDER_ENABLE
@@ -392,13 +386,17 @@ private:
     Utils::Otns mOtns;
 #endif
 
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+    BorderRouter::RoutingManager mRoutingManager;
+#endif
+
 #endif // OPENTHREAD_MTD || OPENTHREAD_FTD
 #if OPENTHREAD_RADIO || OPENTHREAD_CONFIG_LINK_RAW_ENABLE
     Mac::LinkRaw mLinkRaw;
 #endif // OPENTHREAD_RADIO || OPENTHREAD_CONFIG_LINK_RAW_ENABLE
 
 #if OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
-    otLogLevel mLogLevel;
+    static otLogLevel sLogLevel;
 #endif
 #if OPENTHREAD_ENABLE_VENDOR_EXTENSION
     Extension::ExtensionBase &mExtension;
@@ -407,7 +405,13 @@ private:
     FactoryDiags::Diags mDiags;
 #endif
     bool mIsInitialized;
+
+#if OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE && (OPENTHREAD_FTD || OPENTHREAD_MTD)
+    static bool sDnsNameCompressionEnabled;
+#endif
 };
+
+DefineCoreType(otInstance, Instance);
 
 // Specializations of the `Get<Type>()` method.
 
@@ -420,6 +424,13 @@ template <> inline Radio::Callbacks &Instance::Get(void)
 {
     return mRadio.mCallbacks;
 }
+
+#if OPENTHREAD_CONFIG_UPTIME_ENABLE
+template <> inline Uptime &Instance::Get(void)
+{
+    return mUptime;
+}
+#endif
 
 #if OPENTHREAD_MTD || OPENTHREAD_FTD
 template <> inline Notifier &Instance::Get(void)
@@ -562,7 +573,7 @@ template <> inline DataPollHandler &Instance::Get(void)
     return mThreadNetif.mMeshForwarder.mIndirectSender.mDataPollHandler;
 }
 
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
 template <> inline CslTxScheduler &Instance::Get(void)
 {
     return mThreadNetif.mMeshForwarder.mIndirectSender.mCslTxScheduler;
@@ -605,6 +616,13 @@ template <> inline PanIdQueryServer &Instance::Get(void)
     return mThreadNetif.mPanIdQuery;
 }
 
+#if OPENTHREAD_CONFIG_TMF_ANYCAST_LOCATOR_ENABLE
+template <> inline AnycastLocator &Instance::Get(void)
+{
+    return mThreadNetif.mAnycastLocator;
+}
+#endif
+
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE || OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
 template <> inline NetworkData::Local &Instance::Get(void)
 {
@@ -624,6 +642,25 @@ template <> inline NetworkData::Notifier &Instance::Get(void)
 }
 #endif
 
+#if OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE
+template <> inline NetworkData::Publisher &Instance::Get(void)
+{
+    return mThreadNetif.mNetworkDataPublisher;
+}
+#endif
+
+template <> inline NetworkData::Service::Manager &Instance::Get(void)
+{
+    return mThreadNetif.mNetworkDataServiceManager;
+}
+
+#if OPENTHREAD_CONFIG_TCP_ENABLE
+template <> inline Ip6::Tcp &Instance::Get(void)
+{
+    return mIp6.mTcp;
+}
+#endif
+
 template <> inline Ip6::Udp &Instance::Get(void)
 {
     return mIp6.mUdp;
@@ -639,7 +676,7 @@ template <> inline Ip6::Mpl &Instance::Get(void)
     return mIp6.mMpl;
 }
 
-template <> inline Tmf::TmfAgent &Instance::Get(void)
+template <> inline Tmf::Agent &Instance::Get(void)
 {
     return mThreadNetif.mTmfAgent;
 }
@@ -696,6 +733,34 @@ template <> inline Dns::Client &Instance::Get(void)
 }
 #endif
 
+#if OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE
+template <> inline Srp::Client &Instance::Get(void)
+{
+    return mThreadNetif.mSrpClient;
+}
+#endif
+
+#if OPENTHREAD_CONFIG_SRP_CLIENT_BUFFERS_ENABLE
+template <> inline Utils::SrpClientBuffers &Instance::Get(void)
+{
+    return mThreadNetif.mSrpClientBuffers;
+}
+#endif
+
+#if OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE
+template <> inline Dns::ServiceDiscovery::Server &Instance::Get(void)
+{
+    return mThreadNetif.mDnssdServer;
+}
+#endif
+
+#if OPENTHREAD_CONFIG_DNS_DSO_ENABLE
+template <> inline Dns::Dso &Instance::Get(void)
+{
+    return mThreadNetif.mDnsDso;
+}
+#endif
+
 #if OPENTHREAD_FTD || OPENTHREAD_CONFIG_TMF_NETWORK_DIAG_MTD_ENABLE
 template <> inline NetworkDiagnostic::NetworkDiagnostic &Instance::Get(void)
 {
@@ -714,6 +779,13 @@ template <> inline Dhcp6::Client &Instance::Get(void)
 template <> inline Dhcp6::Server &Instance::Get(void)
 {
     return mThreadNetif.mDhcp6Server;
+}
+#endif
+
+#if OPENTHREAD_CONFIG_NEIGHBOR_DISCOVERY_AGENT_ENABLE
+template <> inline NeighborDiscovery::Agent &Instance::Get(void)
+{
+    return mThreadNetif.mNeighborDiscoveryAgent;
 }
 #endif
 
@@ -738,15 +810,25 @@ template <> inline Sntp::Client &Instance::Get(void)
 }
 #endif
 
+#if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE
+#if OPENTHREAD_FTD
 template <> inline Utils::ChildSupervisor &Instance::Get(void)
 {
     return mThreadNetif.mChildSupervisor;
 }
-
+#endif
 template <> inline Utils::SupervisionListener &Instance::Get(void)
 {
     return mThreadNetif.mSupervisionListener;
 }
+#endif
+
+#if OPENTHREAD_CONFIG_PING_SENDER_ENABLE
+template <> inline Utils::PingSender &Instance::Get(void)
+{
+    return mPingSender;
+}
+#endif
 
 #if OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE
 template <> inline Utils::ChannelMonitor &Instance::Get(void)
@@ -762,8 +844,15 @@ template <> inline Utils::ChannelManager &Instance::Get(void)
 }
 #endif
 
+#if OPENTHREAD_CONFIG_HISTORY_TRACKER_ENABLE
+template <> inline Utils::HistoryTracker &Instance::Get(void)
+{
+    return mHistoryTracker;
+}
+#endif
+
 #if (OPENTHREAD_CONFIG_DATASET_UPDATER_ENABLE || OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE) && OPENTHREAD_FTD
-template <> inline Utils::DatasetUpdater &Instance::Get(void)
+template <> inline MeshCoP::DatasetUpdater &Instance::Get(void)
 {
     return mDatasetUpdater;
 }
@@ -839,8 +928,8 @@ template <> inline DuaManager &Instance::Get(void)
 }
 #endif
 
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
-template <> inline LinkMetrics &Instance::Get(void)
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE || OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
+template <> inline LinkMetrics::LinkMetrics &Instance::Get(void)
 {
     return mThreadNetif.mLinkMetrics;
 }
@@ -852,6 +941,20 @@ template <> inline LinkMetrics &Instance::Get(void)
 template <> inline Utils::Otns &Instance::Get(void)
 {
     return mOtns;
+}
+#endif
+
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+template <> inline BorderRouter::RoutingManager &Instance::Get(void)
+{
+    return mRoutingManager;
+}
+#endif
+
+#if OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
+template <> inline Srp::Server &Instance::Get(void)
+{
+    return mThreadNetif.mSrpServer;
 }
 #endif
 
@@ -872,18 +975,18 @@ template <> inline Mac::SubMac &Instance::Get(void)
 
 #endif // OPENTHREAD_RADIO || OPENTHREAD_CONFIG_LINK_RAW_ENABLE
 
-template <> inline TaskletScheduler &Instance::Get(void)
+template <> inline Tasklet::Scheduler &Instance::Get(void)
 {
     return mTaskletScheduler;
 }
 
-template <> inline TimerMilliScheduler &Instance::Get(void)
+template <> inline TimerMilli::Scheduler &Instance::Get(void)
 {
     return mTimerMilliScheduler;
 }
 
 #if OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE
-template <> inline TimerMicroScheduler &Instance::Get(void)
+template <> inline TimerMicro::Scheduler &Instance::Get(void)
 {
     return mTimerMicroScheduler;
 }

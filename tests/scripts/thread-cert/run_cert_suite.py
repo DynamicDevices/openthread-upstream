@@ -39,7 +39,7 @@ import config
 
 THREAD_VERSION = os.getenv('THREAD_VERSION')
 VIRTUAL_TIME = int(os.getenv('VIRTUAL_TIME', '1'))
-MAX_JOBS = multiprocessing.cpu_count() * 2 if VIRTUAL_TIME else 10
+MAX_JOBS = int(os.getenv('MAX_JOBS', (multiprocessing.cpu_count() * 2 if VIRTUAL_TIME else 10)))
 
 _BACKBONE_TESTS_DIR = 'tests/scripts/thread-cert/backbone'
 
@@ -56,15 +56,16 @@ def bash(cmd: str, check=True, stdout=None):
     subprocess.run(cmd, shell=True, check=check, stdout=stdout)
 
 
-def run_cert(port_offset: int, script: str):
+def run_cert(job_id: int, port_offset: int, script: str):
     try:
-        test_name = os.path.splitext(os.path.basename(script))[0] + '_' + str(port_offset)
-        logfile = test_name + '.log'
+        test_name = os.path.splitext(os.path.basename(script))[0] + '_' + str(job_id)
+        logfile = f'{test_name}.log'
         env = os.environ.copy()
         env['PORT_OFFSET'] = str(port_offset)
         env['TEST_NAME'] = test_name
 
         try:
+            print(f'Running {test_name}')
             with open(logfile, 'wt') as output:
                 subprocess.check_call(["python3", script],
                                       stdout=output,
@@ -93,8 +94,6 @@ def cleanup_backbone_env():
 
 
 def setup_backbone_env():
-    bash('sudo modprobe ip6table_filter')
-
     if THREAD_VERSION != '1.2':
         raise RuntimeError('Backbone tests only work with THREAD_VERSION=1.2')
 
@@ -131,14 +130,14 @@ class PortOffsetPool:
     def __init__(self, size: int):
         self._size = size
         self._pool = queue.Queue(maxsize=size)
-        for port_offset in range(1, size + 1):
+        for port_offset in range(0, size):
             self.release(port_offset)
 
     def allocate(self) -> int:
         return self._pool.get()
 
     def release(self, port_offset: int):
-        assert 1 <= port_offset <= self._size, port_offset
+        assert 0 <= port_offset < self._size, port_offset
         self._pool.put_nowait(port_offset)
 
 
@@ -147,7 +146,7 @@ def run_tests(scripts: List[str], multiply: int = 1):
     script_succ_count = Counter()
 
     # Run each script for multiple times
-    scripts = [script for script in scripts for _ in range(multiply)]
+    script_ids = [(script, i) for script in scripts for i in range(multiply)]
     port_offset_pool = PortOffsetPool(MAX_JOBS)
 
     def error_callback(port_offset, script, err):
@@ -166,10 +165,10 @@ def run_tests(scripts: List[str], multiply: int = 1):
             color = _COLOR_PASS if script_fail_count[script] == 0 else _COLOR_FAIL
             print(f'{color}PASS {script_succ_count[script]} FAIL {script_fail_count[script]}{_COLOR_NONE} {script}')
 
-    for i, script in enumerate(scripts):
+    for script, i in script_ids:
         port_offset = port_offset_pool.allocate()
         pool.apply_async(
-            run_cert, [port_offset, script],
+            run_cert, [i, port_offset, script],
             callback=lambda ret, port_offset=port_offset, script=script: pass_callback(port_offset, script),
             error_callback=lambda err, port_offset=port_offset, script=script: error_callback(
                 port_offset, script, err))

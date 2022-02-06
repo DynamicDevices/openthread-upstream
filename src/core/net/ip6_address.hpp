@@ -38,11 +38,15 @@
 
 #include <stdint.h>
 
+#include <openthread/ip6.h>
+
+#include "common/as_core_type.hpp"
 #include "common/clearable.hpp"
 #include "common/encoding.hpp"
 #include "common/equatable.hpp"
 #include "common/string.hpp"
 #include "mac/mac_types.hpp"
+#include "net/ip4_address.hpp"
 
 using ot::Encoding::BigEndian::HostSwap16;
 
@@ -64,21 +68,18 @@ OT_TOOL_PACKED_BEGIN
 class NetworkPrefix : public otIp6NetworkPrefix, public Equatable<NetworkPrefix>, public Clearable<NetworkPrefix>
 {
 public:
-    enum
-    {
-        kSize   = OT_IP6_PREFIX_SIZE,            ///< Size in bytes.
-        kLength = OT_IP6_PREFIX_SIZE * CHAR_BIT, ///< Length of Network Prefix in bits.
-    };
+    static constexpr uint8_t kSize   = OT_IP6_PREFIX_SIZE;            ///< Size in bytes.
+    static constexpr uint8_t kLength = OT_IP6_PREFIX_SIZE * CHAR_BIT; ///< Length of Network Prefix in bits.
 
     /**
      * This method generates and sets the Network Prefix to a crypto-secure random Unique Local Address (ULA) based
      * on the pattern `fdxx:xxxx:xxxx:` (RFC 4193).
      *
-     * @retval OT_ERROR_NONE     Successfully generated a random ULA Network Prefix
-     * @retval OT_ERROR_FAILED   Failed to generate random ULA Network Prefix.
+     * @retval kErrorNone     Successfully generated a random ULA Network Prefix
+     * @retval kErrorFailed   Failed to generate random ULA Network Prefix.
      *
      */
-    otError GenerateRandomUla(void);
+    Error GenerateRandomUla(void);
 
 } OT_TOOL_PACKED_END;
 
@@ -87,19 +88,13 @@ public:
  *
  */
 OT_TOOL_PACKED_BEGIN
-class Prefix : public otIp6Prefix
+class Prefix : public otIp6Prefix, public Clearable<Prefix>, public Unequatable<Prefix>
 {
 public:
-    enum : uint8_t
-    {
-        kMaxLength = OT_IP6_ADDRESS_SIZE * CHAR_BIT, ///< Max length of a prefix in bits.
-        kMaxSize   = OT_IP6_ADDRESS_SIZE,            ///< Max (byte) size of a prefix.
-    };
+    static constexpr uint8_t kMaxLength = OT_IP6_ADDRESS_SIZE * CHAR_BIT; ///< Max length of a prefix in bits.
+    static constexpr uint8_t kMaxSize   = OT_IP6_ADDRESS_SIZE;            ///< Max (byte) size of a prefix.
 
-    enum : uint16_t
-    {
-        kInfoStringSize = 45, ///< Max chars for the info string (`ToString()`).
-    };
+    static constexpr uint16_t kInfoStringSize = OT_IP6_PREFIX_STRING_SIZE; ///< Info string size (`ToString()`).
 
     /**
      * This type defines the fixed-length `String` object returned from `ToString()`.
@@ -166,6 +161,36 @@ public:
     bool IsValid(void) const { return (mLength <= kMaxLength); }
 
     /**
+     * This method indicates whether the prefix is a Link-Local prefix.
+     *
+     * @retval TRUE   The prefix is a Link-Local prefix.
+     * @retval FALSE  The prefix is not a Link-Local prefix.
+     *
+     */
+    bool IsLinkLocal(void) const
+    {
+        return mLength >= 10 && mPrefix.mFields.m8[0] == 0xfe && (mPrefix.mFields.m8[1] & 0xc0) == 0x80;
+    }
+
+    /**
+     * This method indicates whether the prefix is a Multicast prefix.
+     *
+     * @retval TRUE   The prefix is a Multicast prefix.
+     * @retval FALSE  The prefix is not a Multicast prefix.
+     *
+     */
+    bool IsMulticast(void) const { return mLength >= 8 && mPrefix.mFields.m8[0] == 0xff; }
+
+    /**
+     * This method indicates whether the prefix is a Unique-Local prefix.
+     *
+     * @retval TRUE   The prefix is a Unique-Local prefix.
+     * @retval FALSE  The prefix is not a Unique-Local prefix.
+     *
+     */
+    bool IsUniqueLocal(void) const { return mLength >= 7 && (mPrefix.mFields.m8[0] & 0xfe) == 0xfc; }
+
+    /**
      * This method indicates whether the prefix is equal to a given prefix.
      *
      * @param[in] aPrefixBytes   A pointer to buffer containing the prefix bytes to compare with.
@@ -223,15 +248,18 @@ public:
     }
 
     /**
-     * This method overloads operator `==` to evaluate whether or not two prefixes are unequal.
+     * This method overloads operator `<` to compare two prefixes.
      *
-     * @param[in]  aOther  The other prefix to compare with.
+     * A prefix with shorter length is considered smaller than the one with longer length. If the prefix lengths are
+     * equal, then the prefix bytes are compared directly.
      *
-     * @retval TRUE   If the two prefixes are unequal.
-     * @retval FALSE  If the two prefixes are not unequal.
+     * @param[in] aOther  The other prefix to compare against.
+     *
+     * @retval TRUE   If the prefix is smaller than @p aOther.
+     * @retval FALSE  If the prefix is not smaller than @p aOther.
      *
      */
-    bool operator!=(const Prefix &aOther) const { return !(*this == aOther); }
+    bool operator<(const Prefix &aOther) const;
 
     /**
      * This static method converts a prefix length (in bits) to size (number of bytes).
@@ -256,13 +284,42 @@ public:
     static uint8_t MatchLength(const uint8_t *aPrefixA, const uint8_t *aPrefixB, uint8_t aMaxSize);
 
     /**
+     * This method indicates whether or not the prefix has a valid length for use as a NAT64 prefix.
+     *
+     * A NAT64 prefix must have one of the following lengths: 32, 40, 48, 56, 64, or 96 (per RFC 6502).
+     *
+     * @retval TRUE   If the prefix has a valid length for use as a NAT64 prefix.
+     * @retval FALSE  If the prefix does not have a valid length for use as a NAT64 prefix.
+     *
+     */
+    bool IsValidNat64(void) const;
+
+    /**
      * This method converts the prefix to a string.
+     *
+     * The IPv6 prefix string is formatted as "%x:%x:%x:...[::]/plen".
      *
      * @returns An `InfoString` containing the string representation of the Prefix.
      *
      */
     InfoString ToString(void) const;
 
+    /**
+     * This method converts the prefix to a string.
+     *
+     * The IPv6 prefix string is formatted as "%x:%x:%x:...[::]/plen".
+     *
+     * If the resulting string does not fit in @p aBuffer (within its @p aSize characters), the string will be
+     * truncated but the outputted string is always null-terminated.
+     *
+     * @param[out] aBuffer   A pointer to a char array to output the string (MUST NOT be `nullptr`).
+     * @param[in]  aSize     The size of @p aBuffer (in bytes).
+     *
+     */
+    void ToString(char *aBuffer, uint16_t aSize) const;
+
+private:
+    void ToString(StringWriter &aWriter) const;
 } OT_TOOL_PACKED_END;
 
 /**
@@ -277,11 +334,9 @@ class InterfaceIdentifier : public otIp6InterfaceIdentifier,
     friend class Address;
 
 public:
-    enum
-    {
-        kSize           = OT_IP6_IID_SIZE, ///< Size of an IPv6 Interface Identifier (in bytes).
-        kInfoStringSize = 17,              ///< Max chars for the info string (`ToString()`).
-    };
+    static constexpr uint8_t kSize = OT_IP6_IID_SIZE; ///< Size of an IPv6 Interface Identifier (in bytes).
+
+    static constexpr uint16_t kInfoStringSize = 17; ///< Max chars for the info string (`ToString()`).
 
     /**
      * This type defines the fixed-length `String` object returned from `ToString()`.
@@ -415,7 +470,7 @@ public:
     bool IsAnycastLocator(void) const;
 
     /**
-     * This method indicates whether or not the Interface Identifier (IID) matches a Service Anycast  Locator (ALOC).
+     * This method indicates whether or not the Interface Identifier (IID) matches a Service Anycast Locator (ALOC).
      *
      * In addition to checking that the IID matches the locator pattern (`0000:00ff:fe00:xxxx`), this method also
      * checks that the locator value is a valid Service ALOC16 (0xfc10 – 0xfc2f).
@@ -457,11 +512,8 @@ public:
     InfoString ToString(void) const;
 
 private:
-    enum : uint8_t
-    {
-        kAloc16Mask            = 0xfc, // The mask for Aloc16.
-        kRloc16ReservedBitMask = 0x02, // The mask for the reserved bit of Rloc16.
-    };
+    static constexpr uint8_t kAloc16Mask            = 0xfc; // The mask for ALOC16.
+    static constexpr uint8_t kRloc16ReservedBitMask = 0x02; // The mask for the reserved bit of RLOC16.
 
 } OT_TOOL_PACKED_END;
 
@@ -472,40 +524,24 @@ private:
 OT_TOOL_PACKED_BEGIN
 class Address : public otIp6Address, public Equatable<Address>, public Clearable<Address>
 {
+    friend class Prefix;
+
 public:
-    /**
-     * Masks
-     *
-     */
-    enum
-    {
-        kAloc16Mask = InterfaceIdentifier::kAloc16Mask, ///< The mask for Aloc16.
-    };
+    static constexpr uint8_t kAloc16Mask = InterfaceIdentifier::kAloc16Mask; ///< The mask for ALOC16.
 
-    /**
-     * Constants
-     *
-     */
-    enum
-    {
-        kSize                 = OT_IP6_ADDRESS_SIZE, ///< Size of an IPv6 Address (in bytes).
-        kIp6AddressStringSize = 40, ///< Max buffer size in bytes to store an IPv6 address in string format.
-    };
+    static constexpr uint8_t kSize = OT_IP6_ADDRESS_SIZE; ///< Size of an IPv6 Address (in bytes).
 
-    /**
-     * IPv6 Address Scopes
-     */
-    enum
-    {
-        kNodeLocalScope      = 0,  ///< Node-Local scope
-        kInterfaceLocalScope = 1,  ///< Interface-Local scope
-        kLinkLocalScope      = 2,  ///< Link-Local scope
-        kRealmLocalScope     = 3,  ///< Realm-Local scope
-        kAdminLocalScope     = 4,  ///< Admin-Local scope
-        kSiteLocalScope      = 5,  ///< Site-Local scope
-        kOrgLocalScope       = 8,  ///< Organization-Local scope
-        kGlobalScope         = 14, ///< Global scope
-    };
+    static constexpr uint16_t kInfoStringSize = OT_IP6_ADDRESS_STRING_SIZE; ///< String Size for IPv6 address.
+
+    // IPv6 Address Scopes
+    static constexpr uint8_t kNodeLocalScope      = 0;  ///< Node-Local scope
+    static constexpr uint8_t kInterfaceLocalScope = 1;  ///< Interface-Local scope
+    static constexpr uint8_t kLinkLocalScope      = 2;  ///< Link-Local scope
+    static constexpr uint8_t kRealmLocalScope     = 3;  ///< Realm-Local scope
+    static constexpr uint8_t kAdminLocalScope     = 4;  ///< Admin-Local scope
+    static constexpr uint8_t kSiteLocalScope      = 5;  ///< Site-Local scope
+    static constexpr uint8_t kOrgLocalScope       = 8;  ///< Organization-Local scope
+    static constexpr uint8_t kGlobalScope         = 14; ///< Global scope
 
     /**
      * This enumeration defines IPv6 address type filter.
@@ -523,7 +559,7 @@ public:
      * This type defines the fixed-length `String` object returned from `ToString()`.
      *
      */
-    typedef String<kIp6AddressStringSize> InfoString;
+    typedef String<kInfoStringSize> InfoString;
 
     /**
      * This method gets the IPv6 address as a pointer to a byte array.
@@ -876,23 +912,52 @@ public:
     bool MatchesFilter(TypeFilter aFilter) const;
 
     /**
-     * This method converts an IPv6 address string to binary.
+     * This method sets the IPv6 address by performing NAT64 address translation from a given IPv4 address as specified
+     * in RFC 6052.
      *
-     * @param[in]  aBuf  A pointer to the null-terminated string.
+     * The NAT64 @p aPrefix MUST have one of the following lengths: 32, 40, 48, 56, 64, or 96, otherwise the behavior
+     * of this method is undefined.
      *
-     * @retval OT_ERROR_NONE          Successfully parsed the IPv6 address string.
-     * @retval OT_ERROR_INVALID_ARGS  Failed to parse the IPv6 address string.
+     * @param[in] aPrefix      The prefix to use for IPv4/IPv6 translation.
+     * @param[in] aIp4Address  The IPv4 address to translate to IPv6.
      *
      */
-    otError FromString(const char *aBuf);
+    void SynthesizeFromIp4Address(const Prefix &aPrefix, const Ip4::Address &aIp4Address);
 
     /**
-     * This method converts an IPv6 address object to a string
+     * This method converts an IPv6 address string to binary.
+     *
+     * @param[in]  aString  A pointer to the null-terminated string.
+     *
+     * @retval kErrorNone          Successfully parsed the IPv6 address string.
+     * @retval kErrorParse         Failed to parse the IPv6 address string.
+     *
+     */
+    Error FromString(const char *aString);
+
+    /**
+     * This method converts the IPv6 address to a string.
+     *
+     * The IPv6 address string is formatted as 16 hex values separated by ':' (i.e., "%x:%x:%x:...:%x").
      *
      * @returns An `InfoString` representing the IPv6 address.
      *
      */
     InfoString ToString(void) const;
+
+    /**
+     * This method convert the IPv6 address to a C string.
+     *
+     * The IPv6 address string is formatted as 16 hex values separated by ':' (i.e., "%x:%x:%x:...:%x").
+     *
+     * If the resulting string does not fit in @p aBuffer (within its @p aSize characters), the string will be
+     * truncated but the outputted string is always null-terminated.
+     *
+     * @param[out] aBuffer   A pointer to a char array to output the string (MUST NOT be `nullptr`).
+     * @param[in]  aSize     The size of @p aBuffer (in bytes).
+     *
+     */
+    void ToString(char *aBuffer, uint16_t aSize) const;
 
     /**
      * This method overloads operator `<` to compare two IPv6 addresses.
@@ -903,14 +968,13 @@ public:
      * @retval false  The IPv6 address is larger than or equal to @p aOther.
      *
      */
-    bool operator<(const Ip6::Address &aOther) const
-    {
-        return memcmp(mFields.m8, aOther.mFields.m8, sizeof(Ip6::Address)) < 0;
-    }
+    bool operator<(const Address &aOther) const { return memcmp(mFields.m8, aOther.mFields.m8, sizeof(Address)) < 0; }
 
 private:
     void SetPrefix(uint8_t aOffset, const uint8_t *aPrefix, uint8_t aPrefixLength);
     void SetToLocator(const NetworkPrefix &aNetworkPrefix, uint16_t aLocator);
+    void ToString(StringWriter &aWriter) const;
+    void AppendHexWords(StringWriter &aWriter, uint8_t aLength) const;
 
     static const Address &GetLinkLocalAllNodesMulticast(void);
     static const Address &GetLinkLocalAllRoutersMulticast(void);
@@ -918,12 +982,8 @@ private:
     static const Address &GetRealmLocalAllRoutersMulticast(void);
     static const Address &GetRealmLocalAllMplForwarders(void);
 
-    enum
-    {
-        kIp4AddressSize                     = 4, ///< Size of the IPv4 address.
-        kMulticastNetworkPrefixLengthOffset = 3, ///< Prefix-Based Multicast Address (RFC3306).
-        kMulticastNetworkPrefixOffset       = 4, ///< Prefix-Based Multicast Address (RFC3306).
-    };
+    static constexpr uint8_t kMulticastNetworkPrefixLengthOffset = 3; // Prefix-Based Multicast Address (RFC3306).
+    static constexpr uint8_t kMulticastNetworkPrefixOffset       = 4; // Prefix-Based Multicast Address (RFC3306).
 } OT_TOOL_PACKED_END;
 
 /**
@@ -932,6 +992,11 @@ private:
  */
 
 } // namespace Ip6
+
+DefineCoreType(otIp6Prefix, Ip6::Prefix);
+DefineCoreType(otIp6InterfaceIdentifier, Ip6::InterfaceIdentifier);
+DefineCoreType(otIp6Address, Ip6::Address);
+
 } // namespace ot
 
 #endif // IP6_ADDRESS_HPP_

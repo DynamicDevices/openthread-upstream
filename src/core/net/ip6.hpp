@@ -53,6 +53,7 @@
 #include "net/ip6_mpl.hpp"
 #include "net/netif.hpp"
 #include "net/socket.hpp"
+#include "net/tcp6.hpp"
 #include "net/udp6.hpp"
 
 namespace ot {
@@ -107,20 +108,17 @@ class Ip6 : public InstanceLocator, private NonCopyable
     friend class Mpl;
 
 public:
-    enum : uint16_t
-    {
-        /**
-         * The max datagram length (in bytes) of an IPv6 message.
-         *
-         */
-        kMaxDatagramLength = OPENTHREAD_CONFIG_IP6_MAX_DATAGRAM_LENGTH,
+    /**
+     * The max datagram length (in bytes) of an IPv6 message.
+     *
+     */
+    static constexpr uint16_t kMaxDatagramLength = OPENTHREAD_CONFIG_IP6_MAX_DATAGRAM_LENGTH;
 
-        /**
-         * The max datagram length (in bytes) of an unfragmented IPv6 message.
-         *
-         */
-        kMaxAssembledDatagramLength = OPENTHREAD_CONFIG_IP6_MAX_ASSEMBLED_DATAGRAM,
-    };
+    /**
+     * The max datagram length (in bytes) of an unfragmented IPv6 message.
+     *
+     */
+    static constexpr uint16_t kMaxAssembledDatagramLength = OPENTHREAD_CONFIG_IP6_MAX_ASSEMBLED_DATAGRAM;
 
     /**
      * This constructor initializes the object.
@@ -136,7 +134,7 @@ public:
      * @param[in]  aReserved  The number of header bytes to reserve following the IPv6 header.
      * @param[in]  aSettings  The message settings.
      *
-     * @returns A pointer to the message or nullptr if insufficient message buffers are available.
+     * @returns A pointer to the message or `nullptr` if insufficient message buffers are available.
      *
      */
     Message *NewMessage(uint16_t aReserved, const Message::Settings &aSettings = Message::Settings::GetDefault());
@@ -148,7 +146,7 @@ public:
      * @param[in]  aDataLength  The size of the IPV6 datagram buffer pointed by @p aData.
      * @param[in]  aSettings    The message settings.
      *
-     * @returns A pointer to the message or nullptr if malformed IPv6 header or insufficient message buffers are
+     * @returns A pointer to the message or `nullptr` if malformed IPv6 header or insufficient message buffers are
      * available.
      *
      */
@@ -162,7 +160,7 @@ public:
      * @param[in]  aData        A pointer to the IPv6 datagram buffer.
      * @param[in]  aDataLength  The size of the IPV6 datagram buffer pointed by @p aData.
      *
-     * @returns A pointer to the message or nullptr if malformed IPv6 header or insufficient message buffers are
+     * @returns A pointer to the message or `nullptr` if malformed IPv6 header or insufficient message buffers are
      * available.
      *
      */
@@ -185,28 +183,29 @@ public:
      * @param[in]  aMessageInfo  A reference to the message info associated with @p aMessage.
      * @param[in]  aIpProto      The Internet Protocol value.
      *
-     * @retval OT_ERROR_NONE     Successfully enqueued the message into an output interface.
-     * @retval OT_ERROR_NO_BUFS  Insufficient available buffer to add the IPv6 headers.
+     * @retval kErrorNone     Successfully enqueued the message into an output interface.
+     * @retval kErrorNoBufs   Insufficient available buffer to add the IPv6 headers.
      *
      */
-    otError SendDatagram(Message &aMessage, MessageInfo &aMessageInfo, uint8_t aIpProto);
+    Error SendDatagram(Message &aMessage, MessageInfo &aMessageInfo, uint8_t aIpProto);
 
     /**
      * This method sends a raw IPv6 datagram with a fully formed IPv6 header.
      *
      * The caller transfers ownership of @p aMessage when making this call. OpenThread will free @p aMessage when
-     * processing is complete, including when a value other than `OT_ERROR_NONE` is returned.
+     * processing is complete, including when a value other than `kErrorNone` is returned.
      *
      * @param[in]  aMessage          A reference to the message.
+     * @param[in]  aFromNcpHost      If the message was forwarded from the NCP Host.
      *
-     * @retval OT_ERROR_NONE      Successfully processed the message.
-     * @retval OT_ERROR_DROP      Message was well-formed but not fully processed due to packet processing rules.
-     * @retval OT_ERROR_NO_BUFS   Could not allocate necessary message buffers when processing the datagram.
-     * @retval OT_ERROR_NO_ROUTE  No route to host.
-     * @retval OT_ERROR_PARSE     Encountered a malformed header when processing the message.
+     * @retval kErrorNone     Successfully processed the message.
+     * @retval kErrorDrop     Message was well-formed but not fully processed due to packet processing rules.
+     * @retval kErrorNoBufs   Could not allocate necessary message buffers when processing the datagram.
+     * @retval kErrorNoRoute  No route to host.
+     * @retval kErrorParse    Encountered a malformed header when processing the message.
      *
      */
-    otError SendRaw(Message &aMessage);
+    Error SendRaw(Message &aMessage, bool aFromNcpHost);
 
     /**
      * This method processes a received IPv6 datagram.
@@ -216,14 +215,14 @@ public:
      * @param[in]  aLinkMessageInfo  A pointer to link-specific message information.
      * @param[in]  aFromNcpHost      TRUE if the message was submitted by the NCP host, FALSE otherwise.
      *
-     * @retval OT_ERROR_NONE      Successfully processed the message.
-     * @retval OT_ERROR_DROP      Message was well-formed but not fully processed due to packet processing rules.
-     * @retval OT_ERROR_NO_BUFS   Could not allocate necessary message buffers when processing the datagram.
-     * @retval OT_ERROR_NO_ROUTE  No route to host.
-     * @retval OT_ERROR_PARSE     Encountered a malformed header when processing the message.
+     * @retval kErrorNone     Successfully processed the message.
+     * @retval kErrorDrop     Message was well-formed but not fully processed due to packet processing rules.
+     * @retval kErrorNoBufs   Could not allocate necessary message buffers when processing the datagram.
+     * @retval kErrorNoRoute  No route to host.
+     * @retval kErrorParse    Encountered a malformed header when processing the message.
      *
      */
-    otError HandleDatagram(Message &aMessage, Netif *aNetif, const void *aLinkMessageInfo, bool aFromNcpHost);
+    Error HandleDatagram(Message &aMessage, Netif *aNetif, const void *aLinkMessageInfo, bool aFromNcpHost);
 
     /**
      * This method registers a callback to provide received raw IPv6 datagrams.
@@ -232,7 +231,7 @@ public:
      * the Thread control traffic filter setting.
      *
      * @param[in]  aCallback         A pointer to a function that is called when an IPv6 datagram is received
-     *                               or nullptr to disable the callback.
+     *                               or `nullptr` to disable the callback.
      * @param[in]  aCallbackContext  A pointer to application-specific context.
      *
      * @sa IsReceiveIp6FilterEnabled
@@ -286,10 +285,10 @@ public:
      *
      * @param[in]  aMessageInfo  A reference to the message information.
      *
-     * @returns A pointer to the selected IPv6 source address or nullptr if no source address was found.
+     * @returns A pointer to the selected IPv6 source address or `nullptr` if no source address was found.
      *
      */
-    const NetifUnicastAddress *SelectSourceAddress(MessageInfo &aMessageInfo);
+    const Netif::UnicastAddress *SelectSourceAddress(MessageInfo &aMessageInfo);
 
     /**
      * This method returns a reference to the send queue.
@@ -300,69 +299,62 @@ public:
     const PriorityQueue &GetSendQueue(void) const { return mSendQueue; }
 
     /**
-     * This static method converts an `IpProto` enumeration to a string.
+     * This static method converts an IP protocol number to a string.
      *
-     * @returns The string representation of an IP protocol enumeration.
+     * @param[in] aIpPorto  An IP protocol number.
+     *
+     * @returns The string representation of @p aIpProto.
      *
      */
     static const char *IpProtoToString(uint8_t aIpProto);
 
 private:
-    enum : uint8_t
-    {
-        kDefaultHopLimit      = OPENTHREAD_CONFIG_IP6_HOP_LIMIT_DEFAULT,
-        kIp6ReassemblyTimeout = OPENTHREAD_CONFIG_IP6_REASSEMBLY_TIMEOUT,
-    };
+    static constexpr uint8_t kDefaultHopLimit      = OPENTHREAD_CONFIG_IP6_HOP_LIMIT_DEFAULT;
+    static constexpr uint8_t kIp6ReassemblyTimeout = OPENTHREAD_CONFIG_IP6_REASSEMBLY_TIMEOUT;
 
-    enum : uint16_t
-    {
-        kMinimalMtu = 1280,
-    };
-
-    enum : uint32_t
-    {
-        kStateUpdatePeriod = 1000,
-    };
+    static constexpr uint16_t kMinimalMtu = 1280;
 
     static void HandleSendQueue(Tasklet &aTasklet);
     void        HandleSendQueue(void);
 
     static uint8_t PriorityToDscp(Message::Priority aPriority);
-    static otError GetDatagramPriority(const uint8_t *aData, uint16_t aDataLen, Message::Priority &aPriority);
+    static Error   GetDatagramPriority(const uint8_t *aData, uint16_t aDataLen, Message::Priority &aPriority);
 
-    void    EnqueueDatagram(Message &aMessage);
-    otError ProcessReceiveCallback(Message &          aMessage,
-                                   const MessageInfo &aMessageInfo,
-                                   uint8_t            aIpProto,
-                                   bool               aFromNcpHost,
-                                   Message::Ownership aMessageOwnership);
-    otError HandleExtensionHeaders(Message &    aMessage,
-                                   Netif *      aNetif,
-                                   MessageInfo &aMessageInfo,
-                                   Header &     aHeader,
-                                   uint8_t &    aNextHeader,
-                                   bool         aIsOutbound,
-                                   bool         aFromNcpHost,
-                                   bool &       aReceive);
-    otError FragmentDatagram(Message &aMessage, uint8_t aIpProto);
-    otError HandleFragment(Message &aMessage, Netif *aNetif, MessageInfo &aMessageInfo, bool aFromNcpHost);
+    void  EnqueueDatagram(Message &aMessage);
+    Error ProcessReceiveCallback(Message &          aMessage,
+                                 const MessageInfo &aMessageInfo,
+                                 uint8_t            aIpProto,
+                                 bool               aFromNcpHost,
+                                 bool               aAllowReceiveFilter,
+                                 Message::Ownership aMessageOwnership);
+    Error HandleExtensionHeaders(Message &    aMessage,
+                                 Netif *      aNetif,
+                                 MessageInfo &aMessageInfo,
+                                 Header &     aHeader,
+                                 uint8_t &    aNextHeader,
+                                 bool         aIsOutbound,
+                                 bool         aFromNcpHost,
+                                 bool &       aReceive);
+    Error FragmentDatagram(Message &aMessage, uint8_t aIpProto);
+    Error HandleFragment(Message &aMessage, Netif *aNetif, MessageInfo &aMessageInfo, bool aFromNcpHost);
 #if OPENTHREAD_CONFIG_IP6_FRAGMENTATION_ENABLE
     void CleanupFragmentationBuffer(void);
     void HandleTimeTick(void);
     void UpdateReassemblyList(void);
     void SendIcmpError(Message &aMessage, Icmp::Header::Type aIcmpType, Icmp::Header::Code aIcmpCode);
 #endif
-    otError AddMplOption(Message &aMessage, Header &aHeader);
-    otError AddTunneledMplOption(Message &aMessage, Header &aHeader, MessageInfo &aMessageInfo);
-    otError InsertMplOption(Message &aMessage, Header &aHeader, MessageInfo &aMessageInfo);
-    otError RemoveMplOption(Message &aMessage);
-    otError HandleOptions(Message &aMessage, Header &aHeader, bool aIsOutbound, bool &aReceive);
-    otError HandlePayload(Message &          aMessage,
-                          MessageInfo &      aMessageInfo,
-                          uint8_t            aIpProto,
-                          Message::Ownership aMessageOwnership);
-    bool    ShouldForwardToThread(const MessageInfo &aMessageInfo, bool aFromNcpHost) const;
-    bool    IsOnLink(const Address &aAddress) const;
+    Error AddMplOption(Message &aMessage, Header &aHeader);
+    Error AddTunneledMplOption(Message &aMessage, Header &aHeader, MessageInfo &aMessageInfo);
+    Error InsertMplOption(Message &aMessage, Header &aHeader, MessageInfo &aMessageInfo);
+    Error RemoveMplOption(Message &aMessage);
+    Error HandleOptions(Message &aMessage, Header &aHeader, bool aIsOutbound, bool &aReceive);
+    Error HandlePayload(Header &           aIp6Header,
+                        Message &          aMessage,
+                        MessageInfo &      aMessageInfo,
+                        uint8_t            aIpProto,
+                        Message::Ownership aMessageOwnership);
+    bool  ShouldForwardToThread(const MessageInfo &aMessageInfo, bool aFromNcpHost) const;
+    bool  IsOnLink(const Address &aAddress) const;
 
     bool                 mForwardingEnabled;
     bool                 mIsReceiveIp6FilterEnabled;
@@ -375,6 +367,10 @@ private:
     Icmp mIcmp;
     Udp  mUdp;
     Mpl  mMpl;
+
+#if OPENTHREAD_CONFIG_TCP_ENABLE
+    Tcp mTcp;
+#endif
 
 #if OPENTHREAD_CONFIG_IP6_FRAGMENTATION_ENABLE
     MessageQueue mReassemblyList;

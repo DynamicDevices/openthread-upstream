@@ -36,7 +36,7 @@
 #include "common/code_utils.hpp"
 #include "common/encoding.hpp"
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/message.hpp"
 #include "net/ip6.hpp"
 #include "net/netif.hpp"
@@ -56,17 +56,33 @@ ThreadNetif::ThreadNetif(Instance &aInstance)
 #if OPENTHREAD_CONFIG_DHCP6_SERVER_ENABLE
     , mDhcp6Server(aInstance)
 #endif
+#if OPENTHREAD_CONFIG_NEIGHBOR_DISCOVERY_AGENT_ENABLE
+    , mNeighborDiscoveryAgent(aInstance)
+#endif
 #if OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE
     , mSlaac(aInstance)
 #endif
 #if OPENTHREAD_CONFIG_DNS_CLIENT_ENABLE
     , mDnsClient(aInstance)
 #endif
+#if OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE
+    , mSrpClient(aInstance)
+#endif
+#if OPENTHREAD_CONFIG_SRP_CLIENT_BUFFERS_ENABLE
+    , mSrpClientBuffers(aInstance)
+#endif
+#if OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE
+    , mDnssdServer(aInstance)
+#endif
+#if OPENTHREAD_CONFIG_DNS_DSO_ENABLE
+    , mDnsDso(aInstance)
+#endif
 #if OPENTHREAD_CONFIG_SNTP_CLIENT_ENABLE
     , mSntpClient(aInstance)
 #endif
     , mActiveDataset(aInstance)
     , mPendingDataset(aInstance)
+    , mIp6Filter(aInstance)
     , mKeyManager(aInstance)
     , mLowpan(aInstance)
     , mMac(aInstance)
@@ -83,6 +99,10 @@ ThreadNetif::ThreadNetif(Instance &aInstance)
 #if OPENTHREAD_FTD || OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE || OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
     , mNetworkDataNotifier(aInstance)
 #endif
+#if OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE
+    , mNetworkDataPublisher(aInstance)
+#endif
+    , mNetworkDataServiceManager(aInstance)
 #if OPENTHREAD_FTD || OPENTHREAD_CONFIG_TMF_NETWORK_DIAG_MTD_ENABLE
     , mNetworkDiagnostic(aInstance)
 #endif
@@ -121,15 +141,26 @@ ThreadNetif::ThreadNetif(Instance &aInstance)
 #if OPENTHREAD_CONFIG_DUA_ENABLE || (OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_DUA_ENABLE)
     , mDuaManager(aInstance)
 #endif
+#if OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
+    , mSrpServer(aInstance)
+#endif
+
+#if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE
+#if OPENTHREAD_FTD
     , mChildSupervisor(aInstance)
+#endif
     , mSupervisionListener(aInstance)
+#endif
     , mAnnounceBegin(aInstance)
     , mPanIdQuery(aInstance)
     , mEnergyScan(aInstance)
+#if OPENTHREAD_CONFIG_TMF_ANYCAST_LOCATOR_ENABLE
+    , mAnycastLocator(aInstance)
+#endif
 #if OPENTHREAD_CONFIG_TIME_SYNC_ENABLE
     , mTimeSync(aInstance)
 #endif
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE || OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
     , mLinkMetrics(aInstance)
 #endif
 #if OPENTHREAD_CONFIG_MQTTSN_ENABLE
@@ -153,7 +184,10 @@ void ThreadNetif::Up(void)
 
     SubscribeAllNodesMulticast();
     IgnoreError(Get<Mle::MleRouter>().Enable());
-    IgnoreError(Get<Tmf::TmfAgent>().Start());
+    IgnoreError(Get<Tmf::Agent>().Start());
+#if OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE
+    IgnoreError(Get<Dns::ServiceDiscovery::Server>().Start());
+#endif
 #if OPENTHREAD_CONFIG_DNS_CLIENT_ENABLE
     IgnoreError(Get<Dns::Client>().Start());
 #endif
@@ -171,15 +205,18 @@ void ThreadNetif::Down(void)
     VerifyOrExit(mIsUp);
 
 #if OPENTHREAD_CONFIG_DNS_CLIENT_ENABLE
-    IgnoreError(Get<Dns::Client>().Stop());
+    Get<Dns::Client>().Stop();
 #endif
 #if OPENTHREAD_CONFIG_SNTP_CLIENT_ENABLE
     IgnoreError(Get<Sntp::Client>().Stop());
 #endif
+#if OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE
+    Get<Dns::ServiceDiscovery::Server>().Stop();
+#endif
 #if OPENTHREAD_CONFIG_DTLS_ENABLE
     Get<Coap::CoapSecure>().Stop();
 #endif
-    IgnoreError(Get<Tmf::TmfAgent>().Stop());
+    IgnoreError(Get<Tmf::Agent>().Stop());
     IgnoreError(Get<Mle::MleRouter>().Disable());
     RemoveAllExternalUnicastAddresses();
     UnsubscribeAllExternalMulticastAddresses();
@@ -197,16 +234,16 @@ exit:
     return;
 }
 
-otError ThreadNetif::RouteLookup(const Ip6::Address &aSource, const Ip6::Address &aDestination, uint8_t *aPrefixMatch)
+Error ThreadNetif::RouteLookup(const Ip6::Address &aSource, const Ip6::Address &aDestination, uint8_t *aPrefixMatch)
 {
-    otError  error;
+    Error    error;
     uint16_t rloc;
 
     SuccessOrExit(error = Get<NetworkData::Leader>().RouteLookup(aSource, aDestination, aPrefixMatch, &rloc));
 
     if (rloc == Get<Mle::MleRouter>().GetRloc16())
     {
-        error = OT_ERROR_NO_ROUTE;
+        error = kErrorNoRoute;
     }
 
 exit:

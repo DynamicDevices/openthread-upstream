@@ -35,19 +35,17 @@
 
 #include <openthread/tasklet.h>
 
+#include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
-#include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 
 using namespace ot;
 
 void otTaskletsProcess(otInstance *aInstance)
 {
-    Instance &instance = *static_cast<Instance *>(aInstance);
-
     VerifyOrExit(otInstanceIsInitialized(aInstance));
-    instance.Get<TaskletScheduler>().ProcessQueuedTasklets();
+    AsCoreType(aInstance).Get<Tasklet::Scheduler>().ProcessQueuedTasklets();
 
 exit:
     return;
@@ -55,11 +53,9 @@ exit:
 
 bool otTaskletsArePending(otInstance *aInstance)
 {
-    bool      retval   = false;
-    Instance &instance = *static_cast<Instance *>(aInstance);
-
+    bool retval = false;
     VerifyOrExit(otInstanceIsInitialized(aInstance));
-    retval = instance.Get<TaskletScheduler>().AreTaskletsPending();
+    retval = AsCoreType(aInstance).Get<Tasklet::Scheduler>().AreTaskletsPending();
 
 exit:
     return retval;

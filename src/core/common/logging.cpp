@@ -43,122 +43,125 @@
  * It is reasonable to only enable the debug uart and not enable logs to the DEBUG uart.
  */
 #if (OPENTHREAD_CONFIG_LOG_OUTPUT == OPENTHREAD_CONFIG_LOG_OUTPUT_DEBUG_UART) && (!OPENTHREAD_CONFIG_ENABLE_DEBUG_UART)
-#error OPENTHREAD_CONFIG_ENABLE_DEBUG_UART_LOG requires OPENTHREAD_CONFIG_ENABLE_DEBUG_UART
+#error "OPENTHREAD_CONFIG_ENABLE_DEBUG_UART_LOG requires OPENTHREAD_CONFIG_ENABLE_DEBUG_UART"
+#endif
+
+#if OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME && !OPENTHREAD_CONFIG_UPTIME_ENABLE
+#error "OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME requires OPENTHREAD_CONFIG_UPTIME_ENABLE"
+#endif
+
+#if OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME && OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
+#error "OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME is not supported under OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE"
 #endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#if !OPENTHREAD_CONFIG_LOG_DEFINE_AS_MACRO_ONLY
-
-static void Log(otLogLevel  aLogLevel,
-                otLogRegion aLogRegion,
-                const char *aRegionPrefix,
-                const char *aFormat,
-                va_list     aArgs)
+static void Log(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aFormat, va_list aArgs)
 {
     ot::String<OPENTHREAD_CONFIG_LOG_MAX_SIZE> logString;
+
+#if OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME
+    ot::Uptime::UptimeToString(ot::Instance::Get().Get<ot::Uptime>().GetUptime(), logString);
+    logString.Append(" ");
+#endif
 
 #if OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
     VerifyOrExit(otLoggingGetLevel() >= aLogLevel);
 #endif
 
 #if OPENTHREAD_CONFIG_LOG_PREPEND_LEVEL
+
     {
-        const char *levelStr = "";
+        static const char *const kLevelStrings[] = {
+            "NONE", "CRIT", "WARN", "NOTE", "INFO", "DEBG",
+        };
 
-        switch (aLogLevel)
-        {
-        case OT_LOG_LEVEL_CRIT:
-            levelStr = _OT_LEVEL_CRIT_PREFIX;
-            break;
+        uint16_t index = ((aLogLevel >= 0) && (aLogLevel < static_cast<int>(OT_ARRAY_LENGTH(kLevelStrings))))
+                             ? static_cast<uint16_t>(aLogLevel)
+                             : 0;
 
-        case OT_LOG_LEVEL_WARN:
-            levelStr = _OT_LEVEL_WARN_PREFIX;
-            break;
-
-        case OT_LOG_LEVEL_NOTE:
-            levelStr = _OT_LEVEL_NOTE_PREFIX;
-            break;
-
-        case OT_LOG_LEVEL_INFO:
-            levelStr = _OT_LEVEL_INFO_PREFIX;
-            break;
-
-        case OT_LOG_LEVEL_DEBG:
-            levelStr = _OT_LEVEL_DEBG_PREFIX;
-            break;
-
-        case OT_LOG_LEVEL_NONE:
-        default:
-            levelStr = _OT_LEVEL_NONE_PREFIX;
-            break;
-        }
-
-        IgnoreError(logString.Append("%s", levelStr));
+        logString.Append("[%s]", kLevelStrings[index]);
     }
-#endif // OPENTHREAD_CONFIG_LOG_PREPEND_LEVEL
+#endif
 
-    IgnoreError(logString.Append("%s", aRegionPrefix));
-    VerifyOrExit(logString.AppendVarArgs(aFormat, aArgs) != OT_ERROR_INVALID_ARGS);
+#if OPENTHREAD_CONFIG_LOG_PREPEND_REGION
+    {
+        static const char *const kRegionStrings[] = {
+            "-------", "API----", "MLE----", "ARP----", "N-DATA-", "ICMP---", "IP6----", "TCP----",
+            "MAC----", "MEM----", "NCP----", "MESH-CP", "DIAG---", "PLAT---", "COAP---", "CLI----",
+            "CORE---", "UTIL---", "BBR----", "MLR----", "DUA----", "BR-----", "SRP----", "DNS----",
+        };
+
+        uint16_t index = (aLogRegion < OT_ARRAY_LENGTH(kRegionStrings)) ? static_cast<uint16_t>(aLogRegion) : 0;
+
+        logString.Append("-%s-: ", kRegionStrings[index]);
+    }
+#elif OPENTHREAD_CONFIG_LOG_PREPEND_LEVEL
+    logString.Append(": ");
+#endif
+
+    logString.AppendVarArgs(aFormat, aArgs);
     otPlatLog(aLogLevel, aLogRegion, "%s" OPENTHREAD_CONFIG_LOG_SUFFIX, logString.AsCString());
 
+#if OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
 exit:
     return;
+#endif
 }
 
 #if OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_CRIT
-void otLogCrit(otLogRegion aRegion, const char *aRegionPrefix, const char *aFormat, ...)
+void _otLogCrit(otLogRegion aRegion, const char *aFormat, ...)
 {
     va_list args;
 
     va_start(args, aFormat);
-    Log(OT_LOG_LEVEL_CRIT, aRegion, aRegionPrefix, aFormat, args);
+    Log(OT_LOG_LEVEL_CRIT, aRegion, aFormat, args);
     va_end(args);
 }
 #endif
 
 #if OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_WARN
-void otLogWarn(otLogRegion aRegion, const char *aRegionPrefix, const char *aFormat, ...)
+void _otLogWarn(otLogRegion aRegion, const char *aFormat, ...)
 {
     va_list args;
 
     va_start(args, aFormat);
-    Log(OT_LOG_LEVEL_WARN, aRegion, aRegionPrefix, aFormat, args);
+    Log(OT_LOG_LEVEL_WARN, aRegion, aFormat, args);
     va_end(args);
 }
 #endif
 
 #if OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_NOTE
-void otLogNote(otLogRegion aRegion, const char *aRegionPrefix, const char *aFormat, ...)
+void _otLogNote(otLogRegion aRegion, const char *aFormat, ...)
 {
     va_list args;
 
     va_start(args, aFormat);
-    Log(OT_LOG_LEVEL_NOTE, aRegion, aRegionPrefix, aFormat, args);
+    Log(OT_LOG_LEVEL_NOTE, aRegion, aFormat, args);
     va_end(args);
 }
 #endif
 
 #if OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_INFO
-void otLogInfo(otLogRegion aRegion, const char *aRegionPrefix, const char *aFormat, ...)
+void _otLogInfo(otLogRegion aRegion, const char *aFormat, ...)
 {
     va_list args;
 
     va_start(args, aFormat);
-    Log(OT_LOG_LEVEL_INFO, aRegion, aRegionPrefix, aFormat, args);
+    Log(OT_LOG_LEVEL_INFO, aRegion, aFormat, args);
     va_end(args);
 }
 #endif
 
 #if OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_DEBG
-void otLogDebg(otLogRegion aRegion, const char *aRegionPrefix, const char *aFormat, ...)
+void _otLogDebg(otLogRegion aRegion, const char *aFormat, ...)
 {
     va_list args;
 
     va_start(args, aFormat);
-    Log(OT_LOG_LEVEL_DEBG, aRegion, aRegionPrefix, aFormat, args);
+    Log(OT_LOG_LEVEL_DEBG, aRegion, aFormat, args);
     va_end(args);
 }
 #endif
@@ -171,9 +174,24 @@ void otLogMac(otLogLevel aLogLevel, const char *aFormat, ...)
     VerifyOrExit(otLoggingGetLevel() >= aLogLevel);
 
     va_start(args, aFormat);
-    Log(aLogLevel, OT_LOG_REGION_MAC, _OT_REGION_MAC_PREFIX, aFormat, args);
+    Log(aLogLevel, OT_LOG_REGION_MAC, aFormat, args);
     va_end(args);
 
+exit:
+    return;
+}
+
+void otDumpMacFrame(otLogLevel aLogLevel, const char *aId, const void *aBuf, const size_t aLength)
+{
+    constexpr uint8_t kFixedStringPart = 10; // strlen(" seqno=000")
+    constexpr uint8_t kSeqnoIdx        = 2;  // index of the sequence number within aBuf
+
+    size_t idLength = strlen(aId) + kFixedStringPart + 1; // allow for the '\0' character
+    char   newId[25];
+
+    VerifyOrExit(idLength <= sizeof(newId));
+    snprintf(newId, idLength, "%s seqno=%03u", aId, static_cast<const uint8_t *>(aBuf)[kSeqnoIdx]);
+    otDump(aLogLevel, OT_LOG_REGION_MAC, newId, aBuf, aLength);
 exit:
     return;
 }
@@ -185,7 +203,7 @@ void otLogCertMeshCoP(const char *aFormat, ...)
     va_list args;
 
     va_start(args, aFormat);
-    Log(OT_LOG_LEVEL_NONE, OT_LOG_REGION_MESH_COP, _OT_REGION_MESH_COP_PREFIX, aFormat, args);
+    Log(OT_LOG_LEVEL_NONE, OT_LOG_REGION_MESH_COP, aFormat, args);
     va_end(args);
 }
 #endif
@@ -196,19 +214,13 @@ void otLogOtns(const char *aFormat, ...)
     va_list args;
 
     va_start(args, aFormat);
-    Log(OT_LOG_LEVEL_NONE, OT_LOG_REGION_CORE, _OT_REGION_CORE_PREFIX, aFormat, args);
+    Log(OT_LOG_LEVEL_NONE, OT_LOG_REGION_CORE, aFormat, args);
     va_end(args);
 }
 #endif
 
-#endif // #if !OPENTHREAD_CONFIG_LOG_DEFINE_AS_MACRO_ONLY
-
 #if OPENTHREAD_CONFIG_LOG_PKT_DUMP
 
-#if OPENTHREAD_CONFIG_LOG_DEFINE_AS_MACRO_ONLY
-#define otLogDump(aLogLevel, aLogRegion, aFormat, ...) \
-    _otDynamicLog(aLogLevel, aLogRegion, aFormat OPENTHREAD_CONFIG_LOG_SUFFIX, __VA_ARGS__)
-#else
 static void otLogDump(otLogLevel aLogLevel, otLogRegion aRegion, const char *aFormat, ...)
 {
     va_list args;
@@ -216,42 +228,40 @@ static void otLogDump(otLogLevel aLogLevel, otLogRegion aRegion, const char *aFo
     VerifyOrExit(otLoggingGetLevel() >= aLogLevel);
 
     va_start(args, aFormat);
-    Log(aLogLevel, aRegion, "", aFormat, args);
+    Log(aLogLevel, aRegion, aFormat, args);
     va_end(args);
 
 exit:
     return;
 }
-#endif
 
-enum : uint8_t
-{
-    kStringLineLength = 80,
-    kDumpBytesPerLine = 16,
-};
+static constexpr uint8_t kStringLineLength = 80;
+static constexpr uint8_t kDumpBytesPerLine = 16;
 
 static void DumpLine(otLogLevel aLogLevel, otLogRegion aLogRegion, const uint8_t *aBytes, const size_t aLength)
 {
-    ot::String<kStringLineLength> string("|");
+    ot::String<kStringLineLength> string;
+
+    string.Append("|");
 
     for (uint8_t i = 0; i < kDumpBytesPerLine; i++)
     {
         if (i < aLength)
         {
-            IgnoreError(string.Append(" %02X", aBytes[i]));
+            string.Append(" %02X", aBytes[i]);
         }
         else
         {
-            IgnoreError(string.Append(" .."));
+            string.Append(" ..");
         }
 
         if (!((i + 1) % 8))
         {
-            IgnoreError(string.Append(" |"));
+            string.Append(" |");
         }
     }
 
-    IgnoreError(string.Append(" "));
+    string.Append(" ");
 
     for (uint8_t i = 0; i < kDumpBytesPerLine; i++)
     {
@@ -267,7 +277,7 @@ static void DumpLine(otLogLevel aLogLevel, otLogRegion aLogRegion, const uint8_t
             }
         }
 
-        IgnoreError(string.Append("%c", c));
+        string.Append("%c", c);
     }
 
     otLogDump(aLogLevel, aLogRegion, "%s", string.AsCString());
@@ -275,24 +285,24 @@ static void DumpLine(otLogLevel aLogLevel, otLogRegion aLogRegion, const uint8_t
 
 void otDump(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aId, const void *aBuf, const size_t aLength)
 {
-    enum : uint8_t
-    {
-        kWidth = 72,
-    };
+    constexpr uint8_t kWidth           = 72;
+    constexpr uint8_t kFixedStringPart = 10; // strlen("[ len=000]")
 
-    size_t                        idLen = strlen(aId);
+    size_t                        idLen = strlen(aId) + kFixedStringPart;
     ot::String<kStringLineLength> string;
 
-    for (size_t i = 0; i < (kWidth - idLen) / 2 - 5; i++)
+    VerifyOrExit(otLoggingGetLevel() >= aLogLevel);
+
+    for (size_t i = 0; i < (kWidth - idLen) / 2; i++)
     {
-        IgnoreError(string.Append("="));
+        string.Append("=");
     }
 
-    IgnoreError(string.Append("[%s len=%03u]", aId, static_cast<unsigned>(aLength)));
+    string.Append("[%s len=%03u]", aId, static_cast<unsigned>(aLength));
 
-    for (size_t i = 0; i < (kWidth - idLen) / 2 - 4; i++)
+    for (size_t i = 0; i < kWidth - idLen - (kWidth - idLen) / 2; i++)
     {
-        IgnoreError(string.Append("="));
+        string.Append("=");
     }
 
     otLogDump(aLogLevel, aLogRegion, "%s", string.AsCString());
@@ -307,76 +317,19 @@ void otDump(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aId, const
 
     for (size_t i = 0; i < kWidth; i++)
     {
-        IgnoreError(string.Append("-"));
+        string.Append("-");
     }
 
     otLogDump(aLogLevel, aLogRegion, "%s", string.AsCString());
+
+exit:
+    return;
 }
 #else  // OPENTHREAD_CONFIG_LOG_PKT_DUMP
 void otDump(otLogLevel, otLogRegion, const char *, const void *, const size_t)
 {
 }
 #endif // OPENTHREAD_CONFIG_LOG_PKT_DUMP
-
-static const char *const sThreadErrorStrings[OT_NUM_ERRORS] = {
-    "OK",                         // OT_ERROR_NONE = 0
-    "Failed",                     // OT_ERROR_FAILED = 1
-    "Drop",                       // OT_ERROR_DROP = 2
-    "NoBufs",                     // OT_ERROR_NO_BUFS = 3
-    "NoRoute",                    // OT_ERROR_NO_ROUTE = 4
-    "Busy",                       // OT_ERROR_BUSY = 5
-    "Parse",                      // OT_ERROR_PARSE = 6
-    "InvalidArgs",                // OT_ERROR_INVALID_ARGS = 7
-    "Security",                   // OT_ERROR_SECURITY = 8
-    "AddressQuery",               // OT_ERROR_ADDRESS_QUERY = 9
-    "NoAddress",                  // OT_ERROR_NO_ADDRESS = 10
-    "Abort",                      // OT_ERROR_ABORT = 11
-    "NotImplemented",             // OT_ERROR_NOT_IMPLEMENTED = 12
-    "InvalidState",               // OT_ERROR_INVALID_STATE = 13
-    "NoAck",                      // OT_ERROR_NO_ACK = 14
-    "ChannelAccessFailure",       // OT_ERROR_CHANNEL_ACCESS_FAILURE = 15
-    "Detached",                   // OT_ERROR_DETACHED = 16
-    "FcsErr",                     // OT_ERROR_FCS = 17
-    "NoFrameReceived",            // OT_ERROR_NO_FRAME_RECEIVED = 18
-    "UnknownNeighbor",            // OT_ERROR_UNKNOWN_NEIGHBOR = 19
-    "InvalidSourceAddress",       // OT_ERROR_INVALID_SOURCE_ADDRESS = 20
-    "AddressFiltered",            // OT_ERROR_ADDRESS_FILTERED = 21
-    "DestinationAddressFiltered", // OT_ERROR_DESTINATION_ADDRESS_FILTERED = 22
-    "NotFound",                   // OT_ERROR_NOT_FOUND = 23
-    "Already",                    // OT_ERROR_ALREADY = 24
-    "ReservedError25",            // otError 25 is reserved
-    "Ipv6AddressCreationFailure", // OT_ERROR_IP6_ADDRESS_CREATION_FAILURE = 26
-    "NotCapable",                 // OT_ERROR_NOT_CAPABLE = 27
-    "ResponseTimeout",            // OT_ERROR_RESPONSE_TIMEOUT = 28
-    "Duplicated",                 // OT_ERROR_DUPLICATED = 29
-    "ReassemblyTimeout",          // OT_ERROR_REASSEMBLY_TIMEOUT = 30
-    "NotTmf",                     // OT_ERROR_NOT_TMF = 31
-    "NonLowpanDataFrame",         // OT_ERROR_NOT_LOWPAN_DATA_FRAME = 32
-    "ReservedError33",            // otError 33 is reserved
-    "LinkMarginLow",              // OT_ERROR_LINK_MARGIN_LOW = 34
-    "InvalidCommand",             // OT_ERROR_INVALID_COMMAND = 35
-    "Pending",                    // OT_ERROR_PENDING = 36
-};
-
-const char *otThreadErrorToString(otError aError)
-{
-    return aError < OT_ARRAY_LENGTH(sThreadErrorStrings) ? sThreadErrorStrings[aError] : "UnknownErrorType";
-}
-
-#if OPENTHREAD_CONFIG_LOG_DEFINE_AS_MACRO_ONLY
-
-const char *otLogLevelToPrefixString(otLogLevel aLogLevel)
-{
-    static const char *const kLevelStrings[] = {
-        _OT_LEVEL_NONE_PREFIX, _OT_LEVEL_CRIT_PREFIX, _OT_LEVEL_WARN_PREFIX,
-        _OT_LEVEL_NOTE_PREFIX, _OT_LEVEL_INFO_PREFIX, _OT_LEVEL_DEBG_PREFIX,
-    };
-
-    return ((aLogLevel >= 0) && (aLogLevel < static_cast<int>(OT_ARRAY_LENGTH(kLevelStrings))))
-               ? kLevelStrings[aLogLevel]
-               : "";
-}
-#endif
 
 #if OPENTHREAD_CONFIG_LOG_OUTPUT == OPENTHREAD_CONFIG_LOG_OUTPUT_NONE
 /* this provides a stub, in case something uses the function */

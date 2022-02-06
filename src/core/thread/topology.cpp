@@ -36,7 +36,7 @@
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 
 namespace ot {
@@ -79,7 +79,7 @@ void Neighbor::Info::SetFrom(const Neighbor &aNeighbor)
     mMessageErrorRate = aNeighbor.GetLinkInfo().GetMessageErrorRate();
     mRxOnWhenIdle     = aNeighbor.IsRxOnWhenIdle();
     mFullThreadDevice = aNeighbor.IsFullThreadDevice();
-    mFullNetworkData  = aNeighbor.IsFullNetworkData();
+    mFullNetworkData  = (aNeighbor.GetNetworkDataType() == NetworkData::kFullSet);
 }
 
 void Neighbor::Init(Instance &aInstance)
@@ -160,30 +160,29 @@ void Neighbor::GenerateChallenge(void)
         Random::Crypto::FillBuffer(mValidPending.mPending.mChallenge, sizeof(mValidPending.mPending.mChallenge)));
 }
 
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE || OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
 void Neighbor::AggregateLinkMetrics(uint8_t aSeriesId, uint8_t aFrameType, uint8_t aLqi, int8_t aRss)
 {
-    for (LinkMetricsSeriesInfo *entry = mLinkMetricsSeriesInfoList.GetHead(); entry != nullptr;
-         entry                        = entry->GetNext())
+    for (LinkMetrics::SeriesInfo &entry : mLinkMetricsSeriesInfoList)
     {
-        if (aSeriesId == 0 || aSeriesId == entry->GetSeriesId())
+        if (aSeriesId == 0 || aSeriesId == entry.GetSeriesId())
         {
-            entry->AggregateLinkMetrics(aFrameType, aLqi, aRss);
+            entry.AggregateLinkMetrics(aFrameType, aLqi, aRss);
         }
     }
 }
 
-LinkMetricsSeriesInfo *Neighbor::GetForwardTrackingSeriesInfo(const uint8_t &aSeriesId)
+LinkMetrics::SeriesInfo *Neighbor::GetForwardTrackingSeriesInfo(const uint8_t &aSeriesId)
 {
     return mLinkMetricsSeriesInfoList.FindMatching(aSeriesId);
 }
 
-void Neighbor::AddForwardTrackingSeriesInfo(LinkMetricsSeriesInfo &aLinkMetricsSeriesInfo)
+void Neighbor::AddForwardTrackingSeriesInfo(LinkMetrics::SeriesInfo &aSeriesInfo)
 {
-    mLinkMetricsSeriesInfoList.Push(aLinkMetricsSeriesInfo);
+    mLinkMetricsSeriesInfoList.Push(aSeriesInfo);
 }
 
-LinkMetricsSeriesInfo *Neighbor::RemoveForwardTrackingSeriesInfo(const uint8_t &aSeriesId)
+LinkMetrics::SeriesInfo *Neighbor::RemoveForwardTrackingSeriesInfo(const uint8_t &aSeriesId)
 {
     return mLinkMetricsSeriesInfoList.RemoveMatching(aSeriesId);
 }
@@ -192,27 +191,38 @@ void Neighbor::RemoveAllForwardTrackingSeriesInfo(void)
 {
     while (!mLinkMetricsSeriesInfoList.IsEmpty())
     {
-        LinkMetricsSeriesInfo *seriesInfo = mLinkMetricsSeriesInfoList.Pop();
-        Get<LinkMetrics>().mLinkMetricsSeriesInfoPool.Free(*seriesInfo);
+        LinkMetrics::SeriesInfo *seriesInfo = mLinkMetricsSeriesInfoList.Pop();
+        Get<LinkMetrics::LinkMetrics>().mSeriesInfoPool.Free(*seriesInfo);
     }
 }
-#endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_ENABLE
+#endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE || OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
 
 const char *Neighbor::StateToString(State aState)
 {
-    static const char *kStateStrings[] = {
-        "Invalid",        // kStateInvalid
-        "Restored",       // kStateRestored
-        "ParentReq",      // kStateParentRequest
-        "ParentRes",      // kStateParentResponse
-        "ChildIdReq",     // kStateChildIdRequest
-        "LinkReq",        // kStateLinkRequest
-        "ChildUpdateReq", // kStateChildUpdateRequest
-        "Valid",          // kStateValid
+    static const char *const kStateStrings[] = {
+        "Invalid",        // (0) kStateInvalid
+        "Restored",       // (1) kStateRestored
+        "ParentReq",      // (2) kStateParentRequest
+        "ParentRes",      // (3) kStateParentResponse
+        "ChildIdReq",     // (4) kStateChildIdRequest
+        "LinkReq",        // (5) kStateLinkRequest
+        "ChildUpdateReq", // (6) kStateChildUpdateRequest
+        "Valid",          // (7) kStateValid
     };
 
-    return static_cast<uint8_t>(aState) < OT_ARRAY_LENGTH(kStateStrings) ? kStateStrings[aState] : "Unknown";
+    static_assert(0 == kStateInvalid, "kStateInvalid value is incorrect");
+    static_assert(1 == kStateRestored, "kStateRestored value is incorrect");
+    static_assert(2 == kStateParentRequest, "kStateParentRequest value is incorrect");
+    static_assert(3 == kStateParentResponse, "kStateParentResponse value is incorrect");
+    static_assert(4 == kStateChildIdRequest, "kStateChildIdRequest value is incorrect");
+    static_assert(5 == kStateLinkRequest, "kStateLinkRequest value is incorrect");
+    static_assert(6 == kStateChildUpdateRequest, "kStateChildUpdateRequest value is incorrect");
+    static_assert(7 == kStateValid, "kStateValid value is incorrect");
+
+    return kStateStrings[aState];
 }
+
+#if OPENTHREAD_FTD
 
 void Child::Info::SetFrom(const Child &aChild)
 {
@@ -232,9 +242,9 @@ void Child::Info::SetFrom(const Child &aChild)
     mVersion            = aChild.GetVersion();
     mRxOnWhenIdle       = aChild.IsRxOnWhenIdle();
     mFullThreadDevice   = aChild.IsFullThreadDevice();
-    mFullNetworkData    = aChild.IsFullNetworkData();
+    mFullNetworkData    = (aChild.GetNetworkDataType() == NetworkData::kFullSet);
     mIsStateRestoring   = aChild.IsStateRestoring();
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
     mIsCslSynced = aChild.IsCslSynchronized();
 #else
     mIsCslSynced = false;
@@ -255,13 +265,13 @@ void Child::AddressIterator::Update(void)
 {
     const Ip6::Address *address;
 
+    if ((mIndex == 0) && (mChild.GetMeshLocalIp6Address(mMeshLocalAddress) != kErrorNone))
+    {
+        mIndex++;
+    }
+
     while (true)
     {
-        if ((mIndex == 0) && (mChild.GetMeshLocalIp6Address(mMeshLocalAddress) != OT_ERROR_NONE))
-        {
-            mIndex++;
-        }
-
         address = GetAddress();
 
         VerifyOrExit((address != nullptr) && !address->IsUnspecified(), mIndex = kMaxIndex);
@@ -292,11 +302,24 @@ void Child::ClearIp6Addresses(void)
 #endif
 }
 
-otError Child::GetMeshLocalIp6Address(Ip6::Address &aAddress) const
+void Child::SetDeviceMode(Mle::DeviceMode aMode)
 {
-    otError error = OT_ERROR_NONE;
+    VerifyOrExit(aMode != GetDeviceMode());
 
-    VerifyOrExit(!mMeshLocalIid.IsUnspecified(), error = OT_ERROR_NOT_FOUND);
+    Neighbor::SetDeviceMode(aMode);
+
+    VerifyOrExit(IsStateValid());
+    Get<NeighborTable>().Signal(NeighborTable::kChildModeChanged, *this);
+
+exit:
+    return;
+}
+
+Error Child::GetMeshLocalIp6Address(Ip6::Address &aAddress) const
+{
+    Error error = kErrorNone;
+
+    VerifyOrExit(!mMeshLocalIid.IsUnspecified(), error = kErrorNotFound);
 
     aAddress.SetPrefix(Get<Mle::MleRouter>().GetMeshLocalPrefix());
     aAddress.SetIid(mMeshLocalIid);
@@ -305,15 +328,15 @@ exit:
     return error;
 }
 
-otError Child::AddIp6Address(const Ip6::Address &aAddress)
+Error Child::AddIp6Address(const Ip6::Address &aAddress)
 {
-    otError error = OT_ERROR_NONE;
+    Error error = kErrorNone;
 
-    VerifyOrExit(!aAddress.IsUnspecified(), error = OT_ERROR_INVALID_ARGS);
+    VerifyOrExit(!aAddress.IsUnspecified(), error = kErrorInvalidArgs);
 
     if (Get<Mle::MleRouter>().IsMeshLocalAddress(aAddress))
     {
-        VerifyOrExit(mMeshLocalIid.IsUnspecified(), error = OT_ERROR_ALREADY);
+        VerifyOrExit(mMeshLocalIid.IsUnspecified(), error = kErrorAlready);
         mMeshLocalIid = aAddress.GetIid();
         ExitNow();
     }
@@ -326,28 +349,28 @@ otError Child::AddIp6Address(const Ip6::Address &aAddress)
             ExitNow();
         }
 
-        VerifyOrExit(ip6Address != aAddress, error = OT_ERROR_ALREADY);
+        VerifyOrExit(ip6Address != aAddress, error = kErrorAlready);
     }
 
-    error = OT_ERROR_NO_BUFS;
+    error = kErrorNoBufs;
 
 exit:
     return error;
 }
 
-otError Child::RemoveIp6Address(const Ip6::Address &aAddress)
+Error Child::RemoveIp6Address(const Ip6::Address &aAddress)
 {
-    otError  error = OT_ERROR_NOT_FOUND;
+    Error    error = kErrorNotFound;
     uint16_t index;
 
-    VerifyOrExit(!aAddress.IsUnspecified(), error = OT_ERROR_INVALID_ARGS);
+    VerifyOrExit(!aAddress.IsUnspecified(), error = kErrorInvalidArgs);
 
     if (Get<Mle::MleRouter>().IsMeshLocalAddress(aAddress))
     {
         if (aAddress.GetIid() == mMeshLocalIid)
         {
             mMeshLocalIid.Clear();
-            error = OT_ERROR_NONE;
+            error = kErrorNone;
         }
 
         ExitNow();
@@ -359,7 +382,7 @@ otError Child::RemoveIp6Address(const Ip6::Address &aAddress)
 
         if (mIp6Address[index] == aAddress)
         {
-            error = OT_ERROR_NONE;
+            error = kErrorNone;
             break;
         }
     }
@@ -428,7 +451,7 @@ void Child::GenerateChallenge(void)
     IgnoreError(Random::Crypto::FillBuffer(mAttachChallenge, sizeof(mAttachChallenge)));
 }
 
-#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE
+#if OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE
 bool Child::HasMlrRegisteredAddress(const Ip6::Address &aAddress) const
 {
     bool has = false;
@@ -471,7 +494,9 @@ void Child::SetAddressMlrState(const Ip6::Address &aAddress, MlrState aState)
     mMlrToRegisterMask.Set(addressIndex, aState == kMlrStateToRegister);
     mMlrRegisteredMask.Set(addressIndex, aState == kMlrStateRegistered);
 }
-#endif // OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE
+#endif // OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE
+
+#endif // OPENTHREAD_FTD
 
 void Router::Info::SetFrom(const Router &aRouter)
 {

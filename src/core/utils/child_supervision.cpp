@@ -36,7 +36,7 @@
 #include "openthread-core-config.h"
 #include "common/code_utils.hpp"
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 #include "thread/thread_netif.hpp"
 
@@ -80,7 +80,7 @@ void ChildSupervisor::SendMessage(Child &aChild)
 
     VerifyOrExit(aChild.GetIndirectMessageCount() == 0);
 
-    message = Get<MessagePool>().New(Message::kTypeSupervision, sizeof(uint8_t));
+    message = Get<MessagePool>().Allocate(Message::kTypeSupervision, sizeof(uint8_t));
     VerifyOrExit(message != nullptr);
 
     // Supervision message is an empty payload 15.4 data frame.
@@ -155,7 +155,7 @@ void ChildSupervisor::HandleNotifierEvents(Events aEvents)
 SupervisionListener::SupervisionListener(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mTimeout(0)
-    , mTimer(aInstance, SupervisionListener::HandleTimer, this)
+    , mTimer(aInstance, SupervisionListener::HandleTimer)
 {
     SetTimeout(kDefaultTimeout);
 }
@@ -206,7 +206,7 @@ void SupervisionListener::RestartTimer(void)
 
 void SupervisionListener::HandleTimer(Timer &aTimer)
 {
-    aTimer.GetOwner<SupervisionListener>().HandleTimer();
+    aTimer.Get<SupervisionListener>().HandleTimer();
 }
 
 void SupervisionListener::HandleTimer(void)

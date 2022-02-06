@@ -81,7 +81,6 @@ class Cert_9_2_8_PersistentDatasets_Base(thread_cert.TestCase):
             'mode': 'rdn',
             'panid': PANID_INIT,
             'channel': CHANNEL_INIT,
-            'router_selection_jitter': 1,
             'allowlist': [LEADER]
         },
         LEADER: {
@@ -206,9 +205,9 @@ class Cert_9_2_8_PersistentDatasets_Base(thread_cert.TestCase):
                    p.thread_meshcop.tlv.delay_timer ==
                    COMMISSIONER_DELAY_TIMER and\
                    p.thread_meshcop.tlv.channel ==
-                   COMMISSIONER_PENDING_CHANNEL and\
+                   [COMMISSIONER_PENDING_CHANNEL] and\
                    p.thread_meshcop.tlv.pan_id ==
-                   COMMISSIONER_PENDING_PANID and\
+                   [COMMISSIONER_PENDING_PANID] and\
                    NM_COMMISSIONER_SESSION_ID_TLV in p.thread_meshcop.tlv.type
                   ).\
             must_next()
@@ -332,7 +331,6 @@ class Cert_9_2_8_PersistentDatasets_Base(thread_cert.TestCase):
 class Cert_9_2_8_PersistentDatasets_ROUTER(Cert_9_2_8_PersistentDatasets_Base):
     TOPOLOGY = copy.deepcopy(Cert_9_2_8_PersistentDatasets_Base.TOPOLOGY)
     TOPOLOGY[DUT]['mode'] = 'rdn'
-    TOPOLOGY[DUT]['router_selection_jitter'] = 1
 
 
 class Cert_9_2_8_PersistentDatasets_ED(Cert_9_2_8_PersistentDatasets_Base):

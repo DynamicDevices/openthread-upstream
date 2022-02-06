@@ -36,6 +36,8 @@
 
 #include "openthread-core-config.h"
 
+#if OPENTHREAD_CONFIG_JAM_DETECTION_ENABLE
+
 #include <stdint.h>
 
 #include "common/locator.hpp"
@@ -77,20 +79,20 @@ public:
      * @param[in]  aHandler             A pointer to a function called when jamming is detected.
      * @param[in]  aContext             A pointer to application-specific context.
      *
-     * @retval OT_ERROR_NONE            Successfully started the jamming detection.
-     * @retval OT_ERROR_ALREADY         Jam detection has been started before.
+     * @retval kErrorNone            Successfully started the jamming detection.
+     * @retval kErrorAlready         Jam detection has been started before.
      *
      */
-    otError Start(Handler aHandler, void *aContext);
+    Error Start(Handler aHandler, void *aContext);
 
     /**
      * Stop the jamming detection.
      *
-     * @retval OT_ERROR_NONE            Successfully stopped the jamming detection.
-     * @retval OT_ERROR_ALREADY         Jam detection is already stopped.
+     * @retval kErrorNone            Successfully stopped the jamming detection.
+     * @retval kErrorAlready         Jam detection is already stopped.
      *
      */
-    otError Stop(void);
+    Error Stop(void);
 
     /**
      * Get the Jam Detection Status
@@ -126,11 +128,11 @@ public:
      *
      * @param[in]  aWindow            The Jam Detection window (valid range is 1 to 63)
      *
-     * @retval OT_ERROR_NONE          Successfully set the window.
-     * @retval OT_ERROR_INVALID_ARGS  The given input parameter not within valid range (1-63)
+     * @retval kErrorNone          Successfully set the window.
+     * @retval kErrorInvalidArgs   The given input parameter not within valid range (1-63)
      *
      */
-    otError SetWindow(uint8_t aWindow);
+    Error SetWindow(uint8_t aWindow);
 
     /**
      * Get the Jam Detection Detection Window (in seconds).
@@ -148,11 +150,11 @@ public:
      * @param[in]  aBusyPeriod          The Jam Detection busy period (should be non-zero and
                                         less than or equal to Jam Detection Window)
      *
-     * @retval OT_ERROR_NONE            Successfully set the window.
-     * @retval OT_ERROR_INVALID_ARGS    The given input is not within the valid range.
+     * @retval kErrorNone           Successfully set the window.
+     * @retval kErrorInvalidArgs    The given input is not within the valid range.
      *
      */
-    otError SetBusyPeriod(uint8_t aBusyPeriod);
+    Error SetBusyPeriod(uint8_t aBusyPeriod);
 
     /**
      * Get the Jam Detection Busy Period (in seconds)
@@ -176,16 +178,12 @@ public:
     uint64_t GetHistoryBitmap(void) const { return mHistoryBitmap; }
 
 private:
-    enum
-    {
-        kMaxWindow            = 63, // Max window size
-        kDefaultRssiThreshold = 0,
+    static constexpr uint8_t kMaxWindow            = 63; // Max window size
+    static constexpr int8_t  kDefaultRssiThreshold = 0;
 
-        kMaxSampleInterval = 256, // in ms
-        kMinSampleInterval = 2,   // in ms
-        kMaxRandomDelay    = 4,   // in ms
-        kOneSecondInterval = 1000 // in ms
-    };
+    static constexpr uint16_t kMaxSampleInterval = 256; // in ms
+    static constexpr uint16_t kMinSampleInterval = 2;   // in ms
+    static constexpr uint32_t kMaxRandomDelay    = 4;   // in ms
 
     void        CheckState(void);
     void        SetJamState(bool aNewState);
@@ -216,5 +214,7 @@ private:
 
 } // namespace Utils
 } // namespace ot
+
+#endif // OPENTHREAD_CONFIG_JAM_DETECTION_ENABLE
 
 #endif // JAM_DETECTOR_HPP_

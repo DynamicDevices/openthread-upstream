@@ -132,6 +132,7 @@ HdlcInterface::HdlcInterface(SpinelInterface::ReceiveFrameCallback aCallback,
     , mSockFd(-1)
     , mBaudRate(0)
     , mHdlcDecoder(aFrameBuffer, HandleHdlcFrame, this)
+    , mRadioUrl(nullptr)
 {
 }
 
@@ -140,7 +141,7 @@ void HdlcInterface::OnRcpReset(void)
     mHdlcDecoder.Reset();
 }
 
-otError HdlcInterface::Init(const RadioUrl &aRadioUrl)
+otError HdlcInterface::Init(const Url::Url &aRadioUrl)
 {
     otError     error = OT_ERROR_NONE;
     struct stat st;
@@ -167,6 +168,8 @@ otError HdlcInterface::Init(const RadioUrl &aRadioUrl)
         ExitNow(error = OT_ERROR_INVALID_ARGS);
     }
 
+    mRadioUrl = &aRadioUrl;
+
 exit:
     return error;
 }
@@ -178,15 +181,7 @@ HdlcInterface::~HdlcInterface(void)
 
 void HdlcInterface::Deinit(void)
 {
-    VerifyOrExit(mSockFd != -1);
-
-    VerifyOrExit(0 == close(mSockFd), perror("close RCP"));
-    VerifyOrExit(-1 != wait(nullptr) || errno == ECHILD, perror("wait RCP"));
-
-    mSockFd = -1;
-
-exit:
-    return;
+    CloseFile();
 }
 
 void HdlcInterface::Read(void)
@@ -411,7 +406,7 @@ exit:
     return error;
 }
 
-int HdlcInterface::OpenFile(const RadioUrl &aRadioUrl)
+int HdlcInterface::OpenFile(const Url::Url &aRadioUrl)
 {
     int fd   = -1;
     int rval = 0;
@@ -586,8 +581,21 @@ exit:
     return fd;
 }
 
+void HdlcInterface::CloseFile(void)
+{
+    VerifyOrExit(mSockFd != -1);
+
+    VerifyOrExit(0 == close(mSockFd), perror("close RCP"));
+    VerifyOrExit(-1 != wait(nullptr) || errno == ECHILD, perror("wait RCP"));
+
+    mSockFd = -1;
+
+exit:
+    return;
+}
+
 #if OPENTHREAD_POSIX_CONFIG_RCP_PTY_ENABLE
-int HdlcInterface::ForkPty(const RadioUrl &aRadioUrl)
+int HdlcInterface::ForkPty(const Url::Url &aRadioUrl)
 {
     int fd   = -1;
     int pid  = -1;
@@ -654,6 +662,35 @@ void HdlcInterface::HandleHdlcFrame(otError aError)
         mReceiveFrameBuffer.DiscardFrame();
         otLogWarnPlat("Error decoding hdlc frame: %s", otThreadErrorToString(aError));
     }
+}
+
+otError HdlcInterface::ResetConnection(void)
+{
+    otError  error = OT_ERROR_NONE;
+    uint64_t end;
+
+    if (mRadioUrl->GetValue("uart-reset") != nullptr)
+    {
+        usleep(static_cast<useconds_t>(kRemoveRcpDelay) * US_PER_MS);
+        CloseFile();
+
+        end = otPlatTimeGet() + kResetTimeout * US_PER_MS;
+        do
+        {
+            mSockFd = OpenFile(*mRadioUrl);
+            if (mSockFd != -1)
+            {
+                ExitNow();
+            }
+            usleep(static_cast<useconds_t>(kOpenFileDelay) * US_PER_MS);
+        } while (end > otPlatTimeGet());
+
+        otLogCritPlat("Failed to reopen UART connection after resetting the RCP device.");
+        error = OT_ERROR_FAILED;
+    }
+
+exit:
+    return error;
 }
 
 } // namespace Posix

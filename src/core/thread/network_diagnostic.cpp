@@ -33,12 +33,15 @@
 
 #include "network_diagnostic.hpp"
 
+#if OPENTHREAD_FTD || OPENTHREAD_CONFIG_TMF_NETWORK_DIAG_MTD_ENABLE
+
 #include "coap/coap_message.hpp"
+#include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/encoding.hpp"
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 #include "mac/mac.hpp"
 #include "net/netif.hpp"
@@ -47,8 +50,6 @@
 #include "thread/thread_netif.hpp"
 #include "thread/thread_tlvs.hpp"
 #include "thread/uri_paths.hpp"
-
-#if OPENTHREAD_FTD || OPENTHREAD_CONFIG_TMF_NETWORK_DIAG_MTD_ENABLE
 
 namespace ot {
 
@@ -63,29 +64,24 @@ NetworkDiagnostic::NetworkDiagnostic(Instance &aInstance)
     , mReceiveDiagnosticGetCallback(nullptr)
     , mReceiveDiagnosticGetCallbackContext(nullptr)
 {
-    Get<Tmf::TmfAgent>().AddResource(mDiagnosticGetRequest);
-    Get<Tmf::TmfAgent>().AddResource(mDiagnosticGetQuery);
-    Get<Tmf::TmfAgent>().AddResource(mDiagnosticGetAnswer);
-    Get<Tmf::TmfAgent>().AddResource(mDiagnosticReset);
+    Get<Tmf::Agent>().AddResource(mDiagnosticGetRequest);
+    Get<Tmf::Agent>().AddResource(mDiagnosticGetQuery);
+    Get<Tmf::Agent>().AddResource(mDiagnosticGetAnswer);
+    Get<Tmf::Agent>().AddResource(mDiagnosticReset);
 }
 
-void NetworkDiagnostic::SetReceiveDiagnosticGetCallback(otReceiveDiagnosticGetCallback aCallback,
-                                                        void *                         aCallbackContext)
+Error NetworkDiagnostic::SendDiagnosticGet(const Ip6::Address &           aDestination,
+                                           const uint8_t                  aTlvTypes[],
+                                           uint8_t                        aCount,
+                                           otReceiveDiagnosticGetCallback aCallback,
+                                           void *                         aCallbackContext)
 {
-    mReceiveDiagnosticGetCallback        = aCallback;
-    mReceiveDiagnosticGetCallbackContext = aCallbackContext;
-}
-
-otError NetworkDiagnostic::SendDiagnosticGet(const Ip6::Address &aDestination,
-                                             const uint8_t       aTlvTypes[],
-                                             uint8_t             aCount)
-{
-    otError               error;
+    Error                 error;
     Coap::Message *       message = nullptr;
     Ip6::MessageInfo      messageInfo;
     otCoapResponseHandler handler = nullptr;
 
-    VerifyOrExit((message = Get<Tmf::TmfAgent>().NewMessage()) != nullptr, error = OT_ERROR_NO_BUFS);
+    VerifyOrExit((message = Get<Tmf::Agent>().NewMessage()) != nullptr, error = kErrorNoBufs);
 
     if (aDestination.IsMulticast())
     {
@@ -120,7 +116,10 @@ otError NetworkDiagnostic::SendDiagnosticGet(const Ip6::Address &aDestination,
     messageInfo.SetPeerAddr(aDestination);
     messageInfo.SetPeerPort(Tmf::kUdpPort);
 
-    SuccessOrExit(error = Get<Tmf::TmfAgent>().SendMessage(*message, messageInfo, handler, this));
+    SuccessOrExit(error = Get<Tmf::Agent>().SendMessage(*message, messageInfo, handler, this));
+
+    mReceiveDiagnosticGetCallback        = aCallback;
+    mReceiveDiagnosticGetCallbackContext = aCallbackContext;
 
     otLogInfoNetDiag("Sent diagnostic get");
 
@@ -132,18 +131,18 @@ exit:
 void NetworkDiagnostic::HandleDiagnosticGetResponse(void *               aContext,
                                                     otMessage *          aMessage,
                                                     const otMessageInfo *aMessageInfo,
-                                                    otError              aResult)
+                                                    Error                aResult)
 {
-    static_cast<NetworkDiagnostic *>(aContext)->HandleDiagnosticGetResponse(
-        static_cast<Coap::Message *>(aMessage), static_cast<const Ip6::MessageInfo *>(aMessageInfo), aResult);
+    static_cast<NetworkDiagnostic *>(aContext)->HandleDiagnosticGetResponse(AsCoapMessagePtr(aMessage),
+                                                                            AsCoreTypePtr(aMessageInfo), aResult);
 }
 
 void NetworkDiagnostic::HandleDiagnosticGetResponse(Coap::Message *         aMessage,
                                                     const Ip6::MessageInfo *aMessageInfo,
-                                                    otError                 aResult)
+                                                    Error                   aResult)
 {
     SuccessOrExit(aResult);
-    VerifyOrExit(aMessage->GetCode() == Coap::kCodeChanged, aResult = OT_ERROR_FAILED);
+    VerifyOrExit(aMessage->GetCode() == Coap::kCodeChanged, aResult = kErrorFailed);
 
 exit:
     if (mReceiveDiagnosticGetCallback)
@@ -152,7 +151,7 @@ exit:
     }
     else
     {
-        otLogDebgNetDiag("Received diagnostic get response, error = %s", otThreadErrorToString(aResult));
+        otLogDebgNetDiag("Received diagnostic get response, error = %s", ErrorToString(aResult));
     }
     return;
 }
@@ -161,8 +160,8 @@ void NetworkDiagnostic::HandleDiagnosticGetAnswer(void *               aContext,
                                                   otMessage *          aMessage,
                                                   const otMessageInfo *aMessageInfo)
 {
-    static_cast<NetworkDiagnostic *>(aContext)->HandleDiagnosticGetAnswer(
-        *static_cast<Coap::Message *>(aMessage), *static_cast<const Ip6::MessageInfo *>(aMessageInfo));
+    static_cast<NetworkDiagnostic *>(aContext)->HandleDiagnosticGetAnswer(AsCoapMessage(aMessage),
+                                                                          AsCoreType(aMessageInfo));
 }
 
 void NetworkDiagnostic::HandleDiagnosticGetAnswer(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
@@ -173,10 +172,10 @@ void NetworkDiagnostic::HandleDiagnosticGetAnswer(Coap::Message &aMessage, const
 
     if (mReceiveDiagnosticGetCallback)
     {
-        mReceiveDiagnosticGetCallback(OT_ERROR_NONE, &aMessage, &aMessageInfo, mReceiveDiagnosticGetCallbackContext);
+        mReceiveDiagnosticGetCallback(kErrorNone, &aMessage, &aMessageInfo, mReceiveDiagnosticGetCallbackContext);
     }
 
-    SuccessOrExit(Get<Tmf::TmfAgent>().SendEmptyAck(aMessage, aMessageInfo));
+    SuccessOrExit(Get<Tmf::Agent>().SendEmptyAck(aMessage, aMessageInfo));
 
     otLogInfoNetDiag("Sent diagnostic answer acknowledgment");
 
@@ -184,25 +183,26 @@ exit:
     return;
 }
 
-otError NetworkDiagnostic::AppendIp6AddressList(Message &aMessage)
+Error NetworkDiagnostic::AppendIp6AddressList(Message &aMessage)
 {
-    otError           error = OT_ERROR_NONE;
+    Error             error = kErrorNone;
     Ip6AddressListTlv tlv;
     uint8_t           count = 0;
 
     tlv.Init();
 
-    for (const Ip6::NetifUnicastAddress *addr = Get<ThreadNetif>().GetUnicastAddresses(); addr; addr = addr->GetNext())
+    for (const Ip6::Netif::UnicastAddress &addr : Get<ThreadNetif>().GetUnicastAddresses())
     {
+        OT_UNUSED_VARIABLE(addr);
         count++;
     }
 
     tlv.SetLength(count * sizeof(Ip6::Address));
     SuccessOrExit(error = aMessage.Append(tlv));
 
-    for (const Ip6::NetifUnicastAddress *addr = Get<ThreadNetif>().GetUnicastAddresses(); addr; addr = addr->GetNext())
+    for (const Ip6::Netif::UnicastAddress &addr : Get<ThreadNetif>().GetUnicastAddresses())
     {
-        SuccessOrExit(error = aMessage.Append(addr->GetAddress()));
+        SuccessOrExit(error = aMessage.Append(addr.GetAddress()));
     }
 
 exit:
@@ -211,9 +211,9 @@ exit:
 }
 
 #if OPENTHREAD_FTD
-otError NetworkDiagnostic::AppendChildTable(Message &aMessage)
+Error NetworkDiagnostic::AppendChildTable(Message &aMessage)
 {
-    otError         error   = OT_ERROR_NONE;
+    Error           error   = kErrorNone;
     uint16_t        count   = 0;
     uint8_t         timeout = 0;
     ChildTableTlv   tlv;
@@ -280,11 +280,11 @@ void NetworkDiagnostic::FillMacCountersTlv(MacCountersTlv &aMacCountersTlv)
     aMacCountersTlv.SetIfOutDiscards(macCounters.mTxErrBusyChannel);
 }
 
-otError NetworkDiagnostic::FillRequestedTlvs(const Message &       aRequest,
-                                             Message &             aResponse,
-                                             NetworkDiagnosticTlv &aNetworkDiagnosticTlv)
+Error NetworkDiagnostic::FillRequestedTlvs(const Message &       aRequest,
+                                           Message &             aResponse,
+                                           NetworkDiagnosticTlv &aNetworkDiagnosticTlv)
 {
-    otError  error  = OT_ERROR_NONE;
+    Error    error  = kErrorNone;
     uint16_t offset = 0;
     uint8_t  type;
 
@@ -346,8 +346,8 @@ otError NetworkDiagnostic::FillRequestedTlvs(const Message &       aRequest,
             tlv.Init();
             tlv.SetPartitionId(leaderData.GetPartitionId());
             tlv.SetWeighting(leaderData.GetWeighting());
-            tlv.SetDataVersion(leaderData.GetDataVersion());
-            tlv.SetStableDataVersion(leaderData.GetStableDataVersion());
+            tlv.SetDataVersion(leaderData.GetDataVersion(NetworkData::kFullSet));
+            tlv.SetStableDataVersion(leaderData.GetDataVersion(NetworkData::kStableSubset));
             tlv.SetLeaderRouterId(leaderData.GetLeaderRouterId());
 
             SuccessOrExit(error = tlv.AppendTo(aResponse));
@@ -356,11 +356,9 @@ otError NetworkDiagnostic::FillRequestedTlvs(const Message &       aRequest,
 
         case NetworkDiagnosticTlv::kNetworkData:
         {
-            uint8_t netData[NetworkData::NetworkData::kMaxSize];
-            uint8_t length = sizeof(netData);
+            NetworkData::NetworkData &netData = Get<NetworkData::Leader>();
 
-            IgnoreError(Get<NetworkData::Leader>().GetNetworkData(/* aStableOnly */ false, netData, length));
-            SuccessOrExit(error = Tlv::Append<NetworkDataTlv>(aResponse, netData, length));
+            SuccessOrExit(error = Tlv::Append<NetworkDataTlv>(aResponse, netData.GetBytes(), netData.GetLength()));
             break;
         }
 
@@ -412,7 +410,7 @@ otError NetworkDiagnostic::FillRequestedTlvs(const Message &       aRequest,
         case NetworkDiagnosticTlv::kChannelPages:
         {
             uint8_t         length   = 0;
-            uint8_t         pageMask = Radio::kSupportedChannelPages;
+            uint32_t        pageMask = Radio::kSupportedChannelPages;
             ChannelPagesTlv tlv;
 
             tlv.Init();
@@ -434,7 +432,7 @@ otError NetworkDiagnostic::FillRequestedTlvs(const Message &       aRequest,
         {
             uint32_t maxTimeout;
 
-            if (Get<Mle::MleRouter>().GetMaxChildTimeout(maxTimeout) == OT_ERROR_NONE)
+            if (Get<Mle::MleRouter>().GetMaxChildTimeout(maxTimeout) == kErrorNone)
             {
                 SuccessOrExit(error = Tlv::Append<MaxChildTimeoutTlv>(aResponse, maxTimeout));
             }
@@ -457,35 +455,35 @@ exit:
 
 void NetworkDiagnostic::HandleDiagnosticGetQuery(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo)
 {
-    static_cast<NetworkDiagnostic *>(aContext)->HandleDiagnosticGetQuery(
-        *static_cast<Coap::Message *>(aMessage), *static_cast<const Ip6::MessageInfo *>(aMessageInfo));
+    static_cast<NetworkDiagnostic *>(aContext)->HandleDiagnosticGetQuery(AsCoapMessage(aMessage),
+                                                                         AsCoreType(aMessageInfo));
 }
 
 void NetworkDiagnostic::HandleDiagnosticGetQuery(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
 {
-    otError              error   = OT_ERROR_NONE;
+    Error                error   = kErrorNone;
     Coap::Message *      message = nullptr;
     NetworkDiagnosticTlv networkDiagnosticTlv;
     Ip6::MessageInfo     messageInfo;
 
-    VerifyOrExit(aMessage.IsPostRequest(), error = OT_ERROR_DROP);
+    VerifyOrExit(aMessage.IsPostRequest(), error = kErrorDrop);
 
     otLogInfoNetDiag("Received diagnostic get query");
 
     SuccessOrExit(error = aMessage.Read(aMessage.GetOffset(), networkDiagnosticTlv));
 
-    VerifyOrExit(networkDiagnosticTlv.GetType() == NetworkDiagnosticTlv::kTypeList, error = OT_ERROR_PARSE);
+    VerifyOrExit(networkDiagnosticTlv.GetType() == NetworkDiagnosticTlv::kTypeList, error = kErrorParse);
 
     // DIAG_GET.qry may be sent as a confirmable message.
     if (aMessage.IsConfirmable())
     {
-        if (Get<Tmf::TmfAgent>().SendEmptyAck(aMessage, aMessageInfo) == OT_ERROR_NONE)
+        if (Get<Tmf::Agent>().SendEmptyAck(aMessage, aMessageInfo) == kErrorNone)
         {
             otLogInfoNetDiag("Sent diagnostic get query acknowledgment");
         }
     }
 
-    VerifyOrExit((message = Get<Tmf::TmfAgent>().NewMessage()) != nullptr, error = OT_ERROR_NO_BUFS);
+    VerifyOrExit((message = Get<Tmf::Agent>().NewMessage()) != nullptr, error = kErrorNoBufs);
 
     SuccessOrExit(error = message->InitAsConfirmablePost(UriPath::kDiagnosticGetAnswer));
 
@@ -508,13 +506,7 @@ void NetworkDiagnostic::HandleDiagnosticGetQuery(Coap::Message &aMessage, const 
 
     SuccessOrExit(error = FillRequestedTlvs(aMessage, *message, networkDiagnosticTlv));
 
-    if (message->GetLength() == message->GetOffset())
-    {
-        // Remove Payload Marker if payload is actually empty.
-        IgnoreError(message->SetLength(message->GetLength() - 1));
-    }
-
-    SuccessOrExit(error = Get<Tmf::TmfAgent>().SendMessage(*message, messageInfo, nullptr, this));
+    SuccessOrExit(error = Get<Tmf::Agent>().SendMessage(*message, messageInfo, nullptr, this));
 
     otLogInfoNetDiag("Sent diagnostic get answer");
 
@@ -526,39 +518,33 @@ void NetworkDiagnostic::HandleDiagnosticGetRequest(void *               aContext
                                                    otMessage *          aMessage,
                                                    const otMessageInfo *aMessageInfo)
 {
-    static_cast<NetworkDiagnostic *>(aContext)->HandleDiagnosticGetRequest(
-        *static_cast<Coap::Message *>(aMessage), *static_cast<const Ip6::MessageInfo *>(aMessageInfo));
+    static_cast<NetworkDiagnostic *>(aContext)->HandleDiagnosticGetRequest(AsCoapMessage(aMessage),
+                                                                           AsCoreType(aMessageInfo));
 }
 
 void NetworkDiagnostic::HandleDiagnosticGetRequest(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
 {
-    otError              error   = OT_ERROR_NONE;
+    Error                error   = kErrorNone;
     Coap::Message *      message = nullptr;
     NetworkDiagnosticTlv networkDiagnosticTlv;
     Ip6::MessageInfo     messageInfo(aMessageInfo);
 
-    VerifyOrExit(aMessage.IsConfirmablePostRequest(), error = OT_ERROR_DROP);
+    VerifyOrExit(aMessage.IsConfirmablePostRequest(), error = kErrorDrop);
 
     otLogInfoNetDiag("Received diagnostic get request");
 
     SuccessOrExit(error = aMessage.Read(aMessage.GetOffset(), networkDiagnosticTlv));
 
-    VerifyOrExit(networkDiagnosticTlv.GetType() == NetworkDiagnosticTlv::kTypeList, error = OT_ERROR_PARSE);
+    VerifyOrExit(networkDiagnosticTlv.GetType() == NetworkDiagnosticTlv::kTypeList, error = kErrorParse);
 
-    VerifyOrExit((message = Get<Tmf::TmfAgent>().NewMessage()) != nullptr, error = OT_ERROR_NO_BUFS);
+    VerifyOrExit((message = Get<Tmf::Agent>().NewMessage()) != nullptr, error = kErrorNoBufs);
 
     SuccessOrExit(error = message->SetDefaultResponseHeader(aMessage));
     SuccessOrExit(error = message->SetPayloadMarker());
 
     SuccessOrExit(error = FillRequestedTlvs(aMessage, *message, networkDiagnosticTlv));
 
-    if (message->GetLength() == message->GetOffset())
-    {
-        // Remove Payload Marker if payload is actually empty.
-        IgnoreError(message->SetLength(message->GetOffset() - 1));
-    }
-
-    SuccessOrExit(error = Get<Tmf::TmfAgent>().SendMessage(*message, messageInfo));
+    SuccessOrExit(error = Get<Tmf::Agent>().SendMessage(*message, messageInfo));
 
     otLogInfoNetDiag("Sent diagnostic get response");
 
@@ -566,15 +552,15 @@ exit:
     FreeMessageOnError(message, error);
 }
 
-otError NetworkDiagnostic::SendDiagnosticReset(const Ip6::Address &aDestination,
-                                               const uint8_t       aTlvTypes[],
-                                               uint8_t             aCount)
+Error NetworkDiagnostic::SendDiagnosticReset(const Ip6::Address &aDestination,
+                                             const uint8_t       aTlvTypes[],
+                                             uint8_t             aCount)
 {
-    otError          error;
+    Error            error;
     Coap::Message *  message = nullptr;
     Ip6::MessageInfo messageInfo;
 
-    VerifyOrExit((message = Get<Tmf::TmfAgent>().NewMessage()) != nullptr, error = OT_ERROR_NO_BUFS);
+    VerifyOrExit((message = Get<Tmf::Agent>().NewMessage()) != nullptr, error = kErrorNoBufs);
 
     SuccessOrExit(error = message->InitAsConfirmablePost(UriPath::kDiagnosticReset));
 
@@ -600,7 +586,7 @@ otError NetworkDiagnostic::SendDiagnosticReset(const Ip6::Address &aDestination,
     messageInfo.SetPeerAddr(aDestination);
     messageInfo.SetPeerPort(Tmf::kUdpPort);
 
-    SuccessOrExit(error = Get<Tmf::TmfAgent>().SendMessage(*message, messageInfo));
+    SuccessOrExit(error = Get<Tmf::Agent>().SendMessage(*message, messageInfo));
 
     otLogInfoNetDiag("Sent network diagnostic reset");
 
@@ -611,8 +597,8 @@ exit:
 
 void NetworkDiagnostic::HandleDiagnosticReset(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo)
 {
-    static_cast<NetworkDiagnostic *>(aContext)->HandleDiagnosticReset(
-        *static_cast<Coap::Message *>(aMessage), *static_cast<const Ip6::MessageInfo *>(aMessageInfo));
+    static_cast<NetworkDiagnostic *>(aContext)->HandleDiagnosticReset(AsCoapMessage(aMessage),
+                                                                      AsCoreType(aMessageInfo));
 }
 
 void NetworkDiagnostic::HandleDiagnosticReset(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
@@ -648,7 +634,7 @@ void NetworkDiagnostic::HandleDiagnosticReset(Coap::Message &aMessage, const Ip6
         }
     }
 
-    SuccessOrExit(Get<Tmf::TmfAgent>().SendEmptyAck(aMessage, aMessageInfo));
+    SuccessOrExit(Get<Tmf::Agent>().SendEmptyAck(aMessage, aMessageInfo));
 
     otLogInfoNetDiag("Sent diagnostic reset acknowledgment");
 
@@ -660,7 +646,7 @@ static inline void ParseMode(const Mle::DeviceMode &aMode, otLinkModeConfig &aLi
 {
     aLinkModeConfig.mRxOnWhenIdle = aMode.IsRxOnWhenIdle();
     aLinkModeConfig.mDeviceType   = aMode.IsFullThreadDevice();
-    aLinkModeConfig.mNetworkData  = aMode.IsFullNetworkData();
+    aLinkModeConfig.mNetworkData  = (aMode.GetNetworkDataType() == NetworkData::kFullSet);
 }
 
 static inline void ParseConnectivity(const ConnectivityTlv &    aConnectivityTlv,
@@ -726,11 +712,11 @@ static inline void ParseChildEntry(const ChildTableEntry &aChildTableTlvEntry, o
     ParseMode(aChildTableTlvEntry.GetMode(), aChildEntry.mMode);
 }
 
-otError NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
-                                          Iterator &           aIterator,
-                                          otNetworkDiagTlv &   aNetworkDiagTlv)
+Error NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
+                                        Iterator &           aIterator,
+                                        otNetworkDiagTlv &   aNetworkDiagTlv)
 {
-    otError              error  = OT_ERROR_NONE;
+    Error                error  = kErrorNone;
     uint16_t             offset = aMessage.GetOffset() + aIterator;
     NetworkDiagnosticTlv tlv;
 
@@ -738,13 +724,13 @@ otError NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
     {
         uint16_t tlvTotalLength;
 
-        VerifyOrExit(aMessage.Read(offset, tlv) == OT_ERROR_NONE, error = OT_ERROR_NOT_FOUND);
+        VerifyOrExit(aMessage.Read(offset, tlv) == kErrorNone, error = kErrorNotFound);
 
         switch (tlv.GetType())
         {
         case NetworkDiagnosticTlv::kExtMacAddress:
-            SuccessOrExit(error = Tlv::Read<ExtMacAddressTlv>(
-                              aMessage, offset, static_cast<Mac::ExtAddress &>(aNetworkDiagTlv.mData.mExtAddress)));
+            SuccessOrExit(
+                error = Tlv::Read<ExtMacAddressTlv>(aMessage, offset, AsCoreType(&aNetworkDiagTlv.mData.mExtAddress)));
             break;
 
         case NetworkDiagnosticTlv::kAddress16:
@@ -769,7 +755,7 @@ otError NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
             ConnectivityTlv connectivity;
 
             SuccessOrExit(error = aMessage.Read(offset, connectivity));
-            VerifyOrExit(connectivity.IsValid(), error = OT_ERROR_PARSE);
+            VerifyOrExit(connectivity.IsValid(), error = kErrorParse);
 
             ParseConnectivity(connectivity, aNetworkDiagTlv.mData.mConnectivity);
             break;
@@ -780,9 +766,9 @@ otError NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
             RouteTlv route;
 
             tlvTotalLength = sizeof(tlv) + tlv.GetLength();
-            VerifyOrExit(tlvTotalLength <= sizeof(route), error = OT_ERROR_PARSE);
+            VerifyOrExit(tlvTotalLength <= sizeof(route), error = kErrorParse);
             SuccessOrExit(error = aMessage.Read(offset, &route, tlvTotalLength));
-            VerifyOrExit(route.IsValid(), error = OT_ERROR_PARSE);
+            VerifyOrExit(route.IsValid(), error = kErrorParse);
 
             ParseRoute(route, aNetworkDiagTlv.mData.mRoute);
             break;
@@ -793,7 +779,7 @@ otError NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
             LeaderDataTlv leaderData;
 
             SuccessOrExit(error = aMessage.Read(offset, leaderData));
-            VerifyOrExit(leaderData.IsValid(), error = OT_ERROR_PARSE);
+            VerifyOrExit(leaderData.IsValid(), error = kErrorParse);
 
             ParseLeaderData(leaderData, aNetworkDiagTlv.mData.mLeaderData);
             break;
@@ -804,11 +790,10 @@ otError NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
             NetworkDataTlv networkData;
 
             tlvTotalLength = sizeof(tlv) + tlv.GetLength();
-            VerifyOrExit(tlvTotalLength <= sizeof(networkData), error = OT_ERROR_PARSE);
+            VerifyOrExit(tlvTotalLength <= sizeof(networkData), error = kErrorParse);
             SuccessOrExit(error = aMessage.Read(offset, &networkData, tlvTotalLength));
-            VerifyOrExit(networkData.IsValid(), error = OT_ERROR_PARSE);
-            VerifyOrExit(sizeof(aNetworkDiagTlv.mData.mNetworkData.m8) >= networkData.GetLength(),
-                         error = OT_ERROR_PARSE);
+            VerifyOrExit(networkData.IsValid(), error = kErrorParse);
+            VerifyOrExit(sizeof(aNetworkDiagTlv.mData.mNetworkData.m8) >= networkData.GetLength(), error = kErrorParse);
 
             memcpy(aNetworkDiagTlv.mData.mNetworkData.m8, networkData.GetNetworkData(), networkData.GetLength());
             aNetworkDiagTlv.mData.mNetworkData.mCount = networkData.GetLength();
@@ -817,11 +802,11 @@ otError NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
 
         case NetworkDiagnosticTlv::kIp6AddressList:
         {
-            Ip6AddressListTlv &ip6AddrList = static_cast<Ip6AddressListTlv &>(tlv);
+            Ip6AddressListTlv &ip6AddrList = As<Ip6AddressListTlv>(tlv);
 
-            VerifyOrExit(ip6AddrList.IsValid(), error = OT_ERROR_PARSE);
+            VerifyOrExit(ip6AddrList.IsValid(), error = kErrorParse);
             VerifyOrExit(sizeof(aNetworkDiagTlv.mData.mIp6AddrList.mList) >= ip6AddrList.GetLength(),
-                         error = OT_ERROR_PARSE);
+                         error = kErrorParse);
             SuccessOrExit(error = aMessage.Read(offset + sizeof(ip6AddrList), aNetworkDiagTlv.mData.mIp6AddrList.mList,
                                                 ip6AddrList.GetLength()));
             aNetworkDiagTlv.mData.mIp6AddrList.mCount = ip6AddrList.GetLength() / OT_IP6_ADDRESS_SIZE;
@@ -833,7 +818,7 @@ otError NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
             MacCountersTlv macCounters;
 
             SuccessOrExit(error = aMessage.Read(offset, macCounters));
-            VerifyOrExit(macCounters.IsValid(), error = OT_ERROR_PARSE);
+            VerifyOrExit(macCounters.IsValid(), error = kErrorParse);
 
             ParseMacCounters(macCounters, aNetworkDiagTlv.mData.mMacCounters);
             break;
@@ -849,17 +834,16 @@ otError NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
 
         case NetworkDiagnosticTlv::kChildTable:
         {
-            ChildTableTlv &childTable = static_cast<ChildTableTlv &>(tlv);
+            ChildTableTlv &childTable = As<ChildTableTlv>(tlv);
 
-            VerifyOrExit(childTable.IsValid(), error = OT_ERROR_PARSE);
+            VerifyOrExit(childTable.IsValid(), error = kErrorParse);
             VerifyOrExit(childTable.GetNumEntries() <= OT_ARRAY_LENGTH(aNetworkDiagTlv.mData.mChildTable.mTable),
-                         error = OT_ERROR_PARSE);
+                         error = kErrorParse);
 
             for (uint8_t i = 0; i < childTable.GetNumEntries(); ++i)
             {
                 ChildTableEntry childEntry;
-                VerifyOrExit(childTable.ReadEntry(childEntry, aMessage, offset, i) == OT_ERROR_NONE,
-                             error = OT_ERROR_PARSE);
+                VerifyOrExit(childTable.ReadEntry(childEntry, aMessage, offset, i) == kErrorNone, error = kErrorParse);
                 ParseChildEntry(childEntry, aNetworkDiagTlv.mData.mChildTable.mTable[i]);
             }
             aNetworkDiagTlv.mData.mChildTable.mCount = childTable.GetNumEntries();
@@ -868,7 +852,7 @@ otError NetworkDiagnostic::GetNextDiagTlv(const Coap::Message &aMessage,
 
         case NetworkDiagnosticTlv::kChannelPages:
         {
-            VerifyOrExit(sizeof(aNetworkDiagTlv.mData.mChannelPages.m8) >= tlv.GetLength(), error = OT_ERROR_PARSE);
+            VerifyOrExit(sizeof(aNetworkDiagTlv.mData.mChannelPages.m8) >= tlv.GetLength(), error = kErrorParse);
             SuccessOrExit(
                 error = aMessage.Read(offset + sizeof(tlv), aNetworkDiagTlv.mData.mChannelPages.m8, tlv.GetLength()));
             aNetworkDiagTlv.mData.mChannelPages.mCount = tlv.GetLength();

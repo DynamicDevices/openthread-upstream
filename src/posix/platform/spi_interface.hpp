@@ -86,7 +86,7 @@ public:
      * @retval OT_ERROR_INVALID_ARGS  The UART device or executable cannot be found or failed to open/run.
      *
      */
-    otError Init(const RadioUrl &aRadioUrl);
+    otError Init(const Url::Url &aRadioUrl);
 
     /**
      * This method deinitializes the interface to the RCP.
@@ -151,6 +151,13 @@ public:
      *
      */
     void OnRcpReset(void);
+
+    /**
+     * This method is called when RCP is reset to recreate the connection with it.
+     * Intentionally empty.
+     *
+     */
+    otError ResetConnection(void) { return OT_ERROR_NONE; }
 
 private:
     int     SetupGpioHandle(int aFd, uint8_t aLine, uint32_t aHandleFlags, const char *aLabel);

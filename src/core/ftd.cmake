@@ -28,13 +28,6 @@
 
 add_library(openthread-ftd)
 
-set_target_properties(
-    openthread-ftd
-    PROPERTIES
-        C_STANDARD 99
-        CXX_STANDARD 11
-)
-
 target_compile_definitions(openthread-ftd PRIVATE
     OPENTHREAD_FTD=1
 )
@@ -52,3 +45,7 @@ target_link_libraries(openthread-ftd
         ${OT_MBEDTLS}
         ot-config
 )
+
+if(NOT OT_EXCLUDE_TCPLP_LIB)
+    target_link_libraries(openthread-ftd PRIVATE tcplp)
+endif()

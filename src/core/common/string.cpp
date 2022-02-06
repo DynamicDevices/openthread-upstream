@@ -28,20 +28,70 @@
 
 /**
  * @file
- *  This file implements OpenThread String class.
+ *  This file implements OpenThread String class and functions.
  */
 
 #include "string.hpp"
+#include "debug.hpp"
 
 #include <string.h>
 
 namespace ot {
 
+namespace {
+
+// The definitions below are included in an unnamed namespace
+// to limit their scope to this translation unit (this file).
+
+enum MatchType : uint8_t
+{
+    kNoMatch,
+    kPrefixMatch,
+    kFullMatch,
+};
+
+MatchType Match(const char *aString, const char *aPrefixString, StringMatchMode aMode)
+{
+    // This is file private function that is used by other functions.
+    // It matches @p aString with @p aPrefixString using match @ aMode.
+    //
+    // If @p aString and @p aPrefixString match and have the
+    // same length `kFullMatch` is returned. If @p aString starts
+    // with @p aPrefixString but contains more characters, then
+    // `kPrefixMatch` is returned. Otherwise `kNoMatch` is returned.
+
+    MatchType match = kNoMatch;
+
+    switch (aMode)
+    {
+    case kStringExactMatch:
+        while (*aPrefixString != kNullChar)
+        {
+            VerifyOrExit(*aString++ == *aPrefixString++);
+        }
+        break;
+
+    case kStringCaseInsensitiveMatch:
+        while (*aPrefixString != kNullChar)
+        {
+            VerifyOrExit(ToLowercase(*aString++) == ToLowercase(*aPrefixString++));
+        }
+        break;
+    }
+
+    match = (*aString == kNullChar) ? kFullMatch : kPrefixMatch;
+
+exit:
+    return match;
+}
+
+} // namespace
+
 uint16_t StringLength(const char *aString, uint16_t aMaxLength)
 {
     uint16_t ret;
 
-    for (ret = 0; (ret < aMaxLength) && (aString[ret] != 0); ret++)
+    for (ret = 0; (ret < aMaxLength) && (aString[ret] != kNullChar); ret++)
     {
         // Empty loop.
     }
@@ -53,7 +103,7 @@ const char *StringFind(const char *aString, char aChar)
 {
     const char *ret = nullptr;
 
-    for (; *aString != '\0'; aString++)
+    for (; *aString != kNullChar; aString++)
     {
         if (*aString == aChar)
         {
@@ -65,30 +115,144 @@ const char *StringFind(const char *aString, char aChar)
     return ret;
 }
 
-otError StringBase::Write(char *aBuffer, uint16_t aSize, uint16_t &aLength, const char *aFormat, va_list aArgs)
+const char *StringFind(const char *aString, const char *aSubString, StringMatchMode aMode)
 {
-    otError error = OT_ERROR_NONE;
-    int     len;
+    const char *ret    = nullptr;
+    size_t      len    = strlen(aString);
+    size_t      subLen = strlen(aSubString);
 
-    len = vsnprintf(aBuffer + aLength, aSize - aLength, aFormat, aArgs);
+    VerifyOrExit(subLen <= len);
 
-    if (len < 0)
+    for (size_t index = 0; index <= static_cast<size_t>(len - subLen); index++)
     {
-        aLength    = 0;
-        aBuffer[0] = 0;
-        error      = OT_ERROR_INVALID_ARGS;
-    }
-    else if (len >= aSize - aLength)
-    {
-        aLength = aSize - 1;
-        error   = OT_ERROR_NO_BUFS;
-    }
-    else
-    {
-        aLength += static_cast<uint16_t>(len);
+        if (Match(&aString[index], aSubString, aMode) != kNoMatch)
+        {
+            ExitNow(ret = &aString[index]);
+        }
     }
 
-    return error;
+exit:
+    return ret;
+}
+
+bool StringStartsWith(const char *aString, const char *aPrefixString, StringMatchMode aMode)
+{
+    return Match(aString, aPrefixString, aMode) != kNoMatch;
+}
+
+bool StringEndsWith(const char *aString, char aChar)
+{
+    size_t len = strlen(aString);
+
+    return (len > 0) && (aString[len - 1] == aChar);
+}
+
+bool StringEndsWith(const char *aString, const char *aSubString, StringMatchMode aMode)
+{
+    size_t len    = strlen(aString);
+    size_t subLen = strlen(aSubString);
+
+    return (subLen > 0) && (len >= subLen) && (Match(&aString[len - subLen], aSubString, aMode) != kNoMatch);
+}
+
+bool StringMatch(const char *aFirstString, const char *aSecondString, StringMatchMode aMode)
+{
+    return Match(aFirstString, aSecondString, aMode) == kFullMatch;
+}
+
+void StringConvertToLowercase(char *aString)
+{
+    for (; *aString != kNullChar; aString++)
+    {
+        *aString = ToLowercase(*aString);
+    }
+}
+
+void StringConvertToUppercase(char *aString)
+{
+    for (; *aString != kNullChar; aString++)
+    {
+        *aString = ToUppercase(*aString);
+    }
+}
+
+char ToLowercase(char aChar)
+{
+    if ((aChar >= 'A') && (aChar <= 'Z'))
+    {
+        aChar += 'a' - 'A';
+    }
+
+    return aChar;
+}
+
+char ToUppercase(char aChar)
+{
+    if ((aChar >= 'a') && (aChar <= 'z'))
+    {
+        aChar -= 'a' - 'A';
+    }
+
+    return aChar;
+}
+
+const char *ToYesNo(bool aBool)
+{
+    static const char *const kYesNoStrings[] = {"no", "yes"};
+
+    return kYesNoStrings[aBool];
+}
+
+StringWriter::StringWriter(char *aBuffer, uint16_t aSize)
+    : mBuffer(aBuffer)
+    , mLength(0)
+    , mSize(aSize)
+{
+    mBuffer[0] = kNullChar;
+}
+
+StringWriter &StringWriter::Clear(void)
+{
+    mBuffer[0] = kNullChar;
+    mLength    = 0;
+    return *this;
+}
+
+StringWriter &StringWriter::Append(const char *aFormat, ...)
+{
+    va_list args;
+    va_start(args, aFormat);
+    AppendVarArgs(aFormat, args);
+    va_end(args);
+
+    return *this;
+}
+
+StringWriter &StringWriter::AppendVarArgs(const char *aFormat, va_list aArgs)
+{
+    int len;
+
+    len = vsnprintf(mBuffer + mLength, (mSize > mLength ? (mSize - mLength) : 0), aFormat, aArgs);
+    OT_ASSERT(len >= 0);
+
+    mLength += static_cast<uint16_t>(len);
+
+    if (IsTruncated())
+    {
+        mBuffer[mSize - 1] = kNullChar;
+    }
+
+    return *this;
+}
+
+StringWriter &StringWriter::AppendHexBytes(const uint8_t *aBytes, uint16_t aLength)
+{
+    while (aLength--)
+    {
+        Append("%02x", *aBytes++);
+    }
+
+    return *this;
 }
 
 bool IsValidUtf8String(const char *aString)
@@ -110,6 +274,8 @@ bool IsValidUtf8String(const char *aString, size_t aLength)
 
         if ((byte & 0x80) == 0)
         {
+            // We don't allow control characters.
+            VerifyOrExit(!iscntrl(byte), ret = false);
             continue;
         }
 

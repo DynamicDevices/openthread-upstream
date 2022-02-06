@@ -35,12 +35,9 @@
 
 #include <openthread/platform/entropy.h>
 
-#if !OPENTHREAD_RADIO
-#include <mbedtls/entropy_poll.h>
-#endif
-
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
+#include "common/logging.hpp"
 #include "common/random.hpp"
 #include "crypto/mbedtls.hpp"
 
@@ -49,31 +46,19 @@ namespace ot {
 uint16_t                     RandomManager::sInitCount = 0;
 RandomManager::NonCryptoPrng RandomManager::sPrng;
 
-#if !OPENTHREAD_RADIO
-RandomManager::Entropy       RandomManager::sEntropy;
-RandomManager::CryptoCtrDrbg RandomManager::sCtrDrbg;
-#endif
-
 RandomManager::RandomManager(void)
 {
     uint32_t seed;
-    otError  error;
-
-    OT_UNUSED_VARIABLE(error);
 
     OT_ASSERT(sInitCount < 0xffff);
 
     VerifyOrExit(sInitCount == 0);
 
 #if !OPENTHREAD_RADIO
-    sEntropy.Init();
-    sCtrDrbg.Init();
-
-    error = Random::Crypto::FillBuffer(reinterpret_cast<uint8_t *>(&seed), sizeof(seed));
-    OT_ASSERT(error == OT_ERROR_NONE);
+    otPlatCryptoRandomInit();
+    SuccessOrAssert(Random::Crypto::FillBuffer(reinterpret_cast<uint8_t *>(&seed), sizeof(seed)));
 #else
-    error = otPlatEntropyGet(reinterpret_cast<uint8_t *>(&seed), sizeof(seed));
-    OT_ASSERT(error == OT_ERROR_NONE);
+    SuccessOrAssert(otPlatEntropyGet(reinterpret_cast<uint8_t *>(&seed), sizeof(seed)));
 #endif
 
     sPrng.Init(seed);
@@ -90,8 +75,7 @@ RandomManager::~RandomManager(void)
     VerifyOrExit(sInitCount == 0);
 
 #if !OPENTHREAD_RADIO
-    sCtrDrbg.Deinit();
-    sEntropy.Deinit();
+    otPlatCryptoRandomDeinit();
 #endif
 
 exit:
@@ -142,69 +126,5 @@ uint32_t RandomManager::NonCryptoPrng::GetNext(void)
 
     return mlcg;
 }
-
-#if !OPENTHREAD_RADIO
-
-//-------------------------------------------------------------------
-// Entropy
-
-void RandomManager::Entropy::Init(void)
-{
-    mbedtls_entropy_init(&mEntropyContext);
-
-#ifndef OT_MBEDTLS_STRONG_DEFAULT_ENTROPY_PRESENT
-    mbedtls_entropy_add_source(&mEntropyContext, &RandomManager::Entropy::HandleMbedtlsEntropyPoll, nullptr,
-                               MBEDTLS_ENTROPY_MIN_HARDWARE, MBEDTLS_ENTROPY_SOURCE_STRONG);
-#endif // OT_MBEDTLS_STRONG_DEFAULT_ENTROPY_PRESENT
-}
-
-void RandomManager::Entropy::Deinit(void)
-{
-    mbedtls_entropy_free(&mEntropyContext);
-}
-
-#ifndef OT_MBEDTLS_STRONG_DEFAULT_ENTROPY_PRESENT
-
-int RandomManager::Entropy::HandleMbedtlsEntropyPoll(void *         aData,
-                                                     unsigned char *aOutput,
-                                                     size_t         aInLen,
-                                                     size_t *       aOutLen)
-{
-    int rval = MBEDTLS_ERR_ENTROPY_SOURCE_FAILED;
-
-    SuccessOrExit(otPlatEntropyGet(reinterpret_cast<uint8_t *>(aOutput), static_cast<uint16_t>(aInLen)));
-    rval = 0;
-
-    VerifyOrExit(aOutLen != nullptr);
-    *aOutLen = aInLen;
-
-exit:
-    OT_UNUSED_VARIABLE(aData);
-    return rval;
-}
-
-#endif // OT_MBEDTLS_STRONG_DEFAULT_ENTROPY_PRESENT
-
-//-------------------------------------------------------------------
-// CryptoCtrDrbg
-
-void RandomManager::CryptoCtrDrbg::Init(void)
-{
-    mbedtls_ctr_drbg_init(&mCtrDrbg);
-    mbedtls_ctr_drbg_seed(&mCtrDrbg, mbedtls_entropy_func, RandomManager::GetMbedTlsEntropyContext(), nullptr, 0);
-}
-
-void RandomManager::CryptoCtrDrbg::Deinit(void)
-{
-    mbedtls_ctr_drbg_free(&mCtrDrbg);
-}
-
-otError RandomManager::CryptoCtrDrbg::FillBuffer(uint8_t *aBuffer, uint16_t aSize)
-{
-    return ot::Crypto::MbedTls::MapError(
-        mbedtls_ctr_drbg_random(&mCtrDrbg, static_cast<unsigned char *>(aBuffer), static_cast<size_t>(aSize)));
-}
-
-#endif // #if !OPENTHREAD_RADIO
 
 } // namespace ot

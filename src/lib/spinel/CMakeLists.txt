@@ -29,22 +29,15 @@
 add_library(openthread-spinel-ncp)
 add_library(openthread-spinel-rcp)
 
-set_target_properties(
-    openthread-spinel-ncp openthread-spinel-rcp
-    PROPERTIES
-        C_STANDARD 99
-        CXX_STANDARD 11
-)
-
 target_compile_definitions(openthread-spinel-ncp PRIVATE
     OPENTHREAD_FTD=1
-    OPENTHREAD_CONFIG_NCP_UART_ENABLE=1
+    OPENTHREAD_CONFIG_NCP_HDLC_ENABLE=1
     PUBLIC OPENTHREAD_SPINEL_CONFIG_OPENTHREAD_MESSAGE_ENABLE=1
 )
 
 target_compile_definitions(openthread-spinel-rcp PRIVATE
     OPENTHREAD_RADIO=1
-    OPENTHREAD_CONFIG_NCP_UART_ENABLE=1
+    OPENTHREAD_CONFIG_NCP_HDLC_ENABLE=1
     PUBLIC OPENTHREAD_SPINEL_CONFIG_OPENTHREAD_MESSAGE_ENABLE=0
 )
 

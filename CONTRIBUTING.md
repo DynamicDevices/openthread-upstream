@@ -63,7 +63,7 @@ For each new feature, create a working branch:
 
 ```bash
 # Create a working branch for your new feature
-git branch --track <branch-name> origin/master
+git branch --track <branch-name> origin/main
 
 # Checkout the branch
 git checkout <branch-name>
@@ -85,16 +85,16 @@ This will open up a text editor where you can craft your commit message.
 
 Prior to submitting your pull request, you might want to do a few things to clean up your branch and make it as simple as possible for the original repo's maintainer to test, accept, and merge your work.
 
-If any commits have been made to the upstream master branch, you should rebase your development branch so that merging it will be a simple fast-forward that won't require any conflict resolution work.
+If any commits have been made to the upstream main branch, you should rebase your development branch so that merging it will be a simple fast-forward that won't require any conflict resolution work.
 
 ```bash
-# Fetch upstream master and merge with your repo's master branch
-git checkout master
-git pull upstream master
+# Fetch upstream main and merge with your repo's main branch
+git checkout main
+git pull upstream main
 
 # If there were any new commits, rebase your development branch
 git checkout <branch-name>
-git rebase master
+git rebase main
 ```
 
 Now, it may be desirable to squash some of your smaller commits down into a small number of larger more cohesive commits. You can do this with an interactive rebase:
@@ -102,14 +102,14 @@ Now, it may be desirable to squash some of your smaller commits down into a smal
 ```bash
 # Rebase all commits on your development branch
 git checkout
-git rebase -i master
+git rebase -i main
 ```
 
 This will open up a text editor where you can specify which commits to squash.
 
 #### Coding Conventions and Style
 
-OpenThread uses and enforces the [OpenThread Coding Conventions and Style](STYLE_GUIDE.md) on all code, except for code located in [third_party](third_party). Use `script/make-pretty` and `script/make-pretty check` to automatically reformat code and check for code-style compliance, respectively. OpenThread currently requires [clang-format v9.0.0](https://releases.llvm.org/download.html#9.0.0) for C/C++ and [yapf v0.29.0](https://github.com/google/yapf) for Python.
+OpenThread uses and enforces the [OpenThread Coding Conventions and Style](STYLE_GUIDE.md) on all code, except for code located in [third_party](third_party). Use `script/make-pretty` and `script/make-pretty check` to automatically reformat code and check for code-style compliance, respectively. OpenThread currently requires [clang-format v9.0.0](https://releases.llvm.org/download.html#9.0.0) for C/C++ and [yapf v0.31.0](https://github.com/google/yapf) for Python.
 
 As part of the cleanup process, you should also run `script/make-pretty check` to ensure that your code passes the baseline code style checks.
 
@@ -165,4 +165,24 @@ Once unzipped:
 
 ## Contributing Documentation
 
-Documentation undergoes the same review process as code and contributions may be mirrored on our [openthread.io](https://openthread.io) website. See the [Documentation Style Guide](/doc/STYLE_GUIDE.md) for more information on how to author and format documentation for contribution.
+Documentation undergoes the same review process as code and contributions may be mirrored on our [openthread.io](https://openthread.io) website.
+
+### Codelabs and Guides
+
+To review and contribute to OpenThread Codelabs and Guides, refer to the following GitHub repositories:
+
+- [Codelabs](https://github.com/openthread/ot-docs/tree/main/site/en/codelabs)
+- [Guides](https://github.com/openthread/ot-docs/tree/main/site/en/guides)
+
+For information on how to author and format documentation for contribution, refer to the [Documentation Style Guide](https://github.com/openthread/ot-docs/blob/main/STYLE_GUIDE.md).
+
+### API Reference topics
+
+API Reference topics use [Doxygen comment blocks](https://www.doxygen.nl/manual/docblocks.html) to render the HTML output on [https://openthread.io/reference](https://openthread.io/reference). OpenThread scripts support the following Doxygen [special commands](https://www.doxygen.nl/manual/commands.html):
+
+- @file
+- @brief
+- @param
+- @returns
+
+You can find most of these comments in the [OpenThread header files](https://github.com/openthread/openthread/tree/main/include/openthread). To review an example, refer to [`border_agent.h`](https://github.com/openthread/openthread/tree/main/include/openthread/border_agent.h). The Doxygen comments in `border_agent.h` output the [Border Agent](https://openthread.io/reference/group/api-border-agent) reference topic on openthread.io. For more information, refer to [Comments](https://github.com/openthread/openthread/blob/main/STYLE_GUIDE.md#comments) in the OpenThread Coding Conventions and Style guide.

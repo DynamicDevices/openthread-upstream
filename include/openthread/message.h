@@ -53,12 +53,10 @@ extern "C" {
  */
 
 /**
- * This structure points to an OpenThread message buffer.
+ * This type is an opaque representation of an OpenThread message buffer.
+ *
  */
-typedef struct otMessage
-{
-    struct otMessage *mNext; ///< A pointer to the next Message buffer.
-} otMessage;
+typedef struct otMessage otMessage;
 
 /**
  * This structure represents the message buffer information.
@@ -105,8 +103,8 @@ typedef enum otMessagePriority
  */
 typedef struct otMessageSettings
 {
-    bool              mLinkSecurityEnabled; ///< TRUE if the message should be secured at Layer 2.
-    otMessagePriority mPriority;            ///< The message priority level.
+    bool    mLinkSecurityEnabled; ///< TRUE if the message should be secured at Layer 2.
+    uint8_t mPriority;            ///< Priority level (MUST be a `OT_MESSAGE_PRIORITY_*` from `otMessagePriority`).
 } otMessageSettings;
 
 /**

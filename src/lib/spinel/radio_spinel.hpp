@@ -47,7 +47,7 @@ namespace Spinel {
 
 /**
  * The class for providing a OpenThread radio interface by talking with a radio-only
- * co-procesor(RCP). The InterfaceType template parameter should provide the following
+ * co-processor(RCP). The InterfaceType template parameter should provide the following
  * methods:
  *
  * class InterfaceType {
@@ -80,7 +80,7 @@ namespace Spinel {
  *
  *    // This method waits for receiving part or all of spinel frame within specified interval.
  *
- *    // @param[in]  aTimeout  The timeout value in micrsoseconds.
+ *    // @param[in]  aTimeout  The timeout value in microseconds.
  *
  *    // @retval OT_ERROR_NONE             Part or all of spinel frame is received.
  *    // @retval OT_ERROR_RESPONSE_TIMEOUT No spinel frame is received within @p aTimeout.
@@ -113,13 +113,14 @@ public:
     /**
      * Initialize this radio transceiver.
      *
-     * @param[in]  aResetRadio            TRUE to reset on init, FALSE to not reset on init.
-     * @param[in]  aRestoreDatasetFromNcp TRUE to restore dataset to host from non-volatile memory
-     *                                    (only used when attempts to upgrade from NCP to RCP mode),
-     *                                    FALSE otherwise.
+     * @param[in]  aResetRadio                 TRUE to reset on init, FALSE to not reset on init.
+     * @param[in]  aRestoreDatasetFromNcp      TRUE to restore dataset to host from non-volatile memory
+     *                                         (only used when attempts to upgrade from NCP to RCP mode),
+     *                                         FALSE otherwise.
+     * @param[in]  aSkipRcpCompatibilityCheck  TRUE to skip RCP compatibility check, FALSE to perform the check.
      *
      */
-    void Init(bool aResetRadio, bool aRestoreDataSetFromNcp);
+    void Init(bool aResetRadio, bool aRestoreDataSetFromNcp, bool aSkipRcpCompatibilityCheck);
 
     /**
      * Deinitialize this radio transceiver.
@@ -540,8 +541,8 @@ public:
     /**
      * This method indicates whether a transmit has just finished.
      *
-     * @retval TRUE  The trasmission is done.
-     * @retval FALSE The trasmission is not done.
+     * @retval TRUE  The transmission is done.
+     * @retval FALSE The transmission is not done.
      *
      */
     bool IsTransmitDone(void) const { return mState == kStateTransmitDone; }
@@ -627,20 +628,21 @@ public:
      *
      * @param[in] aKeyIdMode  The key ID mode.
      * @param[in] aKeyId      The key index.
-     * @param[in] aPrevKey    The previous MAC key.
-     * @param[in] aCurrKey    The current MAC key.
-     * @param[in] aNextKey    The next MAC key.
+     * @param[in] aPrevKey    Pointer to previous MAC key.
+     * @param[in] aCurrKey    Pointer to current MAC key.
+     * @param[in] aNextKey    Pointer to next MAC key.
      *
      * @retval  OT_ERROR_NONE               Succeeded.
+     * @retval  OT_ERROR_INVALID_ARGS       One of the keys passed is invalid..
      * @retval  OT_ERROR_BUSY               Failed due to another operation is on going.
      * @retval  OT_ERROR_RESPONSE_TIMEOUT   Failed due to no response received from the transceiver.
      *
      */
-    otError SetMacKey(uint8_t         aKeyIdMode,
-                      uint8_t         aKeyId,
-                      const otMacKey &aPrevKey,
-                      const otMacKey &aCurrKey,
-                      const otMacKey &aNextKey);
+    otError SetMacKey(uint8_t                 aKeyIdMode,
+                      uint8_t                 aKeyId,
+                      const otMacKeyMaterial *aPrevKey,
+                      const otMacKeyMaterial *aCurrKey,
+                      const otMacKeyMaterial *aNextKey);
 
     /**
      * This method sets the current MAC Frame Counter value.
@@ -649,6 +651,55 @@ public:
      *
      */
     otError SetMacFrameCounter(uint32_t aMacFrameCounter);
+
+    /**
+     * This method sets the radio region code.
+     *
+     * @param[in]   aRegionCode  The radio region code.
+     *
+     * @retval  OT_ERROR_NONE             Successfully set region code.
+     * @retval  OT_ERROR_FAILED           Other platform specific errors.
+     *
+     */
+    otError SetRadioRegion(uint16_t aRegionCode);
+
+    /**
+     * This method gets the radio region code.
+     *
+     * @param[out]   aRegionCode  The radio region code.
+     *
+     * @retval  OT_ERROR_INVALID_ARGS     @p aRegionCode is nullptr.
+     * @retval  OT_ERROR_NONE             Successfully got region code.
+     * @retval  OT_ERROR_FAILED           Other platform specific errors.
+     *
+     */
+    otError GetRadioRegion(uint16_t *aRegionCode);
+
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
+    /**
+     * Enable/disable or update Enhanced-ACK Based Probing in radio for a specific Initiator.
+     *
+     * After Enhanced-ACK Based Probing is configured by a specific Probing Initiator, the Enhanced-ACK sent to that
+     * node should include Vendor-Specific IE containing Link Metrics data. This method informs the radio to start/stop
+     * to collect Link Metrics data and include Vendor-Specific IE that containing the data in Enhanced-ACK sent to that
+     * Probing Initiator.
+     *
+     * @param[in]  aLinkMetrics   This parameter specifies what metrics to query. Per spec 4.11.3.4.4.6, at most 2
+     *                            metrics can be specified. The probing would be disabled if @p aLinkMetrics is
+     *                            bitwise 0.
+     * @param[in]  aShortAddress  The short address of the Probing Initiator.
+     * @param[in]  aExtAddress    The extended source address of the Probing Initiator. @p aExtAddress MUST NOT be
+     *                            nullptr.
+     *
+     * @retval  OT_ERROR_NONE            Successfully configured the Enhanced-ACK Based Probing.
+     * @retval  OT_ERROR_INVALID_ARGS    @p aExtAddress is nullptr.
+     * @retval  OT_ERROR_NOT_FOUND       The Initiator indicated by @p aShortAddress is not found when trying to clear.
+     * @retval  OT_ERROR_NO_BUFS         No more Initiator can be supported.
+     */
+    otError ConfigureEnhAckProbing(otLinkMetrics        aLinkMetrics,
+                                   const otShortAddress aShortAddress,
+                                   const otExtAddress & aExtAddress);
+#endif
 
     /**
      * This method checks whether the spinel interface is radio-only.
@@ -711,50 +762,11 @@ public:
      * @param[in] aChannel    The radio channel.
      * @param[in] aPower      The max transmit power in dBm.
      *
-     * @retval  OT_ERROR_NONE           Succesfully set the max transmit power.
+     * @retval  OT_ERROR_NONE           Successfully set the max transmit power.
      * @retval  OT_ERROR_INVALID_ARGS   Channel is not in valid range.
      *
      */
     otError SetChannelMaxTransmitPower(uint8_t aChannel, int8_t aPower);
-
-private:
-    enum
-    {
-        kMaxSpinelFrame        = SpinelInterface::kMaxFrameSize,
-        kMaxWaitTime           = 2000, ///< Max time to wait for response in milliseconds.
-        kVersionStringSize     = 128,  ///< Max size of version string.
-        kCapsBufferSize        = 100,  ///< Max buffer size used to store `SPINEL_PROP_CAPS` value.
-        kChannelMaskBufferSize = 32,   ///< Max buffer size used to store `SPINEL_PROP_PHY_CHAN_SUPPORTED` value.
-    };
-
-    enum State
-    {
-        kStateDisabled,     ///< Radio is disabled.
-        kStateSleep,        ///< Radio is sleep.
-        kStateReceive,      ///< Radio is in receive mode.
-        kStateTransmitting, ///< Frame passed to radio for transmission, waiting for done event from radio.
-        kStateTransmitDone, ///< Radio indicated frame transmission is done.
-    };
-
-    typedef otError (RadioSpinel::*ResponseHandler)(const uint8_t *aBuffer, uint16_t aLength);
-
-    static void HandleReceivedFrame(void *aContext);
-
-    otError CheckSpinelVersion(void);
-    otError CheckRadioCapabilities(void);
-    otError CheckRcpApiVersion(bool aSupportsRcpApiVersion);
-
-    /**
-     * This method triggers a state transfer of the state machine.
-     *
-     */
-    void ProcessRadioStateMachine(void);
-
-    /**
-     * This method processes the frame queue.
-     *
-     */
-    void ProcessFrameQueue(void);
 
     /**
      * This method tries to retrieve a spinel property from OpenThread transceiver.
@@ -832,6 +844,56 @@ private:
      */
     otError Remove(spinel_prop_key_t aKey, const char *aFormat, ...);
 
+    /**
+     * This method tries to reset the co-processor.
+     *
+     * @prarm[in] aResetType    The reset type, SPINEL_RESET_PLATFORM or SPINEL_RESET_STACK.
+     *
+     * @retval  OT_ERROR_NONE               Successfully removed item from the property.
+     * @retval  OT_ERROR_BUSY               Failed due to another operation is on going.
+     *
+     */
+    otError SendReset(uint8_t aResetType);
+
+private:
+    enum
+    {
+        kMaxSpinelFrame        = SpinelInterface::kMaxFrameSize,
+        kMaxWaitTime           = 2000, ///< Max time to wait for response in milliseconds.
+        kVersionStringSize     = 128,  ///< Max size of version string.
+        kCapsBufferSize        = 100,  ///< Max buffer size used to store `SPINEL_PROP_CAPS` value.
+        kChannelMaskBufferSize = 32,   ///< Max buffer size used to store `SPINEL_PROP_PHY_CHAN_SUPPORTED` value.
+    };
+
+    enum State
+    {
+        kStateDisabled,     ///< Radio is disabled.
+        kStateSleep,        ///< Radio is sleep.
+        kStateReceive,      ///< Radio is in receive mode.
+        kStateTransmitting, ///< Frame passed to radio for transmission, waiting for done event from radio.
+        kStateTransmitDone, ///< Radio indicated frame transmission is done.
+    };
+
+    typedef otError (RadioSpinel::*ResponseHandler)(const uint8_t *aBuffer, uint16_t aLength);
+
+    static void HandleReceivedFrame(void *aContext);
+
+    otError CheckSpinelVersion(void);
+    otError CheckRadioCapabilities(void);
+    otError CheckRcpApiVersion(bool aSupportsRcpApiVersion);
+
+    /**
+     * This method triggers a state transfer of the state machine.
+     *
+     */
+    void ProcessRadioStateMachine(void);
+
+    /**
+     * This method processes the frame queue.
+     *
+     */
+    void ProcessFrameQueue(void);
+
     spinel_tid_t GetNextTid(void);
     void         FreeTid(spinel_tid_t tid) { mCmdTidsInUse &= ~(1 << tid); }
 
@@ -853,12 +915,11 @@ private:
                                         const char *      aFormat,
                                         va_list           aArgs);
     otError WaitResponse(void);
-    otError SendReset(void);
-    otError SendCommand(uint32_t          command,
-                        spinel_prop_key_t key,
-                        spinel_tid_t      tid,
-                        const char *      pack_format,
-                        va_list           args);
+    otError SendCommand(uint32_t          aCommand,
+                        spinel_prop_key_t aKey,
+                        spinel_tid_t      aTid,
+                        const char *      aFormat,
+                        va_list           aArgs);
     otError ParseRadioFrame(otRadioFrame &aFrame, const uint8_t *aBuffer, uint16_t aLength, spinel_ssize_t &aUnpacked);
     otError ThreadDatasetHandler(const uint8_t *aBuffer, uint16_t aLength);
 
@@ -966,7 +1027,7 @@ private:
     bool mCcaEnergyDetectThresholdSet : 1; ///< Whether CCA energy detect threshold has been set.
     bool mTransmitPowerSet : 1;            ///< Whether transmit power has been set.
     bool mCoexEnabledSet : 1;              ///< Whether coex enabled has been set.
-    bool mFemLnaGainSet : 1;               ///< Whether FEM LNA gain has benn set.
+    bool mFemLnaGainSet : 1;               ///< Whether FEM LNA gain has been set.
     bool mRcpFailed : 1;                   ///< RCP failure happened, should recover and retry operation.
     bool mEnergyScanning : 1;              ///< If fails while scanning, restarts scanning.
 

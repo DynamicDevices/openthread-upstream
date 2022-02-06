@@ -44,7 +44,9 @@
 #include <openthread/joiner.h>
 
 #include "coap/coap.hpp"
+#include "common/as_core_type.hpp"
 #include "common/clearable.hpp"
+#include "common/equatable.hpp"
 #include "common/message.hpp"
 #include "common/string.hpp"
 #include "mac/mac_types.hpp"
@@ -56,23 +58,15 @@ class ThreadNetif;
 
 namespace MeshCoP {
 
-enum
-{
-    kBorderAgentUdpPort = 49191, ///< UDP port of border agent service.
-};
-
 /**
  * This type represents a Joiner PSKd.
  *
  */
-class JoinerPskd : public otJoinerPskd, public Clearable<JoinerPskd>
+class JoinerPskd : public otJoinerPskd, public Clearable<JoinerPskd>, public Unequatable<JoinerPskd>
 {
 public:
-    enum
-    {
-        kMinLength = 6,                         ///< Minimum PSKd string length (excluding null char).
-        kMaxLength = OT_JOINER_MAX_PSKD_LENGTH, ///< Maximum PSKd string length (excluding null char)
-    };
+    static constexpr uint8_t kMinLength = 6;                         ///< Min PSKd string length (excludes null char)
+    static constexpr uint8_t kMaxLength = OT_JOINER_MAX_PSKD_LENGTH; ///< Max PSKd string length (excludes null char)
 
     /**
      * This method indicates whether the PSKd if well-formed and valid.
@@ -91,11 +85,11 @@ public:
      *
      * @param[in] aPskdString   A pointer to the PSKd C string array.
      *
-     * @retval OT_ERROR_NONE           The PSKd was updated successfully.
-     * @retval OT_ERROR_INVALID_ARGS   The given PSKd C string is not valid.
+     * @retval kErrorNone          The PSKd was updated successfully.
+     * @retval kErrorInvalidArgs   The given PSKd C string is not valid.
      *
      */
-    otError SetFrom(const char *aPskdString);
+    Error SetFrom(const char *aPskdString);
 
     /**
      * This method gets the PSKd as a null terminated C string.
@@ -129,17 +123,6 @@ public:
     bool operator==(const JoinerPskd &aOther) const;
 
     /**
-     * This method overloads operator `!=` to evaluate whether or not two PSKds are unequal.
-     *
-     * @param[in]  aOther  The other PSKd to compare with.
-     *
-     * @retval TRUE   If the two are not equal.
-     * @retval FALSE  If the two are equal.
-     *
-     */
-    bool operator!=(const JoinerPskd &aOther) const { return !(*this == aOther); }
-
-    /**
      * This static method indicates whether a given PSKd string if well-formed and valid.
      *
      * @param[in] aPskdString  A pointer to a PSKd string array.
@@ -156,16 +139,14 @@ public:
  * This type represents a Joiner Discerner.
  *
  */
-class JoinerDiscerner : public otJoinerDiscerner
+class JoinerDiscerner : public otJoinerDiscerner, public Unequatable<JoinerDiscerner>
 {
     friend class SteeringData;
 
 public:
-    enum
-    {
-        kMaxLength      = OT_JOINER_MAX_DISCERNER_LENGTH, ///< Maximum length of a Joiner Discerner in bits.
-        kInfoStringSize = 45,                             ///< Size of `InfoString` to use with `ToString()
-    };
+    static constexpr uint8_t kMaxLength = OT_JOINER_MAX_DISCERNER_LENGTH; ///< Max length of a Discerner in bits.
+
+    static constexpr uint16_t kInfoStringSize = 45; ///< Size of `InfoString` to use with `ToString()
 
     /**
      * This type defines the fixed-length `String` object returned from `ToString()`.
@@ -242,17 +223,6 @@ public:
     bool operator==(const JoinerDiscerner &aOther) const;
 
     /**
-     * This method overloads operator `!=` to evaluate whether or not two Joiner Discerner instances are equal.
-     *
-     * @param[in]  aOther  The other Joiner Discerner to compare with.
-     *
-     * @retval TRUE   If the two are not equal.
-     * @retval FALSE  If the two are equal.
-     *
-     */
-    bool operator!=(const JoinerDiscerner &aOther) const { return !(*this == aOther); }
-
-    /**
      * This method converts the Joiner Discerner to a string.
      *
      * @returns An `InfoString` representation of Joiner Discerner.
@@ -272,10 +242,7 @@ private:
 class SteeringData : public otSteeringData
 {
 public:
-    enum
-    {
-        kMaxLength = OT_STEERING_DATA_MAX_LENGTH, ///< Maximum Steering Data length (in bytes).
-    };
+    static constexpr uint8_t kMaxLength = OT_STEERING_DATA_MAX_LENGTH; ///< Maximum Steering Data length (in bytes).
 
     /**
      * This structure represents the hash bit index values for the bloom filter calculated from a Joiner ID.
@@ -285,10 +252,7 @@ public:
      */
     struct HashBitIndexes
     {
-        enum
-        {
-            kNumIndexes = 2, ///< Number of hash bit indexes.
-        };
+        static constexpr uint8_t kNumIndexes = 2; ///< Number of hash bit indexes.
 
         uint16_t mIndex[kNumIndexes]; ///< The hash bit index array.
     };
@@ -426,10 +390,7 @@ public:
     static void CalculateHashBitIndexes(const JoinerDiscerner &aDiscerner, HashBitIndexes &aIndexes);
 
 private:
-    enum
-    {
-        kPermitAll = 0xff,
-    };
+    static constexpr uint8_t kPermitAll = 0xff;
 
     uint8_t GetNumBits(void) const { return (mLength * CHAR_BIT); }
 
@@ -445,15 +406,6 @@ private:
 };
 
 /**
- * This function creates Message for MeshCoP.
- *
- */
-inline Coap::Message *NewMeshCoPMessage(Coap::CoapBase &aCoap)
-{
-    return aCoap.NewMessage(Message::Settings(Message::kWithLinkSecurity, Message::kPriorityNet));
-}
-
-/**
  * This function generates PSKc.
  *
  * PSKc is used to establish the Commissioner Session.
@@ -463,14 +415,14 @@ inline Coap::Message *NewMeshCoPMessage(Coap::CoapBase &aCoap)
  * @param[in]  aExtPanId     The extended PAN ID for PSKc computation.
  * @param[out] aPskc         A reference to a PSKc where the generated PSKc will be placed.
  *
- * @retval OT_ERROR_NONE          Successfully generate PSKc.
- * @retval OT_ERROR_INVALID_ARGS  If the length of passphrase is out of range.
+ * @retval kErrorNone          Successfully generate PSKc.
+ * @retval kErrorInvalidArgs   If the length of passphrase is out of range.
  *
  */
-otError GeneratePskc(const char *              aPassPhrase,
-                     const Mac::NetworkName &  aNetworkName,
-                     const Mac::ExtendedPanId &aExtPanId,
-                     Pskc &                    aPskc);
+Error GeneratePskc(const char *              aPassPhrase,
+                   const Mac::NetworkName &  aNetworkName,
+                   const Mac::ExtendedPanId &aExtPanId,
+                   Pskc &                    aPskc);
 
 /**
  * This function computes the Joiner ID from a factory-assigned IEEE EUI-64.
@@ -487,31 +439,35 @@ void ComputeJoinerId(const Mac::ExtAddress &aEui64, Mac::ExtAddress &aJoinerId);
  * @param[in]   aNetif  A reference to the thread interface.
  * @param[out]  aRloc   Border agent RLOC.
  *
- * @retval OT_ERROR_NONE        Successfully got the Border Agent Rloc.
- * @retval OT_ERROR_NOT_FOUND   Border agent is not available.
+ * @retval kErrorNone       Successfully got the Border Agent Rloc.
+ * @retval kErrorNotFound   Border agent is not available.
  *
  */
-otError GetBorderAgentRloc(ThreadNetif &aNetIf, uint16_t &aRloc);
+Error GetBorderAgentRloc(ThreadNetif &aNetIf, uint16_t &aRloc);
 
 #if (OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_WARN) && (OPENTHREAD_CONFIG_LOG_MESHCOP == 1)
 /**
  * This function emits a log message indicating an error during a MeshCoP action.
  *
- * Note that log message is emitted only if there is an error, i.e. @p aError is not `OT_ERROR_NONE`. The log
+ * Note that log message is emitted only if there is an error, i.e. @p aError is not `kErrorNone`. The log
  * message will have the format "Failed to {aActionText} : {ErrorString}".
  *
  * @param[in] aActionText   A string representing the failed action.
  * @param[in] aError        The error in sending the message.
  *
  */
-void LogError(const char *aActionText, otError aError);
+void LogError(const char *aActionText, Error aError);
 #else
-inline void LogError(const char *, otError)
+inline void LogError(const char *, Error)
 {
 }
 #endif
 
 } // namespace MeshCoP
+
+DefineCoreType(otJoinerPskd, MeshCoP::JoinerPskd);
+DefineCoreType(otJoinerDiscerner, MeshCoP::JoinerDiscerner);
+DefineCoreType(otSteeringData, MeshCoP::SteeringData);
 
 } // namespace ot
 

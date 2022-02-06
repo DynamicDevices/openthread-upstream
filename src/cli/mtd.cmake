@@ -28,18 +28,9 @@
 
 add_library(openthread-cli-mtd)
 
-set_target_properties(
-    openthread-cli-mtd
-    PROPERTIES
-        C_STANDARD 99
-        CXX_STANDARD 11
-)
-
 target_compile_definitions(openthread-cli-mtd
     PRIVATE
         OPENTHREAD_MTD=1
-    PUBLIC
-        "OPENTHREAD_CONFIG_CLI_TRANSPORT=OT_CLI_TRANSPORT_${OT_CLI_TRANSPORT}"
 )
 
 target_compile_options(openthread-cli-mtd PRIVATE

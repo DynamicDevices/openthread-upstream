@@ -64,76 +64,64 @@ public:
     /**
      * This method restores the Operational Dataset from non-volatile memory.
      *
-     * @retval OT_ERROR_NONE       Successfully restore the dataset.
-     * @retval OT_ERROR_NOT_FOUND  There is no corresponding dataset stored in non-volatile memory.
+     * @retval kErrorNone      Successfully restore the dataset.
+     * @retval kErrorNotFound  There is no corresponding dataset stored in non-volatile memory.
      *
      */
-    otError Restore(void);
-
-    /**
-     * This method compares @p aTimestamp to the dataset's timestamp value.
-     *
-     * @param[in]  aCompare  A reference to the timestamp to compare.
-     *
-     * @retval -1  if @p aCompare is older than this dataset.
-     * @retval  0  if @p aCompare is equal to this dataset.
-     * @retval  1  if @p aCompare is newer than this dataset.
-     *
-     */
-    int Compare(const Timestamp &aTimestamp) const;
+    Error Restore(void);
 
     /**
      * This method retrieves the dataset from non-volatile memory.
      *
      * @param[out]  aDataset  Where to place the dataset.
      *
-     * @retval OT_ERROR_NONE       Successfully retrieved the dataset.
-     * @retval OT_ERROR_NOT_FOUND  There is no corresponding dataset stored in non-volatile memory.
+     * @retval kErrorNone      Successfully retrieved the dataset.
+     * @retval kErrorNotFound  There is no corresponding dataset stored in non-volatile memory.
      *
      */
-    otError Read(Dataset &aDataset) const { return mLocal.Read(aDataset); }
+    Error Read(Dataset &aDataset) const { return mLocal.Read(aDataset); }
 
     /**
      * This method retrieves the dataset from non-volatile memory.
      *
      * @param[out]  aDatasetInfo  Where to place the dataset (as `Dataset::Info`).
      *
-     * @retval OT_ERROR_NONE       Successfully retrieved the dataset.
-     * @retval OT_ERROR_NOT_FOUND  There is no corresponding dataset stored in non-volatile memory.
+     * @retval kErrorNone      Successfully retrieved the dataset.
+     * @retval kErrorNotFound  There is no corresponding dataset stored in non-volatile memory.
      *
      */
-    otError Read(Dataset::Info &aDatasetInfo) const { return mLocal.Read(aDatasetInfo); }
+    Error Read(Dataset::Info &aDatasetInfo) const { return mLocal.Read(aDatasetInfo); }
 
     /**
      * This method retrieves the dataset from non-volatile memory.
      *
      * @param[out]  aDataset  Where to place the dataset.
      *
-     * @retval OT_ERROR_NONE       Successfully retrieved the dataset.
-     * @retval OT_ERROR_NOT_FOUND  There is no corresponding dataset stored in non-volatile memory.
+     * @retval kErrorNone      Successfully retrieved the dataset.
+     * @retval kErrorNotFound  There is no corresponding dataset stored in non-volatile memory.
      *
      */
-    otError Read(otOperationalDatasetTlvs &aDataset) const { return mLocal.Read(aDataset); }
+    Error Read(otOperationalDatasetTlvs &aDataset) const { return mLocal.Read(aDataset); }
 
     /**
      * This method retrieves the channel mask from local dataset.
      *
      * @param[out]  aChannelMask  A reference to the channel mask.
      *
-     * @retval OT_ERROR_NONE       Successfully retrieved the channel mask.
-     * @retval OT_ERROR_NOT_FOUND  There is no valid channel mask stored in local dataset.
+     * @retval kErrorNone      Successfully retrieved the channel mask.
+     * @retval kErrorNotFound  There is no valid channel mask stored in local dataset.
      *
      */
-    otError GetChannelMask(Mac::ChannelMask &aChannelMask) const;
+    Error GetChannelMask(Mac::ChannelMask &aChannelMask) const;
 
     /**
      * This method applies the Active or Pending Dataset to the Thread interface.
      *
-     * @retval OT_ERROR_NONE   Successfully applied configuration.
-     * @retval OT_ERROR_PARSE  The dataset has at least one TLV with invalid format.
+     * @retval kErrorNone   Successfully applied configuration.
+     * @retval kErrorParse  The dataset has at least one TLV with invalid format.
      *
      */
-    otError ApplyConfiguration(void) const;
+    Error ApplyConfiguration(void) const;
 
     /**
      * This method updates the Operational Dataset when detaching from the network.
@@ -149,12 +137,19 @@ public:
      * @param[in]  aDatasetInfo  The Operational Dataset.
      * @param[in]  aTlvs         Any additional raw TLVs to include.
      * @param[in]  aLength       Number of bytes in @p aTlvs.
+     * @param[in]  aCallback     A pointer to a function that is called on response reception or timeout.
+     * @param[in]  aContext      A pointer to application-specific context for @p aCallback.
      *
-     * @retval OT_ERROR_NONE     Successfully send the meshcop dataset command.
-     * @retval OT_ERROR_NO_BUFS  Insufficient buffer space to send.
+     * @retval kErrorNone    Successfully send the meshcop dataset command.
+     * @retval kErrorNoBufs  Insufficient buffer space to send.
+     * @retval kErrorBusy    A previous request is ongoing.
      *
      */
-    otError SendSetRequest(const Dataset::Info &aDatasetInfo, const uint8_t *aTlvs, uint8_t aLength);
+    Error SendSetRequest(const Dataset::Info &    aDatasetInfo,
+                         const uint8_t *          aTlvs,
+                         uint8_t                  aLength,
+                         otDatasetMgmtSetCallback aCallback,
+                         void *                   aContext);
 
     /**
      * This method sends a MGMT_GET request.
@@ -164,25 +159,25 @@ public:
      * @param[in]  aLength             Number of bytes in @p aTlvTypes.
      * @param[in]  aAddress            The IPv6 destination address for the MGMT_GET request.
      *
-     * @retval OT_ERROR_NONE     Successfully send the meshcop dataset command.
-     * @retval OT_ERROR_NO_BUFS  Insufficient buffer space to send.
+     * @retval kErrorNone     Successfully send the meshcop dataset command.
+     * @retval kErrorNoBufs   Insufficient buffer space to send.
      *
      */
-    otError SendGetRequest(const Dataset::Components &aDatasetComponents,
-                           const uint8_t *            aTlvTypes,
-                           uint8_t                    aLength,
-                           const otIp6Address *       aAddress) const;
+    Error SendGetRequest(const Dataset::Components &aDatasetComponents,
+                         const uint8_t *            aTlvTypes,
+                         uint8_t                    aLength,
+                         const otIp6Address *       aAddress) const;
 #if OPENTHREAD_FTD
     /**
      * This method appends the MLE Dataset TLV but excluding MeshCoP Sub Timestamp TLV.
      *
      * @param[in] aMessage       The message to append the TLV to.
      *
-     * @retval OT_ERROR_NONE     Successfully append MLE Dataset TLV without MeshCoP Sub Timestamp TLV.
-     * @retval OT_ERROR_NO_BUFS  Insufficient available buffers to append the message with MLE Dataset TLV.
+     * @retval kErrorNone    Successfully append MLE Dataset TLV without MeshCoP Sub Timestamp TLV.
+     * @retval kErrorNoBufs  Insufficient available buffers to append the message with MLE Dataset TLV.
      *
      */
-    otError AppendMleDatasetTlv(Message &aMessage) const;
+    Error AppendMleDatasetTlv(Message &aMessage) const;
 #endif
 
 protected:
@@ -200,18 +195,13 @@ protected:
          * @param[in]  aMessage  A message to read the TLV from.
          * @param[in]  aOffset   An offset into the message to read from.
          *
-         * @retval OT_ERROR_NONE    The TLV was read successfully.
-         * @retval OT_ERROR_PARSE   The TLV was not well-formed and could not be parsed.
+         * @retval kErrorNone    The TLV was read successfully.
+         * @retval kErrorParse   The TLV was not well-formed and could not be parsed.
          *
          */
-        otError ReadFromMessage(const Message &aMessage, uint16_t aOffset);
+        Error ReadFromMessage(const Message &aMessage, uint16_t aOffset);
 
     private:
-        enum
-        {
-            kMaxValueSize = 16, // Maximum size of a Dataset TLV value (bytes).
-        };
-
         uint8_t mValue[Dataset::kMaxValueSize];
     } OT_TOOL_PACKED_END;
 
@@ -244,33 +234,33 @@ protected:
      *
      * @param[in]  aDataset  The Operational Dataset.
      *
-     * @retval OT_ERROR_NONE   Successfully applied configuration.
-     * @retval OT_ERROR_PARSE  The dataset has at least one TLV with invalid format.
+     * @retval kErrorNone   Successfully applied configuration.
+     * @retval kErrorParse  The dataset has at least one TLV with invalid format.
      *
      */
-    otError Save(const Dataset &aDataset);
+    Error Save(const Dataset &aDataset);
 
     /**
      * This method saves the Operational Dataset in non-volatile memory.
      *
      * @param[in]  aDatasetInfo  The Operational Dataset as `Dataset::Info`.
      *
-     * @retval OT_ERROR_NONE             Successfully saved the dataset.
-     * @retval OT_ERROR_NOT_IMPLEMENTED  The platform does not implement settings functionality.
+     * @retval kErrorNone             Successfully saved the dataset.
+     * @retval kErrorNotImplemented   The platform does not implement settings functionality.
      *
      */
-    otError Save(const Dataset::Info &aDatasetInfo);
+    Error Save(const Dataset::Info &aDatasetInfo);
 
     /**
      * This method saves the Operational Dataset in non-volatile memory.
      *
      * @param[in]  aDataset  The Operational Dataset.
      *
-     * @retval OT_ERROR_NONE             Successfully saved the dataset.
-     * @retval OT_ERROR_NOT_IMPLEMENTED  The platform does not implement settings functionality.
+     * @retval kErrorNone             Successfully saved the dataset.
+     * @retval kErrorNotImplemented   The platform does not implement settings functionality.
      *
      */
-    otError Save(const otOperationalDatasetTlvs &aDataset);
+    Error Save(const otOperationalDatasetTlvs &aDataset);
 
     /**
      * This method sets the Operational Dataset for the partition.
@@ -283,7 +273,18 @@ protected:
      * @param[in]  aLength     The length of the Operational Dataset.
      *
      */
-    otError Save(const Timestamp &aTimestamp, const Message &aMessage, uint16_t aOffset, uint8_t aLength);
+    Error Save(const Timestamp &aTimestamp, const Message &aMessage, uint16_t aOffset, uint8_t aLength);
+
+    /**
+     * This method saves the Operational Dataset in non-volatile memory.
+     *
+     * @param[in]  aDataset  The Operational Dataset.
+     *
+     * @retval kErrorNone   Successfully applied configuration.
+     * @retval kErrorParse  The dataset has at least one TLV with invalid format.
+     *
+     */
+    Error SaveLocal(const Dataset &aDataset);
 
     /**
      * This method handles a MGMT_GET request message.
@@ -316,11 +317,11 @@ protected:
      * @param[in]  aMessage      The CoAP message buffer.
      * @param[in]  aMessageInfo  The message info.
      *
-     * @retval OT_ERROR_NONE  The MGMT_SET request message was handled successfully.
-     * @retval OT_ERROR_DROP  The MGMT_SET request message was dropped.
+     * @retval kErrorNone  The MGMT_SET request message was handled successfully.
+     * @retval kErrorDrop  The MGMT_SET request message was dropped.
      *
      */
-    otError HandleSet(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo);
+    Error HandleSet(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo);
 #endif
 
     DatasetLocal mLocal;
@@ -328,35 +329,35 @@ protected:
     bool         mTimestampValid : 1;
 
 private:
-    static void HandleCoapResponse(void *               aContext,
-                                   otMessage *          aMessage,
-                                   const otMessageInfo *aMessageInfo,
-                                   otError              aError);
-    void        HandleCoapResponse(void);
+    static void HandleMgmtSetResponse(void *               aContext,
+                                      otMessage *          aMessage,
+                                      const otMessageInfo *aMessageInfo,
+                                      Error                aError);
+    void        HandleMgmtSetResponse(Coap::Message *aMessage, const Ip6::MessageInfo *aMessageInfo, Error aError);
 
-    bool    IsActiveDataset(void) const { return GetType() == Dataset::kActive; }
-    bool    IsPendingDataset(void) const { return GetType() == Dataset::kPending; }
-    void    SignalDatasetChange(void) const;
-    void    HandleDatasetUpdated(void);
-    otError AppendDatasetToMessage(const Dataset::Info &aDatasetInfo, Message &aMessage) const;
-    void    SendSet(void);
-    void    SendGetResponse(const Coap::Message &   aRequest,
-                            const Ip6::MessageInfo &aMessageInfo,
-                            uint8_t *               aTlvs,
-                            uint8_t                 aLength) const;
+    bool  IsActiveDataset(void) const { return GetType() == Dataset::kActive; }
+    bool  IsPendingDataset(void) const { return GetType() == Dataset::kPending; }
+    void  SignalDatasetChange(void) const;
+    void  HandleDatasetUpdated(void);
+    Error AppendDatasetToMessage(const Dataset::Info &aDatasetInfo, Message &aMessage) const;
+    void  SendSet(void);
+    void  SendGetResponse(const Coap::Message &   aRequest,
+                          const Ip6::MessageInfo &aMessageInfo,
+                          uint8_t *               aTlvs,
+                          uint8_t                 aLength) const;
 
 #if OPENTHREAD_FTD
     void SendSetResponse(const Coap::Message &aRequest, const Ip6::MessageInfo &aMessageInfo, StateTlv::State aState);
 #endif
 
-    enum
-    {
-        kMaxDatasetTlvs = 16,   // Maximum number of TLVs in a Dataset.
-        kDelayNoBufs    = 1000, // Milliseconds
-    };
+    static constexpr uint8_t  kMaxDatasetTlvs = 16;   // Maximum number of TLVs in a Dataset.
+    static constexpr uint32_t kSendSetDelay   = 5000; // Milliseconds
 
-    bool       mCoapPending : 1;
+    bool       mMgmtPending : 1;
     TimerMilli mTimer;
+
+    otDatasetMgmtSetCallback mMgmtSetCallback;
+    void *                   mMgmtSetCallbackContext;
 };
 
 class ActiveDataset : public DatasetManager, private NonCopyable
@@ -419,29 +420,29 @@ public:
      * @param[in]  aLength     The length of the Operational Dataset.
      *
      */
-    otError Save(const Timestamp &aTimestamp, const Message &aMessage, uint16_t aOffset, uint8_t aLength);
+    Error Save(const Timestamp &aTimestamp, const Message &aMessage, uint16_t aOffset, uint8_t aLength);
 
     /**
      * This method sets the Operational Dataset in non-volatile memory.
      *
      * @param[in]  aDatasetInfo  The Operational Dataset as `Dataset::Info`.
      *
-     * @retval OT_ERROR_NONE             Successfully saved the dataset.
-     * @retval OT_ERROR_NOT_IMPLEMENTED  The platform does not implement settings functionality.
+     * @retval kErrorNone            Successfully saved the dataset.
+     * @retval kErrorNotImplemented  The platform does not implement settings functionality.
      *
      */
-    otError Save(const Dataset::Info &aDatasetInfo) { return DatasetManager::Save(aDatasetInfo); }
+    Error Save(const Dataset::Info &aDatasetInfo) { return DatasetManager::Save(aDatasetInfo); }
 
     /**
      * This method sets the Operational Dataset in non-volatile memory.
      *
      * @param[in]  aDataset  The Operational Dataset.
      *
-     * @retval OT_ERROR_NONE             Successfully saved the dataset.
-     * @retval OT_ERROR_NOT_IMPLEMENTED  The platform does not implement settings functionality.
+     * @retval kErrorNone            Successfully saved the dataset.
+     * @retval kErrorNotImplemented  The platform does not implement settings functionality.
      *
      */
-    otError Save(const otOperationalDatasetTlvs &aDataset) { return DatasetManager::Save(aDataset); }
+    Error Save(const otOperationalDatasetTlvs &aDataset) { return DatasetManager::Save(aDataset); }
 
 #if OPENTHREAD_FTD
 
@@ -450,11 +451,11 @@ public:
      *
      * @param[out]  aDatasetInfo  The Operational Dataset as `Dataset::Info`.
      *
-     * @retval OT_ERROR_NONE    Successfully created a new Operational Dataset.
-     * @retval OT_ERROR_FAILED  Failed to generate random values for new parameters.
+     * @retval kErrorNone    Successfully created a new Operational Dataset.
+     * @retval kErrorFailed  Failed to generate random values for new parameters.
      *
      */
-    otError CreateNewNetwork(Dataset::Info &aDatasetInfo) { return aDatasetInfo.GenerateRandom(GetInstance()); }
+    Error CreateNewNetwork(Dataset::Info &aDatasetInfo) { return aDatasetInfo.GenerateRandom(GetInstance()); }
 
     /**
      * This method starts the Leader functions for maintaining the Active Operational Dataset.
@@ -471,12 +472,12 @@ public:
     /**
      * This method generate a default Active Operational Dataset.
      *
-     * @retval OT_ERROR_NONE           Successfully generated an Active Operational Dataset.
-     * @retval OT_ERROR_ALREADY        A valid Active Operational Dataset already exists.
-     * @retval OT_ERROR_INVALID_STATE  Device is not currently attached to a network.
+     * @retval kErrorNone          Successfully generated an Active Operational Dataset.
+     * @retval kErrorAlready       A valid Active Operational Dataset already exists.
+     * @retval kErrorInvalidState  Device is not currently attached to a network.
      *
      */
-    otError GenerateLocal(void);
+    Error GenerateLocal(void);
 #endif
 
 private:
@@ -532,11 +533,11 @@ public:
      *
      * @param[in]  aDatasetInfo  The Operational Dataset as `Dataset::Info`.
      *
-     * @retval OT_ERROR_NONE             Successfully saved the dataset.
-     * @retval OT_ERROR_NOT_IMPLEMENTED  The platform does not implement settings functionality.
+     * @retval kErrorNone            Successfully saved the dataset.
+     * @retval kErrorNotImplemented  The platform does not implement settings functionality.
      *
      */
-    otError Save(const Dataset::Info &aDatasetInfo);
+    Error Save(const Dataset::Info &aDatasetInfo);
 
     /**
      * This method saves the Operational Dataset in non-volatile memory.
@@ -545,11 +546,11 @@ public:
      *
      * @param[in]  aDataset  The Operational Dataset.
      *
-     * @retval OT_ERROR_NONE             Successfully saved the dataset.
-     * @retval OT_ERROR_NOT_IMPLEMENTED  The platform does not implement settings functionality.
+     * @retval kErrorNone            Successfully saved the dataset.
+     * @retval kErrorNotImplemented  The platform does not implement settings functionality.
      *
      */
-    otError Save(const otOperationalDatasetTlvs &aDataset);
+    Error Save(const otOperationalDatasetTlvs &aDataset);
 
     /**
      * This method sets the Operational Dataset for the partition.
@@ -564,7 +565,18 @@ public:
      * @param[in]  aLength     The length of the Operational Dataset.
      *
      */
-    otError Save(const Timestamp &aTimestamp, const Message &aMessage, uint16_t aOffset, uint8_t aLength);
+    Error Save(const Timestamp &aTimestamp, const Message &aMessage, uint16_t aOffset, uint8_t aLength);
+
+    /**
+     * This method saves the Operational Dataset in non-volatile memory.
+     *
+     * @param[in]  aDataset  The Operational Dataset.
+     *
+     * @retval kErrorNone   Successfully applied configuration.
+     * @retval kErrorParse  The dataset has at least one TLV with invalid format.
+     *
+     */
+    Error Save(const Dataset &aDataset);
 
 #if OPENTHREAD_FTD
     /**

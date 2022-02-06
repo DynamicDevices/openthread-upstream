@@ -174,6 +174,16 @@
 #endif
 
 /**
+ * @def OPENTHREAD_CONFIG_LOG_TCP
+ *
+ * Define to enable IPv6 logging.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_LOG_TCP
+#define OPENTHREAD_CONFIG_LOG_TCP 1
+#endif
+
+/**
  * @def OPENTHREAD_CONFIG_LOG_MAC
  *
  * Define to enable IEEE 802.15.4 MAC logging.
@@ -220,7 +230,7 @@
  *
  */
 #ifndef OPENTHREAD_CONFIG_LOG_PLATFORM
-#define OPENTHREAD_CONFIG_LOG_PLATFORM 0
+#define OPENTHREAD_CONFIG_LOG_PLATFORM 1
 #endif
 
 /**
@@ -310,6 +320,46 @@
 #endif
 
 /**
+ * @def OPENTHREAD_CONFIG_LOG_BR
+ *
+ * Define to Border Router (BR) region logging.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_LOG_BR
+#define OPENTHREAD_CONFIG_LOG_BR 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_LOG_SRP
+ *
+ * Define to enable Service Registration Protocol (SRP) region logging.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_LOG_SRP
+#define OPENTHREAD_CONFIG_LOG_SRP 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_LOG_DNS
+ *
+ * Define to enable DNS region logging.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_LOG_DNS
+#define OPENTHREAD_CONFIG_LOG_DNS 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME
+ *
+ * Define as 1 to prepend the current uptime to all log messages.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME
+#define OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME 0
+#endif
+
+/**
  * @def OPENTHREAD_CONFIG_LOG_PREPEND_LEVEL
  *
  * Define to prepend the log level to all log messages.
@@ -348,31 +398,6 @@
  */
 #ifndef OPENTHREAD_CONFIG_LOG_SRC_DST_IP_ADDRESSES
 #define OPENTHREAD_CONFIG_LOG_SRC_DST_IP_ADDRESSES 1
-#endif
-
-/**
- * @def OPENTHREAD_CONFIG_LOG_DEFINE_AS_MACRO_ONLY
- *
- * Set to 1 to require all the logging related definition to user macro only (up to the call to the platform log API).
- * Otherwise the logging implementation uses functions (which is preferred and recommended model).
- *
- * This is intended for special platform requirements where the logging needs to be defined a macro (e.g., for log
- * tokenization or similar features).
- *
- */
-#ifndef OPENTHREAD_CONFIG_LOG_DEFINE_AS_MACRO_ONLY
-#define OPENTHREAD_CONFIG_LOG_DEFINE_AS_MACRO_ONLY 0
-#endif
-
-/**
- * @def OPENTHREAD_CONFIG_PLAT_LOG_MACRO_NAME
- *
- * Defines the name of macro used for logging inside OpenThread, by default it is set to `otPlatLog()`. This is used
- * and applicable only when `OPENTHREAD_CONFIG_LOG_DEFINE_AS_MACRO_ONLY` is set to 1.
- *
- */
-#ifndef OPENTHREAD_CONFIG_PLAT_LOG_MACRO_NAME
-#define OPENTHREAD_CONFIG_PLAT_LOG_MACRO_NAME otPlatLog
 #endif
 
 /**

@@ -36,6 +36,8 @@
 
 #include "openthread-core-config.h"
 
+#if OPENTHREAD_FTD
+
 #include "coap/coap.hpp"
 #include "common/linked_list.hpp"
 #include "common/locator.hpp"
@@ -99,11 +101,11 @@ public:
      *                           To get the first entry, initialize the iterator by setting all its fields to zero.
      *                           e.g., `memset` the the iterator structure to zero.
      *
-     * @retval OT_ERROR_NONE       Successfully populated @p aInfo with the info for the next EID cache entry.
-     * @retval OT_ERROR_NOT_FOUND  No more entries in the address cache table.
+     * @retval kErrorNone      Successfully populated @p aInfo with the info for the next EID cache entry.
+     * @retval kErrorNotFound  No more entries in the address cache table.
      *
      */
-    otError GetNextCacheEntry(EntryInfo &aInfo, Iterator &aIterator) const;
+    Error GetNextCacheEntry(EntryInfo &aInfo, Iterator &aIterator) const;
 
     /**
      * This method removes the EID-to-RLOC cache entries corresponding to an RLOC16.
@@ -130,45 +132,44 @@ public:
     void Remove(const Ip6::Address &aEid);
 
     /**
-     * This method updates an existing cache entry for the EID.
-     *
-     * @param[in]  aEid               A reference to the EID.
-     * @param[in]  aRloc16            The RLOC16 corresponding to @p aEid.
-     *
-     * @retval OT_ERROR_NONE           Successfully updates an existing cache entry.
-     * @retval OT_ERROR_NOT_FOUND      No cache entry with @p aEid.
-     *
-     */
-    otError UpdateCacheEntry(const Ip6::Address &aEid, Mac::ShortAddress aRloc16);
-
-    /**
-     * This method adds a snooped cache entry for a given EID.
+     * This method updates an existing entry or adds a snooped cache entry for a given EID.
      *
      * The method is intended to add an entry for snoop optimization (inspection of a received message to create a
      * cache entry mapping an EID to a RLOC).
      *
-     * @param[in]  aEid               A reference to the EID.
-     * @param[in]  aRloc16            The RLOC16 corresponding to @p aEid.
+     * @param[in] aEid             A reference to the EID.
+     * @param[in] aRloc16          The RLOC16 corresponding to @p aEid.
+     * @param[in] aDest            The short MAC address destination of the received snooped message.
      *
      */
-    void AddSnoopedCacheEntry(const Ip6::Address &aEid, Mac::ShortAddress aRloc16);
+    void UpdateSnoopedCacheEntry(const Ip6::Address &aEid, Mac::ShortAddress aRloc16, Mac::ShortAddress aDest);
 
     /**
-     * This method returns the RLOC16 for a given EID, initiates an Address Query if allowed and the mapping is not
-     * known.
+     * This method returns the RLOC16 for a given EID, initiates an Address Query if the mapping is not known.
      *
      * @param[in]   aEid                A reference to the EID.
      * @param[out]  aRloc16             The RLOC16 corresponding to @p aEid.
-     * @param[in]   aAllowAddressQuery  Allow to initiate Address Query if the mapping is not known.
      *
-     * @retval OT_ERROR_NONE           Successfully provided the RLOC16.
-     * @retval OT_ERROR_ADDRESS_QUERY  Initiated an Address Query if allowed.
-     * @retval OT_ERROR_DROP           Earlier Address Query for the EID timed out. In retry timeout interval.
-     * @retval OT_ERROR_NO_BUFS        Insufficient buffer space available to send Address Query.
-     * @retval OT_ERROR_NOT_FOUND      The mapping was not found and Address Query was not allowed.
+     * @retval kErrorNone           Successfully provided the RLOC16.
+     * @retval kErrorAddressQuery   Initiated an Address Query if allowed.
+     * @retval kErrorDrop           Earlier Address Query for the EID timed out. In retry timeout interval.
+     * @retval kErrorNoBufs         Insufficient buffer space available to send Address Query.
      *
      */
-    otError Resolve(const Ip6::Address &aEid, Mac::ShortAddress &aRloc16, bool aAllowAddressQuery = true);
+    Error Resolve(const Ip6::Address &aEid, Mac::ShortAddress &aRloc16)
+    {
+        return Resolve(aEid, aRloc16, /* aAllowAddressQuery */ true);
+    }
+
+    /**
+     * This method looks up the RLOC16 for a given EID in the address cache.
+     *
+     * @param[in]   aEid                A reference to the EID.
+     *
+     * @returns The RLOC16 mapping to @p aEid or `Mac::kShortAddrInvalid` if it is not found in the address cache.
+     *
+     */
+    Mac::ShortAddress LookUp(const Ip6::Address &aEid);
 
     /**
      * This method restarts any ongoing address queries.
@@ -206,17 +207,17 @@ public:
                           const Ip6::Address *            aDestination);
 
 private:
-    enum
-    {
-        kCacheEntries                  = OPENTHREAD_CONFIG_TMF_ADDRESS_CACHE_ENTRIES,
-        kMaxNonEvictableSnoopedEntries = OPENTHREAD_CONFIG_TMF_ADDRESS_CACHE_MAX_SNOOP_ENTRIES,
-        kAddressQueryTimeout           = OPENTHREAD_CONFIG_TMF_ADDRESS_QUERY_TIMEOUT,             // in seconds
-        kAddressQueryInitialRetryDelay = OPENTHREAD_CONFIG_TMF_ADDRESS_QUERY_INITIAL_RETRY_DELAY, // in seconds
-        kAddressQueryMaxRetryDelay     = OPENTHREAD_CONFIG_TMF_ADDRESS_QUERY_MAX_RETRY_DELAY,     // in seconds
-        kSnoopBlockEvictionTimeout     = OPENTHREAD_CONFIG_TMF_SNOOP_CACHE_ENTRY_TIMEOUT,         // in seconds
-        kIteratorListIndex             = 0,
-        kIteratorEntryIndex            = 1,
-    };
+    static constexpr uint16_t kCacheEntries                  = OPENTHREAD_CONFIG_TMF_ADDRESS_CACHE_ENTRIES;
+    static constexpr uint16_t kMaxNonEvictableSnoopedEntries = OPENTHREAD_CONFIG_TMF_ADDRESS_CACHE_MAX_SNOOP_ENTRIES;
+
+    // All time/delay values are in seconds
+    static constexpr uint16_t kAddressQueryTimeout           = OPENTHREAD_CONFIG_TMF_ADDRESS_QUERY_TIMEOUT;
+    static constexpr uint16_t kAddressQueryInitialRetryDelay = OPENTHREAD_CONFIG_TMF_ADDRESS_QUERY_INITIAL_RETRY_DELAY;
+    static constexpr uint16_t kAddressQueryMaxRetryDelay     = OPENTHREAD_CONFIG_TMF_ADDRESS_QUERY_MAX_RETRY_DELAY;
+    static constexpr uint16_t kSnoopBlockEvictionTimeout     = OPENTHREAD_CONFIG_TMF_SNOOP_CACHE_ENTRY_TIMEOUT;
+
+    static constexpr uint8_t kIteratorListIndex  = 0;
+    static constexpr uint8_t kIteratorEntryIndex = 1;
 
     class CacheEntry : public InstanceLocatorInit
     {
@@ -255,15 +256,13 @@ private:
         bool Matches(const Ip6::Address &aEid) const { return GetTarget() == aEid; }
 
     private:
-        enum
-        {
-            kNoNextIndex          = 0xffff,     // mNextIndex value when at end of list.
-            kInvalidLastTransTime = 0xffffffff, // Value indicating mLastTransactionTime is invalid.
-        };
+        static constexpr uint16_t kNoNextIndex          = 0xffff;     // `mNextIndex` value when at end of list.
+        static constexpr uint32_t kInvalidLastTransTime = 0xffffffff; // Value when `mLastTransactionTime` is invalid.
 
         Ip6::Address      mTarget;
         Mac::ShortAddress mRloc16;
         uint16_t          mNextIndex;
+
         union
         {
             struct
@@ -285,14 +284,14 @@ private:
     typedef Pool<CacheEntry, kCacheEntries> CacheEntryPool;
     typedef LinkedList<CacheEntry>          CacheEntryList;
 
-    enum EntryChange
+    enum EntryChange : uint8_t
     {
         kEntryAdded,
         kEntryUpdated,
         kEntryRemoved,
     };
 
-    enum Reason
+    enum Reason : uint8_t
     {
         kReasonQueryRequest,
         kReasonSnoop,
@@ -306,13 +305,15 @@ private:
 
     CacheEntryPool &GetCacheEntryPool(void) { return mCacheEntryPool; }
 
+    Error       Resolve(const Ip6::Address &aEid, Mac::ShortAddress &aRloc16, bool aAllowAddressQuery);
     void        Remove(Mac::ShortAddress aRloc16, bool aMatchRouterId);
     void        Remove(const Ip6::Address &aEid, Reason aReason);
     CacheEntry *FindCacheEntry(const Ip6::Address &aEid, CacheEntryList *&aList, CacheEntry *&aPrevEntry);
     CacheEntry *NewCacheEntry(bool aSnoopedEntry);
     void        RemoveCacheEntry(CacheEntry &aEntry, CacheEntryList &aList, CacheEntry *aPrevEntry, Reason aReason);
+    Error       UpdateCacheEntry(const Ip6::Address &aEid, Mac::ShortAddress aRloc16);
 
-    otError SendAddressQuery(const Ip6::Address &aEid);
+    Error SendAddressQuery(const Ip6::Address &aEid);
 
     static void HandleUdpReceive(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo);
 
@@ -362,5 +363,7 @@ private:
  */
 
 } // namespace ot
+
+#endif //  OPENTHREAD_FTD
 
 #endif // ADDRESS_RESOLVER_HPP_

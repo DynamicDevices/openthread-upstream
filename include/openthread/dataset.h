@@ -37,6 +37,7 @@
 
 #include <openthread/instance.h>
 #include <openthread/ip6.h>
+#include <openthread/platform/crypto.h>
 #include <openthread/platform/radio.h>
 
 #ifdef __cplusplus
@@ -44,41 +45,49 @@ extern "C" {
 #endif
 
 /**
- * @addtogroup api-thread-general
+ * @addtogroup api-operational-dataset
  *
  * @{
  *
  */
 
-#define OT_MASTER_KEY_SIZE 16 ///< Size of the Thread Master Key (bytes)
+#define OT_NETWORK_KEY_SIZE 16 ///< Size of the Thread Network Key (bytes)
 
 /**
- * @struct otMasterKey
+ * @struct otNetworkKey
  *
- * This structure represents a Thread Master Key.
+ * This structure represents a Thread Network Key.
  *
  */
 OT_TOOL_PACKED_BEGIN
-struct otMasterKey
+struct otNetworkKey
 {
-    uint8_t m8[OT_MASTER_KEY_SIZE]; ///< Byte values
+    uint8_t m8[OT_NETWORK_KEY_SIZE]; ///< Byte values
 } OT_TOOL_PACKED_END;
 
 /**
- * This structure represents a Thread Master Key.
+ * This structure represents a Thread Network Key.
  *
  */
-typedef struct otMasterKey otMasterKey;
+typedef struct otNetworkKey otNetworkKey;
+
+/**
+ * This datatype represents KeyRef to NetworkKey.
+ *
+ */
+typedef otCryptoKeyRef otNetworkKeyRef; ///< Reference to Key
 
 #define OT_NETWORK_NAME_MAX_SIZE 16 ///< Maximum size of the Thread Network Name field (bytes)
 
 /**
  * This structure represents a Network Name.
  *
+ * The `otNetworkName` is a null terminated C string (i.e., `m8` char array MUST end with null char `\0`).
+ *
  */
 typedef struct otNetworkName
 {
-    char m8[OT_NETWORK_NAME_MAX_SIZE + 1]; ///< Byte values
+    char m8[OT_NETWORK_NAME_MAX_SIZE + 1]; ///< Byte values. The `+ 1` is for null char.
 } otNetworkName;
 
 #define OT_EXT_PAN_ID_SIZE 8 ///< Size of a Thread PAN ID (bytes)
@@ -126,27 +135,31 @@ struct otPskc
 typedef struct otPskc otPskc;
 
 /**
+ * This datatype represents KeyRef to PSKc.
+ *
+ */
+typedef otCryptoKeyRef otPskcRef; ///< Reference to Key
+
+/**
  * This structure represent Security Policy.
  *
  */
 typedef struct otSecurityPolicy
 {
-    uint16_t mRotationTime; ///< The value for thrKeyRotation in units of hours
-    uint8_t  mFlags;        ///< Flags as defined in Thread 1.1 Section 8.10.1.15
-} otSecurityPolicy;
+    uint16_t mRotationTime; ///< The value for thrKeyRotation in units of hours.
 
-/**
- * This enumeration defines the Security Policy TLV flags.
- *
- */
-enum
-{
-    OT_SECURITY_POLICY_OBTAIN_MASTER_KEY     = 1 << 7, ///< Obtaining the Master Key
-    OT_SECURITY_POLICY_NATIVE_COMMISSIONING  = 1 << 6, ///< Native Commissioning
-    OT_SECURITY_POLICY_ROUTERS               = 1 << 5, ///< Routers enabled
-    OT_SECURITY_POLICY_EXTERNAL_COMMISSIONER = 1 << 4, ///< External Commissioner allowed
-    OT_SECURITY_POLICY_BEACONS               = 1 << 3, ///< Beacons enabled
-};
+    bool    mObtainNetworkKeyEnabled : 1;        ///< Obtaining the Network Key for out-of-band commissioning is enabled
+    bool    mNativeCommissioningEnabled : 1;     ///< Native Commissioning using PSKc is allowed
+    bool    mRoutersEnabled : 1;                 ///< Thread 1.0/1.1.x Routers are enabled
+    bool    mExternalCommissioningEnabled : 1;   ///< External Commissioner authentication is allowed
+    bool    mBeaconsEnabled : 1;                 ///< Thread 1.0/1.1.x Beacons are enabled
+    bool    mCommercialCommissioningEnabled : 1; ///< Commercial Commissioning is enabled
+    bool    mAutonomousEnrollmentEnabled : 1;    ///< Autonomous Enrollment is enabled
+    bool    mNetworkKeyProvisioningEnabled : 1;  ///< Network Key Provisioning is enabled
+    bool    mTobleLinkEnabled : 1;               ///< ToBLE link is enabled
+    bool    mNonCcmRoutersEnabled : 1;           ///< Non-CCM Routers enabled
+    uint8_t mVersionThresholdForRouting : 3;     ///< Version-threshold for Routing
+} otSecurityPolicy;
 
 /**
  * This type represents Channel Mask.
@@ -189,7 +202,7 @@ typedef struct otOperationalDatasetComponents
 {
     bool mIsActiveTimestampPresent : 1;  ///< TRUE if Active Timestamp is present, FALSE otherwise.
     bool mIsPendingTimestampPresent : 1; ///< TRUE if Pending Timestamp is present, FALSE otherwise.
-    bool mIsMasterKeyPresent : 1;        ///< TRUE if Network Master Key is present, FALSE otherwise.
+    bool mIsNetworkKeyPresent : 1;       ///< TRUE if Network Key is present, FALSE otherwise.
     bool mIsNetworkNamePresent : 1;      ///< TRUE if Network Name is present, FALSE otherwise.
     bool mIsExtendedPanIdPresent : 1;    ///< TRUE if Extended PAN ID is present, FALSE otherwise.
     bool mIsMeshLocalPrefixPresent : 1;  ///< TRUE if Mesh Local Prefix is present, FALSE otherwise.
@@ -211,7 +224,7 @@ typedef struct otOperationalDataset
 {
     uint64_t                       mActiveTimestamp;  ///< Active Timestamp
     uint64_t                       mPendingTimestamp; ///< Pending Timestamp
-    otMasterKey                    mMasterKey;        ///< Network Master Key
+    otNetworkKey                   mNetworkKey;       ///< Network Key
     otNetworkName                  mNetworkName;      ///< Network Name
     otExtendedPanId                mExtendedPanId;    ///< Extended PAN ID
     otMeshLocalPrefix              mMeshLocalPrefix;  ///< Mesh Local Prefix
@@ -253,7 +266,7 @@ typedef enum otMeshcopTlvType
     OT_MESHCOP_TLV_EXTPANID                 = 2,   ///< meshcop Extended Pan Id TLV
     OT_MESHCOP_TLV_NETWORKNAME              = 3,   ///< meshcop Network Name TLV
     OT_MESHCOP_TLV_PSKC                     = 4,   ///< meshcop PSKc TLV
-    OT_MESHCOP_TLV_MASTERKEY                = 5,   ///< meshcop Network Master Key TLV
+    OT_MESHCOP_TLV_NETWORKKEY               = 5,   ///< meshcop Network Key TLV
     OT_MESHCOP_TLV_NETWORK_KEY_SEQUENCE     = 6,   ///< meshcop Network Key Sequence TLV
     OT_MESHCOP_TLV_MESHLOCALPREFIX          = 7,   ///< meshcop Mesh Local Prefix TLV
     OT_MESHCOP_TLV_STEERING_DATA            = 8,   ///< meshcop Steering Data TLV
@@ -289,6 +302,21 @@ typedef enum otMeshcopTlvType
     OT_MESHCOP_TLV_DISCOVERYRESPONSE        = 129, ///< meshcop Discovery Response TLV
     OT_MESHCOP_TLV_JOINERADVERTISEMENT      = 241, ///< meshcop Joiner Advertisement TLV
 } otMeshcopTlvType;
+
+/**
+ * This function pointer is called when a response to a MGMT_SET request is received or times out.
+ *
+ * @param[in]  aResult   A result of the operation.
+ * @param[in]  aContext  A pointer to application-specific context.
+ *
+ * @retval  OT_ERROR_NONE              The request was accepted by the leader.
+ * @retval  OT_ERROR_REJECTED          The request was rejected by the leader.
+ * @retval  OT_ERROR_PARSE             An error occurred during parsing the response.
+ * @retval  OT_ERROR_ABORT             The request was reset by peer.
+ * @retval  OT_ERROR_RESPONSE_TIMEOUT  No response or acknowledgment received during timeout period.
+ *
+ */
+typedef void (*otDatasetMgmtSetCallback)(otError aResult, void *aContext);
 
 /**
  * This function indicates whether a valid network is present in the Active Operational Dataset or not.
@@ -330,7 +358,7 @@ otError otDatasetGetActiveTlvs(otInstance *aInstance, otOperationalDatasetTlvs *
  * If the dataset does not include an Active Timestamp, the dataset is only partially complete.
  *
  * If Thread is enabled on a device that has a partially complete Active Dataset, the device will attempt to attach to
- * an existing Thread network using any existing information in the dataset. Only the Thread Master Key is needed to
+ * an existing Thread network using any existing information in the dataset. Only the Thread Network Key is needed to
  * attach to a network.
  *
  * If channel is not included in the dataset, the device will send MLE Announce messages across different channels to
@@ -356,7 +384,7 @@ otError otDatasetSetActive(otInstance *aInstance, const otOperationalDataset *aD
  * If the dataset does not include an Active Timestamp, the dataset is only partially complete.
  *
  * If Thread is enabled on a device that has a partially complete Active Dataset, the device will attempt to attach to
- * an existing Thread network using any existing information in the dataset. Only the Thread Master Key is needed to
+ * an existing Thread network using any existing information in the dataset. Only the Thread Network Key is needed to
  * attach to a network.
  *
  * If channel is not included in the dataset, the device will send MLE Announce messages across different channels to
@@ -452,15 +480,20 @@ otError otDatasetSendMgmtActiveGet(otInstance *                          aInstan
  * @param[in]  aDataset   A pointer to operational dataset.
  * @param[in]  aTlvs      A pointer to TLVs.
  * @param[in]  aLength    The length of TLVs.
+ * @param[in]  aCallback  A pointer to a function that is called on response reception or timeout.
+ * @param[in]  aContext   A pointer to application-specific context for @p aCallback.
  *
  * @retval OT_ERROR_NONE          Successfully send the meshcop dataset command.
  * @retval OT_ERROR_NO_BUFS       Insufficient buffer space to send.
+ * @retval OT_ERROR_BUSY          A previous request is ongoing.
  *
  */
 otError otDatasetSendMgmtActiveSet(otInstance *                aInstance,
                                    const otOperationalDataset *aDataset,
                                    const uint8_t *             aTlvs,
-                                   uint8_t                     aLength);
+                                   uint8_t                     aLength,
+                                   otDatasetMgmtSetCallback    aCallback,
+                                   void *                      aContext);
 
 /**
  * This function sends MGMT_PENDING_GET.
@@ -488,15 +521,20 @@ otError otDatasetSendMgmtPendingGet(otInstance *                          aInsta
  * @param[in]  aDataset   A pointer to operational dataset.
  * @param[in]  aTlvs      A pointer to TLVs.
  * @param[in]  aLength    The length of TLVs.
+ * @param[in]  aCallback  A pointer to a function that is called on response reception or timeout.
+ * @param[in]  aContext   A pointer to application-specific context for @p aCallback.
  *
  * @retval OT_ERROR_NONE          Successfully send the meshcop dataset command.
  * @retval OT_ERROR_NO_BUFS       Insufficient buffer space to send.
+ * @retval OT_ERROR_BUSY          A previous request is ongoing.
  *
  */
 otError otDatasetSendMgmtPendingSet(otInstance *                aInstance,
                                     const otOperationalDataset *aDataset,
                                     const uint8_t *             aTlvs,
-                                    uint8_t                     aLength);
+                                    uint8_t                     aLength,
+                                    otDatasetMgmtSetCallback    aCallback,
+                                    void *                      aContext);
 
 /**
  * This function generates PSKc from a given pass-phrase, network name, and extended PAN ID.
@@ -516,6 +554,33 @@ otError otDatasetGeneratePskc(const char *           aPassPhrase,
                               const otNetworkName *  aNetworkName,
                               const otExtendedPanId *aExtPanId,
                               otPskc *               aPskc);
+
+/**
+ * This function sets an `otNetworkName` instance from a given null terminated C string.
+ *
+ * This function also validates that the given @p aNameString follows UTF-8 encoding and its length is not longer than
+ * `OT_NETWORK_NAME_MAX_SIZE`.
+ *
+ * @param[out] aNetworkName        A pointer to the `otNetworkName` to set.
+ * @param[in]  aNameString         A name C string.
+ *
+ * @retval OT_ERROR_NONE           Successfully set @p aNetworkName from @p aNameString.
+ * @retval OT_ERROR_INVALID_ARGS   @p aNameStrng is invalid (too long or does not follow UTF-8 encoding).
+ *
+ */
+otError otNetworkNameFromString(otNetworkName *aNetworkName, const char *aNameString);
+
+/**
+ * This function parses an Operational Dataset from a `otOperationalDatasetTlvs`.
+ *
+ * @param[in]  aDatasetTlvs  A pointer to dataset TLVs.
+ * @param[out] aDataset      A pointer to where the dataset will be placed.
+ *
+ * @retval OT_ERROR_NONE          Successfully set @p aDataset from @p aDatasetTlvs.
+ * @retval OT_ERROR_INVALID_ARGS  @p aDatasetTlvs is invalid.
+ *
+ */
+otError otDatasetParseTlvs(const otOperationalDatasetTlvs *aDatasetTlvs, otOperationalDataset *aDataset);
 
 /**
  * @}

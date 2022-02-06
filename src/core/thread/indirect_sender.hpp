@@ -36,6 +36,8 @@
 
 #include "openthread-core-config.h"
 
+#if OPENTHREAD_FTD
+
 #include "common/locator.hpp"
 #include "common/message.hpp"
 #include "common/non_copyable.hpp"
@@ -67,7 +69,7 @@ class IndirectSender : public InstanceLocator, public IndirectSenderBase, privat
 {
     friend class Instance;
     friend class DataPollHandler::Callbacks;
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
     friend class CslTxScheduler::Callbacks;
 #endif
 
@@ -168,11 +170,11 @@ public:
      * @param[in] aMessage  The message to update.
      * @param[in] aChild    The (sleepy) child for indirect transmission.
      *
-     * @retval OT_ERROR_NONE           Successfully removed the message for indirect transmission.
-     * @retval OT_ERROR_NOT_FOUND      The message was not scheduled for indirect transmission to the child.
+     * @retval kErrorNone          Successfully removed the message for indirect transmission.
+     * @retval kErrorNotFound      The message was not scheduled for indirect transmission to the child.
      *
      */
-    otError RemoveMessageFromSleepyChild(Message &aMessage, Child &aChild);
+    Error RemoveMessageFromSleepyChild(Message &aMessage, Child &aChild);
 
     /**
      * This method removes all added messages for a specific child and frees message (with no indirect/direct tx).
@@ -201,22 +203,16 @@ public:
     void HandleChildModeChange(Child &aChild, Mle::DeviceMode aOldMode);
 
 private:
-    enum
-    {
-        /**
-         * Indicates whether to set/enable 15.4 ack request in the MAC header of a supervision message.
-         *
-         */
-        kSupervisionMsgAckRequest = (OPENTHREAD_CONFIG_CHILD_SUPERVISION_MSG_NO_ACK_REQUEST == 0) ? true : false,
-    };
+    /**
+     * Indicates whether to set/enable 15.4 ack request in the MAC header of a supervision message.
+     *
+     */
+    static constexpr bool kSupervisionMsgAckRequest = (OPENTHREAD_CONFIG_CHILD_SUPERVISION_MSG_NO_ACK_REQUEST == 0);
 
     // Callbacks from DataPollHandler
-    otError PrepareFrameForChild(Mac::TxFrame &aFrame, FrameContext &aContext, Child &aChild);
-    void    HandleSentFrameToChild(const Mac::TxFrame &aFrame,
-                                   const FrameContext &aContext,
-                                   otError             aError,
-                                   Child &             aChild);
-    void    HandleFrameChangeDone(Child &aChild);
+    Error PrepareFrameForChild(Mac::TxFrame &aFrame, FrameContext &aContext, Child &aChild);
+    void  HandleSentFrameToChild(const Mac::TxFrame &aFrame, const FrameContext &aContext, Error aError, Child &aChild);
+    void  HandleFrameChangeDone(Child &aChild);
 
     void     UpdateIndirectMessage(Child &aChild);
     Message *FindIndirectMessage(Child &aChild, bool aSupervisionTypeOnly = false);
@@ -228,7 +224,7 @@ private:
     bool                  mEnabled;
     SourceMatchController mSourceMatchController;
     DataPollHandler       mDataPollHandler;
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
     CslTxScheduler mCslTxScheduler;
 #endif
 };
@@ -239,5 +235,7 @@ private:
  */
 
 } // namespace ot
+
+#endif // OPENTHREAD_FTD
 
 #endif // INDIRECT_SENDER_HPP_

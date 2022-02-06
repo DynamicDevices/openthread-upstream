@@ -37,7 +37,8 @@
 #if (OPENTHREAD_MTD || OPENTHREAD_FTD) && OPENTHREAD_CONFIG_OTNS_ENABLE
 
 #include "common/debug.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
+#include "common/logging.hpp"
 
 namespace ot {
 namespace Utils {
@@ -111,17 +112,19 @@ void Otns::EmitNeighborChange(NeighborTable::Event aEvent, const Neighbor &aNeig
 {
     switch (aEvent)
     {
-    case OT_NEIGHBOR_TABLE_EVENT_ROUTER_ADDED:
+    case NeighborTable::kRouterAdded:
         EmitStatus("router_added=%s", aNeighbor.GetExtAddress().ToString().AsCString());
         break;
-    case OT_NEIGHBOR_TABLE_EVENT_ROUTER_REMOVED:
+    case NeighborTable::kRouterRemoved:
         EmitStatus("router_removed=%s", aNeighbor.GetExtAddress().ToString().AsCString());
         break;
-    case OT_NEIGHBOR_TABLE_EVENT_CHILD_ADDED:
+    case NeighborTable::kChildAdded:
         EmitStatus("child_added=%s", aNeighbor.GetExtAddress().ToString().AsCString());
         break;
-    case OT_NEIGHBOR_TABLE_EVENT_CHILD_REMOVED:
+    case NeighborTable::kChildRemoved:
         EmitStatus("child_removed=%s", aNeighbor.GetExtAddress().ToString().AsCString());
+        break;
+    case NeighborTable::kChildModeChanged:
         break;
     }
 }
@@ -152,55 +155,55 @@ void Otns::EmitTransmit(const Mac::TxFrame &aFrame)
 void Otns::EmitDeviceMode(Mle::DeviceMode aMode)
 {
     EmitStatus("mode=%s%s%s", aMode.IsRxOnWhenIdle() ? "r" : "", aMode.IsFullThreadDevice() ? "d" : "",
-               aMode.IsFullNetworkData() ? "n" : "");
+               (aMode.GetNetworkDataType() == NetworkData::kFullSet) ? "n" : "");
 }
 
 void Otns::EmitCoapSend(const Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
 {
-    char    uriPath[Coap::Message::kMaxReceivedUriPath + 1];
-    otError error;
+    char  uriPath[Coap::Message::kMaxReceivedUriPath + 1];
+    Error error;
 
     SuccessOrExit(error = aMessage.ReadUriPathOptions(uriPath));
 
     EmitStatus("coap=send,%d,%d,%d,%s,%s,%d", aMessage.GetMessageId(), aMessage.GetType(), aMessage.GetCode(), uriPath,
                aMessageInfo.GetPeerAddr().ToString().AsCString(), aMessageInfo.GetPeerPort());
 exit:
-    if (error != OT_ERROR_NONE)
+    if (error != kErrorNone)
     {
-        otLogWarnCore("Otns::EmitCoapSend failed: %s", otThreadErrorToString(error));
+        otLogWarnCore("Otns::EmitCoapSend failed: %s", ErrorToString(error));
     }
 }
 
 void Otns::EmitCoapReceive(const Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
 {
-    char    uriPath[Coap::Message::kMaxReceivedUriPath + 1];
-    otError error = OT_ERROR_NONE;
+    char  uriPath[Coap::Message::kMaxReceivedUriPath + 1];
+    Error error = kErrorNone;
 
     SuccessOrExit(error = aMessage.ReadUriPathOptions(uriPath));
 
     EmitStatus("coap=recv,%d,%d,%d,%s,%s,%d", aMessage.GetMessageId(), aMessage.GetType(), aMessage.GetCode(), uriPath,
                aMessageInfo.GetPeerAddr().ToString().AsCString(), aMessageInfo.GetPeerPort());
 exit:
-    if (error != OT_ERROR_NONE)
+    if (error != kErrorNone)
     {
-        otLogWarnCore("Otns::EmitCoapReceive failed: %s", otThreadErrorToString(error));
+        otLogWarnCore("Otns::EmitCoapReceive failed: %s", ErrorToString(error));
     }
 }
 
-void Otns::EmitCoapSendFailure(otError aError, Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
+void Otns::EmitCoapSendFailure(Error aError, Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
 {
-    char    uriPath[Coap::Message::kMaxReceivedUriPath + 1];
-    otError error = OT_ERROR_NONE;
+    char  uriPath[Coap::Message::kMaxReceivedUriPath + 1];
+    Error error = kErrorNone;
 
     SuccessOrExit(error = aMessage.ReadUriPathOptions(uriPath));
 
     EmitStatus("coap=send_error,%d,%d,%d,%s,%s,%d,%s", aMessage.GetMessageId(), aMessage.GetType(), aMessage.GetCode(),
                uriPath, aMessageInfo.GetPeerAddr().ToString().AsCString(), aMessageInfo.GetPeerPort(),
-               otThreadErrorToString(aError));
+               ErrorToString(aError));
 exit:
-    if (error != OT_ERROR_NONE)
+    if (error != kErrorNone)
     {
-        otLogWarnCore("Otns::EmitCoapSendFailure failed: %s", otThreadErrorToString(error));
+        otLogWarnCore("Otns::EmitCoapSendFailure failed: %s", ErrorToString(error));
     }
 }
 

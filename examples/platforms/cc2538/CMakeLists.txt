@@ -35,7 +35,7 @@ endif()
 
 list(APPEND OT_PLATFORM_DEFINES
     "OPENTHREAD_CORE_CONFIG_PLATFORM_CHECK_FILE=\"openthread-core-cc2538-config-check.h\""
-    "OPENTHREAD_CONFIG_NCP_UART_ENABLE=1"
+    "OPENTHREAD_CONFIG_NCP_HDLC_ENABLE=1"
 )
 set(OT_PLATFORM_DEFINES ${OT_PLATFORM_DEFINES} PARENT_SCOPE)
 
@@ -53,13 +53,6 @@ add_library(openthread-cc2538
     logging.c
     uart.c
     $<TARGET_OBJECTS:openthread-platform-utils>
-)
-
-set_target_properties(
-    openthread-cc2538
-    PROPERTIES
-        C_STANDARD 99
-        CXX_STANDARD 11
 )
 
 target_link_libraries(openthread-cc2538

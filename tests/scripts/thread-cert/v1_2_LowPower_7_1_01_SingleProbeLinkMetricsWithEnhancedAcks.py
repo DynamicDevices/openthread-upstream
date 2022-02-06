@@ -47,21 +47,18 @@ class LowPower_7_1_01(thread_cert.TestCase):
             'version': '1.2',
             'name': 'LEADER',
             'mode': 'rdn',
-            'panid': 0xface,
             'allowlist': [SED_1, SSED_1],
         },
         SED_1: {
             'version': '1.2',
             'name': 'SED_1',
             'mode': '-',
-            'panid': 0xface,
             'allowlist': [LEADER],
         },
         SSED_1: {
             'version': '1.2',
             'name': 'SSED_1',
             'mode': '-',
-            'panid': 0xface,
             'allowlist': [LEADER],
         }
     }
@@ -84,8 +81,8 @@ class LowPower_7_1_01(thread_cert.TestCase):
 
         leader_addr = self.nodes[LEADER].get_ip6_address(ADDRESS_TYPE.LINK_LOCAL)
 
-        # Step 3 - Verify connectivity by instructing each device to sending an ICMPv6 Echo Request to the DUT
-        self.assertTrue(self.nodes[SED_1].ping(leader_addr, timeout=POLL_PERIOD))
+        # Step 3 - Verify connectivity by instructing each device to send an ICMPv6 Echo Request to the DUT
+        self.assertTrue(self.nodes[SED_1].ping(leader_addr, timeout=POLL_PERIOD * 2 / 1000))
         self.assertTrue(self.nodes[SSED_1].ping(leader_addr))
         self.simulator.go(5)
 
@@ -378,11 +375,11 @@ class LowPower_7_1_01(thread_cert.TestCase):
         # Step 19 - Leader automatically responds to the invalid query from SSED_1 with a failure
         # The DUT MUST send Link Metrics Management Response to SSED_1containing the following:
         # - MLE Link Metrics Management TLV
-        # -- Link Metrics Status Sub-TLV = 1 (Failure)
+        # -- Link Metrics Status Sub-TLV = 254 (Failure)
         pkts.filter_wpan_src64(LEADER) \
             .filter_wpan_dst64(SSED_1) \
             .filter_mle_cmd(consts.MLE_LINK_METRICS_MANAGEMENT_RESPONSE) \
-            .filter(lambda p: p.mle.tlv.link_status_sub_tlv == consts.LINK_METRICS_ENH_ACK_PROBING_REGISTER) \
+            .filter(lambda p: p.mle.tlv.link_status_sub_tlv == consts.LINK_METRICS_STATUS_OTHER_ERROR) \
             .must_next()
 
 

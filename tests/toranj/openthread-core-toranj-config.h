@@ -39,6 +39,10 @@
 #define OPENTHREAD_RADIO 0
 #endif
 
+#ifndef OPENTHREAD_RADIO
+#define OPENTHREAD_RADIO_CLI 0
+#endif
+
 /**
  * @def OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE
  *
@@ -46,6 +50,14 @@
  *
  */
 #define OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_UPTIME_ENABLE
+ *
+ * Define to 1 to enable tracking the uptime of OpenThread instance.
+ *
+ */
+#define OPENTHREAD_CONFIG_UPTIME_ENABLE 1
 
 /**
  * @def OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
@@ -104,12 +116,36 @@
 #define OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE 1
 
 /**
+ * @def OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE
+ *
+ * Define to 1 to enable Network Data Publisher.
+ *
+ */
+#define OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_TMF_ANYCAST_LOCATOR_ENABLE
+ *
+ * Define to 1 to enable TMF anycast locator functionality.
+ *
+ */
+#define OPENTHREAD_CONFIG_TMF_ANYCAST_LOCATOR_ENABLE 1
+
+/**
  * @def OPENTHREAD_CONFIG_LEGACY_ENABLE
  *
  * Define to 1 to enable legacy network support.
  *
  */
 #define OPENTHREAD_CONFIG_LEGACY_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_ECDSA_ENABLE
+ *
+ * Define to 1 to enable ECDSA support.
+ *
+ */
+#define OPENTHREAD_CONFIG_ECDSA_ENABLE 1
 
 /**
  * @def OPENTHREAD_CONFIG_JAM_DETECTION_ENABLE
@@ -249,14 +285,6 @@
 #define OPENTHREAD_CONFIG_MAC_FILTER_SIZE 80
 
 /**
- * @def OPENTHREAD_CONFIG_LOG_OUTPUT
- *
- * Selects if, and where the LOG output goes to.
- *
- */
-#define OPENTHREAD_CONFIG_LOG_OUTPUT OPENTHREAD_CONFIG_LOG_OUTPUT_APP
-
-/**
  * @def OPENTHREAD_CONFIG_LOG_LEVEL
  *
  * The log level (used at compile time).
@@ -273,12 +301,20 @@
 #define OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE 1
 
 /**
+ * @def OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME
+ *
+ * Define as 1 to prepend the current uptime to all log messages.
+ *
+ */
+#define OPENTHREAD_CONFIG_LOG_PREPEND_UPTIME 1
+
+/**
  * @def OPENTHREAD_CONFIG_LOG_PREPEND_LEVEL
  *
  * Define to prepend the log level to all log messages
  *
  */
-#define OPENTHREAD_CONFIG_LOG_PREPEND_LEVEL 0
+#define OPENTHREAD_CONFIG_LOG_PREPEND_LEVEL 1
 
 /**
  * @def OPENTHREAD_CONFIG_LOG_PREPEND_REGION
@@ -286,7 +322,7 @@
  * Define to prepend the log region to all log messages
  *
  */
-#define OPENTHREAD_CONFIG_LOG_PREPEND_REGION 0
+#define OPENTHREAD_CONFIG_LOG_PREPEND_REGION 1
 
 /**
  * @def OPENTHREAD_CONFIG_LOG_SUFFIX
@@ -305,12 +341,12 @@
 #define OPENTHREAD_CONFIG_LOG_PLATFORM 1
 
 /**
- * @def OPENTHREAD_CONFIG_NCP_UART_ENABLE
+ * @def OPENTHREAD_CONFIG_NCP_HDLC_ENABLE
  *
- * Define to 1 to enable NCP UART support.
+ * Define to 1 to enable NCP HDLC support.
  *
  */
-#define OPENTHREAD_CONFIG_NCP_UART_ENABLE 1
+#define OPENTHREAD_CONFIG_NCP_HDLC_ENABLE 1
 
 /**
  * @def OPENTHREAD_CONFIG_NCP_TX_BUFFER_SIZE
@@ -338,14 +374,6 @@
  *
  */
 #define OPENTHREAD_CONFIG_MLE_INFORM_PREVIOUS_PARENT_ON_REATTACH 1
-
-/**
- * @def OPENTHREAD_CONFIG_MLE_SEND_LINK_REQUEST_ON_ADV_TIMEOUT
- *
- * Define to 1 to send an MLE Link Request when MAX_NEIGHBOR_AGE is reached for a neighboring router.
- *
- */
-#define OPENTHREAD_CONFIG_MLE_SEND_LINK_REQUEST_ON_ADV_TIMEOUT 1
 
 /**
  * @def OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE
@@ -463,12 +491,44 @@
 #define OPENTHREAD_CONFIG_DNS_CLIENT_ENABLE 1
 
 /**
- * @def OPENTHREAD_CONFIG_POSIX_APP_TREL_INTERFACE_NAME
+ * @def OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE
  *
- * Defines the default interface name used for TREL UDP6 platform.
+ * Define to 1 to enable SRP Client support.
  *
  */
-#define OPENTHREAD_CONFIG_POSIX_APP_TREL_INTERFACE_NAME "trel"
+#define OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
+ *
+ * Define to 1 to enable SRP Server support.
+ *
+ */
+#define OPENTHREAD_CONFIG_SRP_SERVER_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_SRP_CLIENT_DOMAIN_NAME_CHANGE_ENABLE
+ *
+ * Define to 1 for the SRP client implementation to provides APIs to allow domain name to be set/changed.
+ *
+ */
+#define OPENTHREAD_CONFIG_SRP_CLIENT_DOMAIN_NAME_API_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_HISTORY_TRACKER_ENABLE
+ *
+ * Define as 1 to enable History Tracker module.
+ *
+ */
+#define OPENTHREAD_CONFIG_HISTORY_TRACKER_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE
+ *
+ * Define to 1 to enable DNS-SD Server support.
+ *
+ */
+#define OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE 1
 
 #if OPENTHREAD_RADIO
 /**

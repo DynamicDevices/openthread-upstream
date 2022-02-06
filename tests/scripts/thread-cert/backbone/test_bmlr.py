@@ -66,26 +66,22 @@ class BBR_5_11_01(thread_cert.TestCase):
             'allowlist': [SBBR, ROUTER1],
             'is_otbr': True,
             'version': '1.2',
-            'router_selection_jitter': 1,
         },
         SBBR: {
             'name': 'SBBR',
             'allowlist': [PBBR, ROUTER1],
             'is_otbr': True,
             'version': '1.2',
-            'router_selection_jitter': 1,
         },
         ROUTER1: {
             'name': 'ROUTER1',
             'allowlist': [PBBR, SBBR, COMMISSIONER],
             'version': '1.2',
-            'router_selection_jitter': 1,
         },
         COMMISSIONER: {
             'name': 'COMMISSIONER',
             'allowlist': [ROUTER1],
             'version': '1.2',
-            'router_selection_jitter': 1,
         }
     }
 
@@ -108,6 +104,8 @@ class BBR_5_11_01(thread_cert.TestCase):
 
         self.nodes[COMMISSIONER].start()
         self.wait_node_state(COMMISSIONER, 'router', 5)
+
+        self.wait_route_established(COMMISSIONER, PBBR)
 
         self.nodes[COMMISSIONER].commissioner_start()
         self.simulator.go(10)
@@ -191,11 +189,12 @@ class BBR_5_11_01(thread_cert.TestCase):
             thread_meshcop.tlv.ipv6_addr == ['{MA5}']
             and thread_nm.tlv.timeout == 0
         """)
-        # Verify PBBR not sends `/b/bmr` on the Backbone link for MA5.
-        pkts.filter_eth_src(PBBR_ETH).filter_coap_request('/b/bmr').filter(f"""
+        # Verify PBBR sends `/b/bmr` on the Backbone link for MA5 with timeout equal to zero.
+        pkts.filter_eth_src(PBBR_ETH).filter_coap_request('/b/bmr').must_next().must_verify(f"""
             thread_meshcop.tlv.ipv6_addr == ['{MA5}']
+            and thread_bl.tlv.timeout == 0
             and ipv6.src.is_link_local
-        """).must_not_next()
+        """)
 
 
 if __name__ == '__main__':

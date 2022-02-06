@@ -39,6 +39,7 @@
 #include <openthread/udp.h>
 #include <openthread/platform/udp.h>
 
+#include "common/as_core_type.hpp"
 #include "common/clearable.hpp"
 #include "common/linked_list.hpp"
 #include "common/locator.hpp"
@@ -59,6 +60,10 @@ class Udp;
  * @{
  *
  */
+
+#if OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE && OPENTHREAD_CONFIG_UDP_FORWARD_ENABLE
+#error "OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE and OPENTHREAD_CONFIG_UDP_FORWARD_ENABLE must not both be set."
+#endif
 
 /**
  * This class implements core UDP message handling.
@@ -92,7 +97,7 @@ public:
          * @returns A reference to the local socket address.
          *
          */
-        SockAddr &GetSockName(void) { return *static_cast<SockAddr *>(&mSockName); }
+        SockAddr &GetSockName(void) { return AsCoreType(&mSockName); }
 
         /**
          * This method returns the local socket address.
@@ -100,7 +105,7 @@ public:
          * @returns A reference to the local socket address.
          *
          */
-        const SockAddr &GetSockName(void) const { return *static_cast<const SockAddr *>(&mSockName); }
+        const SockAddr &GetSockName(void) const { return AsCoreType(&mSockName); }
 
         /**
          * This method returns the peer's socket address.
@@ -108,7 +113,7 @@ public:
          * @returns A reference to the peer's socket address.
          *
          */
-        SockAddr &GetPeerName(void) { return *static_cast<SockAddr *>(&mPeerName); }
+        SockAddr &GetPeerName(void) { return AsCoreType(&mPeerName); }
 
         /**
          * This method returns the peer's socket address.
@@ -116,7 +121,7 @@ public:
          * @returns A reference to the peer's socket address.
          *
          */
-        const SockAddr &GetPeerName(void) const { return *static_cast<const SockAddr *>(&mPeerName); }
+        const SockAddr &GetPeerName(void) const { return AsCoreType(&mPeerName); }
 
     private:
         bool Matches(const MessageInfo &aMessageInfo) const;
@@ -150,7 +155,7 @@ public:
          * @param[in]  aReserved  The number of header bytes to reserve after the UDP header.
          * @param[in]  aSettings  The message settings (default is used if not provided).
          *
-         * @returns A pointer to the message or nullptr if no buffers are available.
+         * @returns A pointer to the message or `nullptr` if no buffers are available.
          *
          */
         Message *NewMessage(uint16_t aReserved, const Message::Settings &aSettings = Message::Settings::GetDefault());
@@ -161,94 +166,93 @@ public:
          * @param[in]  aHandler  A pointer to a function that is called when receiving UDP messages.
          * @param[in]  aContext  A pointer to arbitrary context information.
          *
-         * @retval OT_ERROR_NONE     Successfully opened the socket.
-         * @retval OT_ERROR_FAILED   Failed to open the socket.
+         * @retval kErrorNone     Successfully opened the socket.
+         * @retval kErrorFailed   Failed to open the socket.
          *
          */
-        otError Open(otUdpReceive aHandler, void *aContext);
+        Error Open(otUdpReceive aHandler, void *aContext);
+
+        /**
+         * This method returns if the UDP socket is open.
+         *
+         * @returns If the UDP socket is open.
+         *
+         */
+        bool IsOpen(void) const;
 
         /**
          * This method binds the UDP socket.
          *
-         * @param[in]  aSockAddr    A reference to the socket address.
-         *
-         * @retval OT_ERROR_NONE            Successfully bound the socket.
-         * @retval OT_ERROR_INVALID_ARGS    Unable to bind to Thread network interface with the given address.
-         * @retval OT_ERROR_FAILED          Failed to bind UDP Socket.
-         *
-         */
-        otError Bind(const SockAddr &aSockAddr);
-
-        /**
-         * This method binds the UDP socket to a specified network interface.
-         *
+         * @param[in]  aSockAddr            A reference to the socket address.
          * @param[in]  aNetifIdentifier     The network interface identifier.
          *
-         * @retval OT_ERROR_NONE    Successfully bound to the network interface.
-         * @retval OT_ERROR_FAILED  Failed to bind to the network interface.
+         * @retval kErrorNone            Successfully bound the socket.
+         * @retval kErrorInvalidArgs     Unable to bind to Thread network interface with the given address.
+         * @retval kErrorFailed          Failed to bind UDP Socket.
          *
          */
-        otError BindToNetif(otNetifIdentifier aNetifIdentifier);
+        Error Bind(const SockAddr &aSockAddr, otNetifIdentifier aNetifIdentifier = OT_NETIF_THREAD);
 
         /**
          * This method binds the UDP socket.
          *
-         * @param[in]  aPort        A port number.
+         * @param[in]  aPort                A port number.
+         * @param[in]  aNetifIdentifier     The network interface identifier.
          *
-         * @retval OT_ERROR_NONE            Successfully bound the socket.
-         * @retval OT_ERROR_FAILED          Failed to bind UDP Socket.
+         * @retval kErrorNone            Successfully bound the socket.
+         * @retval kErrorFailed          Failed to bind UDP Socket.
          *
          */
-        otError Bind(uint16_t aPort);
+        Error Bind(uint16_t aPort, otNetifIdentifier aNetifIdentifier = OT_NETIF_THREAD);
 
         /**
          * This method binds the UDP socket.
          *
-         * @retval OT_ERROR_NONE    Successfully bound the socket.
-         * @retval OT_ERROR_FAILED  Failed to bind UDP Socket.
+         * @retval kErrorNone    Successfully bound the socket.
+         * @retval kErrorFailed  Failed to bind UDP Socket.
          *
          */
-        otError Bind(void) { return Bind(0); }
+        Error Bind(void) { return Bind(0); }
 
         /**
          * This method connects the UDP socket.
          *
          * @param[in]  aSockAddr  A reference to the socket address.
          *
-         * @retval OT_ERROR_NONE    Successfully connected the socket.
-         * @retval OT_ERROR_FAILED  Failed to connect UDP Socket.
+         * @retval kErrorNone    Successfully connected the socket.
+         * @retval kErrorFailed  Failed to connect UDP Socket.
          *
          */
-        otError Connect(const SockAddr &aSockAddr);
+        Error Connect(const SockAddr &aSockAddr);
 
         /**
          * This method connects the UDP socket.
          *
          * @param[in]  aPort        A port number.
          *
-         * @retval OT_ERROR_NONE    Successfully connected the socket.
-         * @retval OT_ERROR_FAILED  Failed to connect UDP Socket.
+         * @retval kErrorNone    Successfully connected the socket.
+         * @retval kErrorFailed  Failed to connect UDP Socket.
          *
          */
-        otError Connect(uint16_t aPort);
+        Error Connect(uint16_t aPort);
 
         /**
          * This method connects the UDP socket.
          *
-         * @retval OT_ERROR_NONE    Successfully connected the socket.
-         * @retval OT_ERROR_FAILED  Failed to connect UDP Socket.
+         * @retval kErrorNone    Successfully connected the socket.
+         * @retval kErrorFailed  Failed to connect UDP Socket.
          *
          */
-        otError Connect(void) { return Connect(0); }
+        Error Connect(void) { return Connect(0); }
 
         /**
          * This method closes the UDP socket.
          *
-         * @retval OT_ERROR_NONE    Successfully closed the UDP socket.
-         * @retval OT_ERROR_FAILED  Failed to close UDP Socket.
+         * @retval kErrorNone    Successfully closed the UDP socket.
+         * @retval kErrorFailed  Failed to close UDP Socket.
          *
          */
-        otError Close(void);
+        Error Close(void);
 
         /**
          * This method sends a UDP message.
@@ -256,12 +260,12 @@ public:
          * @param[in]  aMessage      The message to send.
          * @param[in]  aMessageInfo  The message info associated with @p aMessage.
          *
-         * @retval OT_ERROR_NONE          Successfully sent the UDP message.
-         * @retval OT_ERROR_INVALID_ARGS  If no peer is specified in @p aMessageInfo or by Connect().
-         * @retval OT_ERROR_NO_BUFS       Insufficient available buffer to add the UDP and IPv6 headers.
+         * @retval kErrorNone         Successfully sent the UDP message.
+         * @retval kErrorInvalidArgs  If no peer is specified in @p aMessageInfo or by Connect().
+         * @retval kErrorNoBufs       Insufficient available buffer to add the UDP and IPv6 headers.
          *
          */
-        otError SendTo(Message &aMessage, const MessageInfo &aMessageInfo);
+        Error SendTo(Message &aMessage, const MessageInfo &aMessageInfo);
 
 #if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
         /**
@@ -270,11 +274,11 @@ public:
          * @param[in]  aNetifIdentifier     The network interface identifier.
          * @param[in]  aAddress             The multicast group address.
          *
-         * @retval  OT_ERROR_NONE   Successfully joined the multicast group.
-         * @retval  OT_ERROR_FAILED Failed to join the multicast group.
+         * @retval  kErrorNone    Successfully joined the multicast group.
+         * @retval  kErrorFailed  Failed to join the multicast group.
          *
          */
-        otError JoinNetifMulticastGroup(otNetifIdentifier aNetifIdentifier, const Address &aAddress);
+        Error JoinNetifMulticastGroup(otNetifIdentifier aNetifIdentifier, const Address &aAddress);
 
         /**
          * This method configures the UDP socket to leave a multicast group on a Host network interface.
@@ -282,11 +286,11 @@ public:
          * @param[in]  aNetifIdentifier     The network interface identifier.
          * @param[in]  aAddress             The multicast group address.
          *
-         * @retval  OT_ERROR_NONE   Successfully left the multicast group.
-         * @retval  OT_ERROR_FAILED Failed to leave the multicast group.
+         * @retval  kErrorNone   Successfully left the multicast group.
+         * @retval  kErrorFailed Failed to leave the multicast group.
          *
          */
-        otError LeaveNetifMulticastGroup(otNetifIdentifier aNetifIdentifier, const Address &aAddress);
+        Error LeaveNetifMulticastGroup(otNetifIdentifier aNetifIdentifier, const Address &aAddress);
 #endif
     };
 
@@ -328,13 +332,10 @@ public:
     class Header
     {
     public:
-        enum : uint8_t
-        {
-            kSourcePortFieldOffset = 0, ///< The byte offset of Source Port field in UDP header.
-            kDestPortFieldOffset   = 2, ///< The byte offset of Destination Port field in UDP header.
-            kLengthFieldOffset     = 4, ///< The byte offset of Length field in UDP header.
-            kChecksumFieldOffset   = 6, ///< The byte offset of Checksum field in UDP header.
-        };
+        static constexpr uint16_t kSourcePortFieldOffset = 0; ///< Byte offset of Source Port field in UDP header.
+        static constexpr uint16_t kDestPortFieldOffset   = 2; ///< Byte offset of Destination Port field in UDP header.
+        static constexpr uint16_t kLengthFieldOffset     = 4; ///< Byte offset of Length field in UDP header.
+        static constexpr uint16_t kChecksumFieldOffset   = 6; ///< Byte offset of Checksum field in UDP header.
 
         /**
          * This method returns the UDP Source Port.
@@ -421,22 +422,22 @@ public:
      *
      * @param[in]  aReceiver  A reference to the UDP receiver.
      *
-     * @retval OT_ERROR_NONE    Successfully added the UDP receiver.
-     * @retval OT_ERROR_ALREADY The UDP receiver was already added.
+     * @retval kErrorNone    Successfully added the UDP receiver.
+     * @retval kErrorAlready The UDP receiver was already added.
      *
      */
-    otError AddReceiver(Receiver &aReceiver);
+    Error AddReceiver(Receiver &aReceiver);
 
     /**
      * This method removes a UDP receiver.
      *
      * @param[in]  aReceiver  A reference to the UDP receiver.
      *
-     * @retval OT_ERROR_NONE        Successfully removed the UDP receiver.
-     * @retval OT_ERROR_NOT_FOUND   The UDP receiver was not added.
+     * @retval kErrorNone       Successfully removed the UDP receiver.
+     * @retval kErrorNotFound   The UDP receiver was not added.
      *
      */
-    otError RemoveReceiver(Receiver &aReceiver);
+    Error RemoveReceiver(Receiver &aReceiver);
 
     /**
      * This method opens a UDP socket.
@@ -445,33 +446,35 @@ public:
      * @param[in]  aHandler  A pointer to a function that is called when receiving UDP messages.
      * @param[in]  aContext  A pointer to arbitrary context information.
      *
-     * @retval OT_ERROR_NONE     Successfully opened the socket.
-     * @retval OT_ERROR_FAILED   Failed to open the socket.
+     * @retval kErrorNone     Successfully opened the socket.
+     * @retval kErrorFailed   Failed to open the socket.
      *
      */
-    otError Open(SocketHandle &aSocket, otUdpReceive aHandler, void *aContext);
+    Error Open(SocketHandle &aSocket, otUdpReceive aHandler, void *aContext);
+
+    /**
+     * This method returns if a UDP socket is open.
+     *
+     * @param[in]  aSocket   A reference to the socket.
+     *
+     * @returns If the UDP socket is open.
+     *
+     */
+    bool IsOpen(const SocketHandle &aSocket) const { return mSockets.Contains(aSocket); }
 
     /**
      * This method binds a UDP socket.
      *
      * @param[in]  aSocket          A reference to the socket.
      * @param[in]  aSockAddr        A reference to the socket address.
+     * @param[in]  aNetifIdentifier The network interface identifier.
      *
-     * @retval OT_ERROR_NONE            Successfully bound the socket.
-     * @retval OT_ERROR_INVALID_ARGS    Unable to bind to Thread network interface with the given address.
-     * @retval OT_ERROR_FAILED          Failed to bind UDP Socket.
-     *
-     */
-    otError Bind(SocketHandle &aSocket, const SockAddr &aSockAddr);
-
-    /**
-     * This method binds a UDP socket to the Network interface.
-     *
-     * @param[in]  aSocket           A reference to the socket.
-     * @param[in]  aNetifIdentifier  The network interface identifier.
+     * @retval kErrorNone            Successfully bound the socket.
+     * @retval kErrorInvalidArgs     Unable to bind to Thread network interface with the given address.
+     * @retval kErrorFailed          Failed to bind UDP Socket.
      *
      */
-    void BindToNetif(SocketHandle &aSocket, otNetifIdentifier aNetifIdentifier);
+    Error Bind(SocketHandle &aSocket, const SockAddr &aSockAddr, otNetifIdentifier aNetifIdentifier);
 
     /**
      * This method connects a UDP socket.
@@ -479,22 +482,22 @@ public:
      * @param[in]  aSocket    A reference to the socket.
      * @param[in]  aSockAddr  A reference to the socket address.
      *
-     * @retval OT_ERROR_NONE    Successfully connected the socket.
-     * @retval OT_ERROR_FAILED  Failed to connect UDP Socket.
+     * @retval kErrorNone    Successfully connected the socket.
+     * @retval kErrorFailed  Failed to connect UDP Socket.
      *
      */
-    otError Connect(SocketHandle &aSocket, const SockAddr &aSockAddr);
+    Error Connect(SocketHandle &aSocket, const SockAddr &aSockAddr);
 
     /**
      * This method closes the UDP socket.
      *
      * @param[in]  aSocket    A reference to the socket.
      *
-     * @retval OT_ERROR_NONE    Successfully closed the UDP socket.
-     * @retval OT_ERROR_FAILED  Failed to close UDP Socket.
+     * @retval kErrorNone    Successfully closed the UDP socket.
+     * @retval kErrorFailed  Failed to close UDP Socket.
      *
      */
-    otError Close(SocketHandle &aSocket);
+    Error Close(SocketHandle &aSocket);
 
     /**
      * This method sends a UDP message using a socket.
@@ -503,12 +506,12 @@ public:
      * @param[in]  aMessage      The message to send.
      * @param[in]  aMessageInfo  The message info associated with @p aMessage.
      *
-     * @retval OT_ERROR_NONE          Successfully sent the UDP message.
-     * @retval OT_ERROR_INVALID_ARGS  If no peer is specified in @p aMessageInfo or by Connect().
-     * @retval OT_ERROR_NO_BUFS       Insufficient available buffer to add the UDP and IPv6 headers.
+     * @retval kErrorNone         Successfully sent the UDP message.
+     * @retval kErrorInvalidArgs  If no peer is specified in @p aMessageInfo or by Connect().
+     * @retval kErrorNoBufs       Insufficient available buffer to add the UDP and IPv6 headers.
      *
      */
-    otError SendTo(SocketHandle &aSocket, Message &aMessage, const MessageInfo &aMessageInfo);
+    Error SendTo(SocketHandle &aSocket, Message &aMessage, const MessageInfo &aMessageInfo);
 
     /**
      * This method returns a new ephemeral port.
@@ -524,7 +527,7 @@ public:
      * @param[in]  aReserved  The number of header bytes to reserve after the UDP header.
      * @param[in]  aSettings  The message settings.
      *
-     * @returns A pointer to the message or nullptr if no buffers are available.
+     * @returns A pointer to the message or `nullptr` if no buffers are available.
      *
      */
     Message *NewMessage(uint16_t aReserved, const Message::Settings &aSettings = Message::Settings::GetDefault());
@@ -536,11 +539,11 @@ public:
      * @param[in]  aMessageInfo  A reference to the message info associated with @p aMessage.
      * @param[in]  aIpProto      The Internet Protocol value.
      *
-     * @retval OT_ERROR_NONE     Successfully enqueued the message into an output interface.
-     * @retval OT_ERROR_NO_BUFS  Insufficient available buffer to add the IPv6 headers.
+     * @retval kErrorNone    Successfully enqueued the message into an output interface.
+     * @retval kErrorNoBufs  Insufficient available buffer to add the IPv6 headers.
      *
      */
-    otError SendDatagram(Message &aMessage, MessageInfo &aMessageInfo, uint8_t aIpProto);
+    Error SendDatagram(Message &aMessage, MessageInfo &aMessageInfo, uint8_t aIpProto);
 
     /**
      * This method handles a received UDP message.
@@ -548,11 +551,11 @@ public:
      * @param[in]  aMessage      A reference to the UDP message to process.
      * @param[in]  aMessageInfo  A reference to the message info associated with @p aMessage.
      *
-     * @retval OT_ERROR_NONE  Successfully processed the UDP message.
-     * @retval OT_ERROR_DROP  Could not fully process the UDP message.
+     * @retval kErrorNone  Successfully processed the UDP message.
+     * @retval kErrorDrop  Could not fully process the UDP message.
      *
      */
-    otError HandleMessage(Message &aMessage, MessageInfo &aMessageInfo);
+    Error HandleMessage(Message &aMessage, MessageInfo &aMessageInfo);
 
     /**
      * This method handles a received UDP message with offset set to the payload.
@@ -586,17 +589,42 @@ public:
     }
 #endif
 
+    /**
+     * This method returns whether a udp port is being used by OpenThread or any of it's optional
+     * features, e.g. CoAP API.
+     *
+     * @param[in]   aPort       The udp port
+     *
+     * @retval True when port is used by the OpenThread.
+     * @retval False when the port is not used by OpenThread.
+     *
+     */
+    bool IsPortInUse(uint16_t aPort) const;
+
+    /**
+     * This method returns whether a udp port belongs to the platform or the stack.
+     *
+     * @param[in]   aPort       The udp port
+     *
+     * @retval True when the port belongs to the platform.
+     * @retval False when the port belongs to the stack.
+     *
+     */
+    bool ShouldUsePlatformUdp(uint16_t aPort) const;
+
 private:
-    enum
-    {
-        kDynamicPortMin = 49152, ///< Service Name and Transport Protocol Port Number Registry
-        kDynamicPortMax = 65535, ///< Service Name and Transport Protocol Port Number Registry
-    };
+    static constexpr uint16_t kDynamicPortMin = 49152; // Service Name and Transport Protocol Port Number Registry
+    static constexpr uint16_t kDynamicPortMax = 65535; // Service Name and Transport Protocol Port Number Registry
+
+    // Reserved range for use by SRP server
+    static constexpr uint16_t kSrpServerPortMin = OPENTHREAD_CONFIG_SRP_SERVER_UDP_PORT_MIN;
+    static constexpr uint16_t kSrpServerPortMax = OPENTHREAD_CONFIG_SRP_SERVER_UDP_PORT_MAX;
+
+    static bool IsPortReserved(uint16_t aPort);
 
     void AddSocket(SocketHandle &aSocket);
     void RemoveSocket(SocketHandle &aSocket);
 #if OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE
-    bool ShouldUsePlatformUdp(uint16_t aPort) const;
     bool ShouldUsePlatformUdp(const SocketHandle &aSocket) const;
 #endif
 
@@ -624,6 +652,10 @@ private:
  */
 
 } // namespace Ip6
+
+DefineCoreType(otUdpSocket, Ip6::Udp::SocketHandle);
+DefineCoreType(otUdpReceiver, Ip6::Udp::Receiver);
+
 } // namespace ot
 
 #endif // UDP6_HPP_

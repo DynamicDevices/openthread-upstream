@@ -124,19 +124,23 @@ typedef enum otLogRegion
     OT_LOG_REGION_NET_DATA = 4,  ///< Network Data
     OT_LOG_REGION_ICMP     = 5,  ///< ICMPv6
     OT_LOG_REGION_IP6      = 6,  ///< IPv6
-    OT_LOG_REGION_MAC      = 7,  ///< IEEE 802.15.4 MAC
-    OT_LOG_REGION_MEM      = 8,  ///< Memory
-    OT_LOG_REGION_NCP      = 9,  ///< NCP
-    OT_LOG_REGION_MESH_COP = 10, ///< Mesh Commissioning Protocol
-    OT_LOG_REGION_NET_DIAG = 11, ///< Network Diagnostic
-    OT_LOG_REGION_PLATFORM = 12, ///< Platform
-    OT_LOG_REGION_COAP     = 13, ///< CoAP
-    OT_LOG_REGION_CLI      = 14, ///< CLI
-    OT_LOG_REGION_CORE     = 15, ///< OpenThread Core
-    OT_LOG_REGION_UTIL     = 16, ///< Utility module
-    OT_LOG_REGION_BBR      = 17, ///< Backbone Router (available since Thread 1.2)
-    OT_LOG_REGION_MLR      = 18, ///< Multicast Listener Registration (available since Thread 1.2)
-    OT_LOG_REGION_DUA      = 19, ///< Domain Unicast Address (available since Thread 1.2)
+    OT_LOG_REGION_TCP      = 7,  ///< TCP
+    OT_LOG_REGION_MAC      = 8,  ///< IEEE 802.15.4 MAC
+    OT_LOG_REGION_MEM      = 9,  ///< Memory
+    OT_LOG_REGION_NCP      = 10, ///< NCP
+    OT_LOG_REGION_MESH_COP = 11, ///< Mesh Commissioning Protocol
+    OT_LOG_REGION_NET_DIAG = 12, ///< Network Diagnostic
+    OT_LOG_REGION_PLATFORM = 13, ///< Platform
+    OT_LOG_REGION_COAP     = 14, ///< CoAP
+    OT_LOG_REGION_CLI      = 15, ///< CLI
+    OT_LOG_REGION_CORE     = 16, ///< OpenThread Core
+    OT_LOG_REGION_UTIL     = 17, ///< Utility module
+    OT_LOG_REGION_BBR      = 18, ///< Backbone Router (available since Thread 1.2)
+    OT_LOG_REGION_MLR      = 19, ///< Multicast Listener Registration (available since Thread 1.2)
+    OT_LOG_REGION_DUA      = 20, ///< Domain Unicast Address (available since Thread 1.2)
+    OT_LOG_REGION_BR       = 21, ///< Border Router
+    OT_LOG_REGION_SRP      = 22, ///< Service Registration Protocol (SRP)
+    OT_LOG_REGION_DNS      = 23, ///< DNS
     OT_LOG_REGION_MQTTSN   = 30, ///< MQTT-SN module
 } otLogRegion;
 
@@ -153,9 +157,6 @@ void otPlatLog(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aFormat
 
 /**
  * This (optional) platform function outputs a prepared log line.
- *
- * This platform function is used by OpenThread core when `OPENTHREAD_CONFIG_LOG_DEFINE_AS_MACRO_ONLY` is not enabled
- * (in this case, the OT core itself will prepare a full log line).
  *
  * Note that this function is optional and if not provided by platform layer, a default (weak) implementation is
  * provided and used by OpenThread core as `otPlatLog(aLogLevel, aLogResion, "%s", aLogLine)`.

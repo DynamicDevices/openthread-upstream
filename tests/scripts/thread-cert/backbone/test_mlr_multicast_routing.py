@@ -79,7 +79,6 @@ class TestMlr(thread_cert.TestCase):
             'allowlist': [SBBR, ROUTER, LEADER],
             'is_otbr': True,
             'version': '1.2',
-            'router_selection_jitter': 1,
             'bbr_registration_jitter': BBR_REGISTRATION_JITTER,
         },
         SBBR: {
@@ -87,20 +86,17 @@ class TestMlr(thread_cert.TestCase):
             'allowlist': [PBBR, ROUTER, LEADER],
             'is_otbr': True,
             'version': '1.2',
-            'router_selection_jitter': 1,
             'bbr_registration_jitter': BBR_REGISTRATION_JITTER,
         },
         ROUTER: {
             'name': 'ROUTER',
             'allowlist': [PBBR, SBBR, LEADER, FED, MED, SED],
             'version': '1.2',
-            'router_selection_jitter': 1,
         },
         LEADER: {
             'name': 'LEADER',
             'allowlist': [PBBR, SBBR, ROUTER],
             'version': '1.2',
-            'router_selection_jitter': 1,
         },
         FED: {
             'name': 'FED',
@@ -215,9 +211,6 @@ class TestMlr(thread_cert.TestCase):
         # Device unsubscribes MA
         self.nodes[nodeid].del_ipmaddr(ma)
         self.simulator.go(1)
-
-        # Verify MA is not reachable from Host after unsubscribed
-        self.assertFalse(self.nodes[HOST].ping(ma, backbone=True, ttl=10))
 
 
 if __name__ == '__main__':

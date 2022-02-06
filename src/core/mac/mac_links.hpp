@@ -180,7 +180,8 @@ public:
         mTxFrame802154.SetIsARetransmission(false);
         mTxFrame802154.SetIsSecurityProcessed(false);
         mTxFrame802154.SetCsmaCaEnabled(true); // Set to true by default, only set to `false` for CSL transmission
-#if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+        mTxFrame802154.SetIsHeaderUpdated(false);
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
         mTxFrame802154.SetTxDelay(0);
         mTxFrame802154.SetTxDelayBaseTime(0);
 #endif
@@ -190,6 +191,7 @@ public:
         mTxFrameTrel.SetIsARetransmission(false);
         mTxFrameTrel.SetIsSecurityProcessed(false);
         mTxFrameTrel.SetCsmaCaEnabled(true);
+        mTxFrameTrel.SetIsHeaderUpdated(false);
 #endif
 
 #if OPENTHREAD_CONFIG_MULTI_RADIO
@@ -289,10 +291,7 @@ class Links : public InstanceLocator
     friend class ot::Instance;
 
 public:
-    enum
-    {
-        kInvalidRssiValue = SubMac::kInvalidRssiValue, ///< Invalid Received Signal Strength Indicator (RSSI) value.
-    };
+    static const int8_t kInvalidRssiValue = SubMac::kInvalidRssiValue; ///< Invalid RSSI value.
 
     /**
      * This constructor initializes the `Links` object.
@@ -512,11 +511,7 @@ public:
     void Send(void)
     {
 #if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
-        {
-            otError error = mSubMac.Send();
-            OT_ASSERT(error == OT_ERROR_NONE);
-            OT_UNUSED_VARIABLE(error);
-        }
+        SuccessOrAssert(mSubMac.Send());
 #endif
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
         mTrel.Send();
@@ -576,12 +571,12 @@ public:
      * @param[in] aScanChannel   The channel to perform the energy scan on.
      * @param[in] aScanDuration  The duration, in milliseconds, for the channel to be scanned.
      *
-     * @retval OT_ERROR_NONE             Successfully started scanning the channel.
-     * @retval OT_ERROR_INVALID_STATE    The radio was disabled or transmitting.
-     * @retval OT_ERROR_NOT_IMPLEMENTED  Energy scan is not supported by radio link.
+     * @retval kErrorNone            Successfully started scanning the channel.
+     * @retval kErrorInvalidState    The radio was disabled or transmitting.
+     * @retval kErrorNotImplemented  Energy scan is not supported by radio link.
      *
      */
-    otError EnergyScan(uint8_t aScanChannel, uint16_t aScanDuration)
+    Error EnergyScan(uint8_t aScanChannel, uint16_t aScanDuration)
     {
         OT_UNUSED_VARIABLE(aScanChannel);
         OT_UNUSED_VARIABLE(aScanDuration);
@@ -590,7 +585,7 @@ public:
 #if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
             mSubMac.EnergyScan(aScanChannel, aScanDuration);
 #else
-            OT_ERROR_NOT_IMPLEMENTED;
+            kErrorNotImplemented;
 #endif
     }
 
@@ -634,7 +629,7 @@ public:
      * @returns A reference to the current MAC key.
      *
      */
-    const Key *GetCurrentMacKey(const Frame &aFrame) const;
+    const KeyMaterial *GetCurrentMacKey(const Frame &aFrame) const;
 
     /**
      * This method returns a reference to the temporary MAC key (for Key Mode 1) for a given Frame based on a given
@@ -646,7 +641,7 @@ public:
      * @returns A reference to the temporary MAC key.
      *
      */
-    const Key *GetTemporaryMacKey(const Frame &aFrame, uint32_t aKeySequence) const;
+    const KeyMaterial *GetTemporaryMacKey(const Frame &aFrame, uint32_t aKeySequence) const;
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     /**
@@ -654,18 +649,15 @@ public:
      *
      * @param[in] TxFrame  The `TxFrame` from which to get the counter value.
      *
-     * @retval OT_ERROR_NONE             If successful.
-     * @retval OT_ERROR_INVALID_STATE    If the raw link-layer isn't enabled.
+     * @retval kErrorNone            If successful.
+     * @retval kErrorInvalidState    If the raw link-layer isn't enabled.
      *
      */
     void SetMacFrameCounter(TxFrame &aFrame);
 #endif
 
 private:
-    enum
-    {
-        kDefaultNoiseFloor = -100,
-    };
+    static constexpr int8_t kDefaultNoiseFloor = -100;
 
     SubMac mSubMac;
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE

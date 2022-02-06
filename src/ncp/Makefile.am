@@ -37,12 +37,14 @@ EXTRA_DIST                                        = \
 
 lib_LIBRARIES                                     = $(NULL)
 
+if OPENTHREAD_ENABLE_NCP
 if OPENTHREAD_ENABLE_FTD
 lib_LIBRARIES                                    += libopenthread-ncp-ftd.a
 endif
 
 if OPENTHREAD_ENABLE_MTD
 lib_LIBRARIES                                    += libopenthread-ncp-mtd.a
+endif
 endif
 
 if OPENTHREAD_ENABLE_RADIO_ONLY
@@ -77,6 +79,7 @@ libopenthread_ncp_ftd_a_CPPFLAGS                         = \
 
 libopenthread_rcp_a_CPPFLAGS                             = \
     -DOPENTHREAD_RADIO=1                                   \
+    -DOPENTHREAD_RADIO_CLI=0                               \
     -DOPENTHREAD_FTD=0                                     \
     -DOPENTHREAD_MTD=0                                     \
     -DOPENTHREAD_SPINEL_CONFIG_OPENTHREAD_MESSAGE_ENABLE=0 \
@@ -110,8 +113,8 @@ COMMON_SOURCES                                    = \
     ncp_config.h                                    \
     ncp_spi.cpp                                     \
     ncp_spi.hpp                                     \
-    ncp_uart.cpp                                    \
-    ncp_uart.hpp                                    \
+    ncp_hdlc.cpp                                    \
+    ncp_hdlc.hpp                                    \
     $(NULL)
 
 if OPENTHREAD_ENABLE_NCP_VENDOR_HOOK

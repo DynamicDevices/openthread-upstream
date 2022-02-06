@@ -36,7 +36,6 @@
 #include <inttypes.h>
 
 #include "cli/cli.hpp"
-#include "utils/parse_cmdline.hpp"
 
 #if OPENTHREAD_CONFIG_JOINER_ENABLE
 
@@ -45,107 +44,114 @@ namespace Cli {
 
 constexpr Joiner::Command Joiner::sCommands[];
 
-otError Joiner::ProcessDiscerner(uint8_t aArgsLength, char *aArgs[])
+otError Joiner::ProcessDiscerner(Arg aArgs[])
 {
-    otError error = OT_ERROR_NONE;
+    otError error = OT_ERROR_INVALID_ARGS;
 
-    if (aArgsLength == 2)
+    if (aArgs[0].IsEmpty())
+    {
+        const otJoinerDiscerner *discerner = otJoinerGetDiscerner(GetInstancePtr());
+
+        VerifyOrExit(discerner != nullptr, error = OT_ERROR_NOT_FOUND);
+
+        OutputLine("0x%llx/%u", static_cast<unsigned long long>(discerner->mValue), discerner->mLength);
+        error = OT_ERROR_NONE;
+    }
+    else
     {
         otJoinerDiscerner discerner;
 
         memset(&discerner, 0, sizeof(discerner));
-        if (strcmp(aArgs[1], "clear") == 0)
+
+        if (aArgs[0] == "clear")
         {
-            SuccessOrExit(error = otJoinerSetDiscerner(mInterpreter.mInstance, nullptr));
+            error = otJoinerSetDiscerner(GetInstancePtr(), nullptr);
         }
         else
         {
-            VerifyOrExit(OT_ERROR_NONE == Interpreter::ParseJoinerDiscerner(aArgs[1], discerner),
-                         error = OT_ERROR_INVALID_ARGS);
-            SuccessOrExit(error = otJoinerSetDiscerner(mInterpreter.mInstance, &discerner));
+            VerifyOrExit(aArgs[1].IsEmpty());
+            SuccessOrExit(Interpreter::ParseJoinerDiscerner(aArgs[0], discerner));
+            error = otJoinerSetDiscerner(GetInstancePtr(), &discerner);
         }
-    }
-    else if (aArgsLength == 1)
-    {
-        const otJoinerDiscerner *discerner = otJoinerGetDiscerner(mInterpreter.mInstance);
-
-        VerifyOrExit(discerner != nullptr, error = OT_ERROR_NOT_FOUND);
-
-        mInterpreter.OutputLine("0x%llx/%u", static_cast<unsigned long long>(discerner->mValue), discerner->mLength);
-    }
-    else
-    {
-        error = OT_ERROR_INVALID_ARGS;
     }
 
 exit:
     return error;
 }
 
-otError Joiner::ProcessHelp(uint8_t aArgsLength, char *aArgs[])
+otError Joiner::ProcessHelp(Arg aArgs[])
 {
-    OT_UNUSED_VARIABLE(aArgsLength);
     OT_UNUSED_VARIABLE(aArgs);
 
     for (const Command &command : sCommands)
     {
-        mInterpreter.OutputLine(command.mName);
+        OutputLine(command.mName);
     }
 
     return OT_ERROR_NONE;
 }
 
-otError Joiner::ProcessId(uint8_t aArgsLength, char *aArgs[])
+otError Joiner::ProcessId(Arg aArgs[])
 {
-    OT_UNUSED_VARIABLE(aArgsLength);
     OT_UNUSED_VARIABLE(aArgs);
 
-    mInterpreter.OutputExtAddress(*otJoinerGetId(mInterpreter.mInstance));
-    mInterpreter.OutputLine("");
+    OutputExtAddressLine(*otJoinerGetId(GetInstancePtr()));
 
     return OT_ERROR_NONE;
 }
 
-otError Joiner::ProcessStart(uint8_t aArgsLength, char *aArgs[])
+otError Joiner::ProcessStart(Arg aArgs[])
 {
-    otError     error;
-    const char *provisioningUrl = nullptr;
+    otError error;
 
-    VerifyOrExit(aArgsLength > 1, error = OT_ERROR_INVALID_ARGS);
+    VerifyOrExit(!aArgs[0].IsEmpty(), error = OT_ERROR_INVALID_ARGS);
 
-    if (aArgsLength > 2)
-    {
-        provisioningUrl = aArgs[2];
-    }
-
-    error = otJoinerStart(mInterpreter.mInstance, aArgs[1], provisioningUrl, PACKAGE_NAME,
-                          OPENTHREAD_CONFIG_PLATFORM_INFO, PACKAGE_VERSION, nullptr, &Joiner::HandleCallback, this);
+    error = otJoinerStart(GetInstancePtr(),
+                          aArgs[0].GetCString(),           // aPskd
+                          aArgs[1].GetCString(),           // aProvisioningUrl (`nullptr` if aArgs[1] is empty)
+                          PACKAGE_NAME,                    // aVendorName
+                          OPENTHREAD_CONFIG_PLATFORM_INFO, // aVendorModel
+                          PACKAGE_VERSION,                 // aVendorSwVersion
+                          nullptr,                         // aVendorData
+                          &Joiner::HandleCallback, this);
 
 exit:
     return error;
 }
 
-otError Joiner::ProcessStop(uint8_t aArgsLength, char *aArgs[])
+otError Joiner::ProcessStop(Arg aArgs[])
 {
-    OT_UNUSED_VARIABLE(aArgsLength);
     OT_UNUSED_VARIABLE(aArgs);
 
-    otJoinerStop(mInterpreter.mInstance);
+    otJoinerStop(GetInstancePtr());
 
     return OT_ERROR_NONE;
 }
 
-otError Joiner::Process(uint8_t aArgsLength, char *aArgs[])
+otError Joiner::ProcessState(Arg aArgs[])
+{
+    OT_UNUSED_VARIABLE(aArgs);
+
+    OutputLine("%s", otJoinerStateToString(otJoinerGetState(GetInstancePtr())));
+
+    return OT_ERROR_NONE;
+}
+
+otError Joiner::Process(Arg aArgs[])
 {
     otError        error = OT_ERROR_INVALID_COMMAND;
     const Command *command;
 
-    VerifyOrExit(aArgsLength != 0, IgnoreError(ProcessHelp(0, nullptr)));
+    if (aArgs[0].IsEmpty())
+    {
+        IgnoreError(ProcessHelp(aArgs));
+        ExitNow();
+    }
 
-    command = Utils::LookupTable::Find(aArgs[0], sCommands);
+    command = BinarySearch::Find(aArgs[0].GetCString(), sCommands);
     VerifyOrExit(command != nullptr);
 
-    error = (this->*command->mHandler)(aArgsLength, aArgs);
+    error = (this->*command->mHandler)(aArgs + 1);
 
 exit:
     return error;
@@ -161,11 +167,11 @@ void Joiner::HandleCallback(otError aError)
     switch (aError)
     {
     case OT_ERROR_NONE:
-        mInterpreter.OutputLine("Join success");
+        OutputLine("Join success");
         break;
 
     default:
-        mInterpreter.OutputLine("Join failed [%s]", otThreadErrorToString(aError));
+        OutputLine("Join failed [%s]", otThreadErrorToString(aError));
         break;
     }
 }

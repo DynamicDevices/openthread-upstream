@@ -192,16 +192,16 @@ void VerifyChildTableContent(ChildTable &aTable, uint16_t aChildListLength, cons
 
             // Verify that when iterator is done, it points to `nullptr`.
 
-            VerifyOrQuit(iter.GetChild() == nullptr, "iterator GetChild() failed");
+            VerifyOrQuit(iter.GetChild() == nullptr);
 
             iter++;
             VerifyOrQuit(iter.IsDone(), "iterator Advance() (after iterator is done) failed");
-            VerifyOrQuit(iter.GetChild() == nullptr, "iterator GetChild() failed");
+            VerifyOrQuit(iter.GetChild() == nullptr);
 
             // Verify that the number of children matches the number of entries we get from iterator.
 
-            VerifyOrQuit(aTable.GetNumChildren(filter) == numChildren, "GetNumChildren() failed");
-            VerifyOrQuit(aTable.HasChildren(filter) == (numChildren != 0), "HasChildren() failed");
+            VerifyOrQuit(aTable.GetNumChildren(filter) == numChildren);
+            VerifyOrQuit(aTable.HasChildren(filter) == (numChildren != 0));
 
             // Verify that there is no missing or extra entry between the expected list
             // and what was observed/returned by the iterator.
@@ -295,10 +295,10 @@ void TestChildTable(void)
     uint16_t testNumAllowedChildren = 2;
 
     ChildTable *table;
-    otError     error;
+    Error       error;
 
     sInstance = testInitInstance();
-    VerifyOrQuit(sInstance != nullptr, "Null instance");
+    VerifyOrQuit(sInstance != nullptr);
 
     table = &sInstance->Get<ChildTable>();
 
@@ -310,8 +310,8 @@ void TestChildTable(void)
 
     for (Child::StateFilter filter : kAllFilters)
     {
-        VerifyOrQuit(table->HasChildren(filter) == false, "HasChildren() failed after init");
-        VerifyOrQuit(table->GetNumChildren(filter) == 0, "GetNumChildren() failed after init");
+        VerifyOrQuit(table->HasChildren(filter) == false);
+        VerifyOrQuit(table->GetNumChildren(filter) == 0);
     }
 
     printf(" -- PASS\n");
@@ -364,18 +364,18 @@ void TestChildTable(void)
     printf("Test Get/SetMaxChildrenAllowed");
 
     error = table->SetMaxChildrenAllowed(kMaxChildren - 1);
-    VerifyOrQuit(error == OT_ERROR_INVALID_STATE, "SetMaxChildrenAllowed() should fail when table is not empty");
+    VerifyOrQuit(error == kErrorInvalidState, "SetMaxChildrenAllowed() should fail when table is not empty");
 
     table->Clear();
     error = table->SetMaxChildrenAllowed(kMaxChildren + 1);
-    VerifyOrQuit(error == OT_ERROR_INVALID_ARGS, "SetMaxChildrenAllowed() did not fail with an invalid arg");
+    VerifyOrQuit(error == kErrorInvalidArgs, "SetMaxChildrenAllowed() did not fail with an invalid arg");
 
     error = table->SetMaxChildrenAllowed(0);
-    VerifyOrQuit(error == OT_ERROR_INVALID_ARGS, "SetMaxChildrenAllowed() did not fail with an invalid arg");
+    VerifyOrQuit(error == kErrorInvalidArgs, "SetMaxChildrenAllowed() did not fail with an invalid arg");
 
     error = table->SetMaxChildrenAllowed(testNumAllowedChildren);
-    VerifyOrQuit(error == OT_ERROR_NONE, "SetMaxChildrenAllowed() failed");
-    VerifyOrQuit(table->GetMaxChildrenAllowed() == testNumAllowedChildren, "GetMaxChildrenAllowed() failed");
+    VerifyOrQuit(error == kErrorNone, "SetMaxChildrenAllowed() failed");
+    VerifyOrQuit(table->GetMaxChildrenAllowed() == testNumAllowedChildren);
 
     for (uint16_t num = 0; num < testNumAllowedChildren; num++)
     {

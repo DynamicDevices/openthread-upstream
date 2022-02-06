@@ -35,6 +35,7 @@ DEBUG                                ?= 0
 
 # Enable most features by default to cover most code
 
+ANYCAST_LOCATOR                      ?= 1
 BORDER_AGENT                         ?= 1
 BORDER_ROUTER                        ?= 1
 COAP                                 ?= 1
@@ -45,12 +46,15 @@ CHANNEL_MANAGER                      ?= 1
 CHANNEL_MONITOR                      ?= 1
 CHILD_SUPERVISION                    ?= 1
 DAEMON                               ?= 0
+DATASET_UPDATER                      ?= 1
 DHCP6_CLIENT                         ?= 1
 DHCP6_SERVER                         ?= 1
 DIAGNOSTIC                           ?= 1
 DNS_CLIENT                           ?= 1
+DNSSD_SERVER                         ?= 1
 DYNAMIC_LOG_LEVEL                    ?= 1
 ECDSA                                ?= 1
+HISTORY_TRACKER                      ?= 1
 IP6_FRAGM                            ?= 1
 JAM_DETECTION                        ?= 1
 JOINER                               ?= 1
@@ -61,17 +65,22 @@ MAC_FILTER                           ?= 1
 MAX_POWER_TABLE                      ?= 1
 MTD_NETDIAG                          ?= 1
 MQTT                                 ?= 1
+NEIGHBOR_DISCOVERY_AGENT             ?= 1
+NETDATA_PUBLISHER                    ?= 1
+PING_SENDER                          ?= 1
 READLINE                             ?= readline
 REFERENCE_DEVICE                     ?= 1
 SERVICE                              ?= 1
 SNTP_CLIENT                          ?= 1
+SRP_CLIENT                           ?= 1
+SRP_SERVER                           ?= 1
 ifneq ($(DAEMON),1)
 UDP_FORWARD                          ?= 1
 endif
+UPTIME                               ?= 1
 
 COMMONCFLAGS                         := \
     -g                                  \
-    -DOPENTHREAD_CONFIG_UART_CLI_RAW=1  \
     $(NULL)
 
 # If the user has asserted COVERAGE, alter the configuration options
@@ -80,7 +89,6 @@ COMMONCFLAGS                         := \
 configure_OPTIONS                   = \
     --enable-cli                      \
     --enable-ftd                      \
-    --enable-ncp                      \
     --with-platform=posix             \
     $(NULL)
 
@@ -110,7 +118,6 @@ endif
 
 ifneq ($(READLINE),)
 configure_OPTIONS              += --with-readline=$(READLINE)
-CLI_TRANSPORT                   = $(if $(and $(filter-out no,$(READLINE)),$(filter 0,$(DAEMON))),CONSOLE,UART)
 endif
 
 ifeq ($(RCP_BUS),spi)

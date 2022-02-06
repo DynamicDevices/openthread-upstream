@@ -44,7 +44,7 @@ uint8_t ChannelMask::GetNumberOfChannels(void) const
     uint8_t num     = 0;
     uint8_t channel = kChannelIteratorFirst;
 
-    while (GetNextChannel(channel) == OT_ERROR_NONE)
+    while (GetNextChannel(channel) == kErrorNone)
     {
         num++;
     }
@@ -52,9 +52,9 @@ uint8_t ChannelMask::GetNumberOfChannels(void) const
     return num;
 }
 
-otError ChannelMask::GetNextChannel(uint8_t &aChannel) const
+Error ChannelMask::GetNextChannel(uint8_t &aChannel) const
 {
-    otError error = OT_ERROR_NOT_FOUND;
+    Error error = kErrorNotFound;
 
     if (aChannel == kChannelIteratorFirst)
     {
@@ -65,7 +65,7 @@ otError ChannelMask::GetNextChannel(uint8_t &aChannel) const
     {
         if (ContainsChannel(aChannel))
         {
-            ExitNow(error = OT_ERROR_NONE);
+            ExitNow(error = kErrorNone);
         }
     }
 
@@ -98,18 +98,18 @@ ChannelMask::InfoString ChannelMask::ToString(void) const
     InfoString string;
     uint8_t    channel  = kChannelIteratorFirst;
     bool       addComma = false;
-    otError    error;
+    Error      error;
 
-    IgnoreError(string.Append("{"));
+    string.Append("{");
 
     error = GetNextChannel(channel);
 
-    while (error == OT_ERROR_NONE)
+    while (error == kErrorNone)
     {
         uint8_t rangeStart = channel;
         uint8_t rangeEnd   = channel;
 
-        while ((error = GetNextChannel(channel)) == OT_ERROR_NONE)
+        while ((error = GetNextChannel(channel)) == kErrorNone)
         {
             if (channel != rangeEnd + 1)
             {
@@ -119,16 +119,16 @@ ChannelMask::InfoString ChannelMask::ToString(void) const
             rangeEnd = channel;
         }
 
-        IgnoreError(string.Append("%s%d", addComma ? ", " : " ", rangeStart));
+        string.Append("%s%d", addComma ? ", " : " ", rangeStart);
         addComma = true;
 
         if (rangeStart < rangeEnd)
         {
-            IgnoreError(string.Append("%s%d", rangeEnd == rangeStart + 1 ? ", " : "-", rangeEnd));
+            string.Append("%s%d", rangeEnd == rangeStart + 1 ? ", " : "-", rangeEnd);
         }
     }
 
-    IgnoreError(string.Append("}"));
+    string.Append(" }");
 
     return string;
 }

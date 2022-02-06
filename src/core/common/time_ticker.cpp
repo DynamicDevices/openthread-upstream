@@ -36,7 +36,7 @@
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/random.hpp"
 #include "thread/mle_router.hpp"
 
@@ -45,7 +45,7 @@ namespace ot {
 TimeTicker::TimeTicker(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mReceivers(0)
-    , mTimer(aInstance, HandleTimer, this)
+    , mTimer(aInstance, HandleTimer)
 {
 }
 
@@ -71,7 +71,7 @@ void TimeTicker::UnregisterReceiver(Receiver aReceiver)
 
 void TimeTicker::HandleTimer(Timer &aTimer)
 {
-    aTimer.GetOwner<TimeTicker>().HandleTimer();
+    aTimer.Get<TimeTicker>().HandleTimer();
 }
 
 void TimeTicker::HandleTimer(void)

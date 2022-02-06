@@ -38,9 +38,10 @@
 
 #include <stdint.h>
 
-#include <openthread/error.h>
-
+#include <openthread/platform/crypto.h>
+#include "common/error.hpp"
 #include "crypto/aes_ecb.hpp"
+#include "crypto/storage.hpp"
 #include "mac/mac_types.hpp"
 
 namespace ot {
@@ -60,22 +61,27 @@ namespace Crypto {
 class AesCcm
 {
 public:
-    enum
-    {
-        kMinTagLength = 4,                  ///< Minimum tag length (in bytes).
-        kMaxTagLength = AesEcb::kBlockSize, ///< Maximum tag length (in bytes).
-        kNonceSize    = 13,                 ///< Size of IEEE 802.15.4 Nonce (in bytes).
-    };
+    static constexpr uint8_t kMinTagLength = 4;                  ///< Minimum tag length (in bytes).
+    static constexpr uint8_t kMaxTagLength = AesEcb::kBlockSize; ///< Maximum tag length (in bytes).
+    static constexpr uint8_t kNonceSize    = 13;                 ///< Size of IEEE 802.15.4 Nonce (in bytes).
 
     /**
      * This enumeration type represent the encryption vs decryption mode.
      *
      */
-    enum Mode
+    enum Mode : uint8_t
     {
         kEncrypt, // Encryption mode.
         kDecrypt, // Decryption mode.
     };
+
+    /**
+     * This method sets the key.
+     *
+     * @param[in]  aKey    Crypto Key used in AES operation
+     *
+     */
+    void SetKey(const Key &aKey) { mEcb.SetKey(aKey); }
 
     /**
      * This method sets the key.
@@ -89,10 +95,10 @@ public:
     /**
      * This method sets the key.
      *
-     * @param[in]  aMacKey        A MAC key.
+     * @param[in]  aMacKey        Key Material for AES operation.
      *
      */
-    void SetKey(const Mac::Key &aMacKey);
+    void SetKey(const Mac::KeyMaterial &aMacKey);
 
     /**
      * This method initializes the AES CCM computation.

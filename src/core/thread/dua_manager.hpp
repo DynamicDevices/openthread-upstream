@@ -38,6 +38,14 @@
 
 #if OPENTHREAD_CONFIG_DUA_ENABLE || (OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_DUA_ENABLE)
 
+#if OPENTHREAD_CONFIG_DUA_ENABLE && (OPENTHREAD_CONFIG_THREAD_VERSION < OT_THREAD_VERSION_1_2)
+#error "Thread 1.2 or higher version is required for OPENTHREAD_CONFIG_DUA_ENABLE"
+#endif
+
+#if OPENTHREAD_CONFIG_DUA_ENABLE && !OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE
+#error "OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE is required for OPENTHREAD_CONFIG_DUA_ENABLE"
+#endif
+
 #include "backbone_router/bbr_leader.hpp"
 #include "coap/coap.hpp"
 #include "coap/coap_message.hpp"
@@ -119,11 +127,11 @@ public:
      *
      * @param[in]  aIid        A reference to the Interface Identifier to set.
      *
-     * @retval OT_ERROR_NONE           Successfully set the Interface Identifier.
-     * @retval OT_ERROR_INVALID_ARGS   The specified Interface Identifier is reserved.
+     * @retval kErrorNone          Successfully set the Interface Identifier.
+     * @retval kErrorInvalidArgs   The specified Interface Identifier is reserved.
      *
      */
-    otError SetFixedDuaInterfaceIdentifier(const Ip6::InterfaceIdentifier &aIid);
+    Error SetFixedDuaInterfaceIdentifier(const Ip6::InterfaceIdentifier &aIid);
 
     /**
      * This method clears the Interface Identifier manually specified for the Thread Domain Unicast Address.
@@ -167,15 +175,12 @@ public:
 #endif
 
 private:
-    enum
-    {
-        kNewRouterRegistrationDelay = 3, ///< Delay (in seconds) for waiting link establishment for a new Router.
-        kNewDuaRegistrationDelay    = 1, ///< Delay (in seconds) for newly added DUA.
-    };
+    static constexpr uint8_t kNewRouterRegistrationDelay = 3; ///< Delay (in sec) to establish link for a new router.
+    static constexpr uint8_t kNewDuaRegistrationDelay    = 1; ///< Delay (in sec) for newly added DUA.
 
 #if OPENTHREAD_CONFIG_DUA_ENABLE
-    otError GenerateDomainUnicastAddressIid(void);
-    otError Store(void);
+    Error GenerateDomainUnicastAddressIid(void);
+    Error Store(void);
 
     void AddDomainUnicastAddress(void);
     void RemoveDomainUnicastAddress(void);
@@ -190,29 +195,20 @@ private:
 
     void HandleTimeTick(void);
 
-    static void HandleRegistrationTask(Tasklet &aTasklet) { aTasklet.GetOwner<DuaManager>().PerformNextRegistration(); }
+    static void HandleRegistrationTask(Tasklet &aTasklet);
 
     void UpdateTimeTickerRegistration(void);
 
     static void HandleDuaResponse(void *               aContext,
                                   otMessage *          aMessage,
                                   const otMessageInfo *aMessageInfo,
-                                  otError              aResult)
-    {
-        static_cast<DuaManager *>(aContext)->HandleDuaResponse(
-            *static_cast<Coap::Message *>(aMessage), *static_cast<const Ip6::MessageInfo *>(aMessageInfo), aResult);
-    }
+                                  Error                aResult);
+    void        HandleDuaResponse(Coap::Message *aMessage, const Ip6::MessageInfo *aMessageInfo, Error aResult);
 
-    void HandleDuaResponse(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo, otError aResult);
+    static void HandleDuaNotification(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo);
+    void        HandleDuaNotification(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo);
 
-    static void HandleDuaNotification(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo)
-    {
-        static_cast<DuaManager *>(aContext)->HandleDuaNotification(
-            *static_cast<Coap::Message *>(aMessage), *static_cast<const Ip6::MessageInfo *>(aMessageInfo));
-    }
-
-    void    HandleDuaNotification(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo);
-    otError ProcessDuaResponse(Coap::Message &aMessage);
+    Error ProcessDuaResponse(Coap::Message &aMessage);
 
     void PerformNextRegistration(void);
     void UpdateReregistrationDelay(void);
@@ -224,42 +220,41 @@ private:
     bool           mIsDuaPending : 1;
 
 #if OPENTHREAD_CONFIG_DUA_ENABLE
-    enum DuaState
+    enum DuaState : uint8_t
     {
-        kNotExist,    ///< DUA is not avaiable.
+        kNotExist,    ///< DUA is not available.
         kToRegister,  ///< DUA is to be registered.
         kRegistering, ///< DUA is being registered.
         kRegistered,  ///< DUA is registered.
     };
 
-    DuaState  mDuaState : 2;
+    DuaState  mDuaState;
     uint8_t   mDadCounter;
-    TimeMilli mLastRegistrationTime; ///< The time (in milliseconds) when sent last DUA.req or received DUA.rsp.
-    Ip6::InterfaceIdentifier mFixedDuaInterfaceIdentifier;
-    Ip6::NetifUnicastAddress mDomainUnicastAddress;
+    TimeMilli mLastRegistrationTime; // The time (in milliseconds) when sent last DUA.req or received DUA.rsp.
+    Ip6::InterfaceIdentifier   mFixedDuaInterfaceIdentifier;
+    Ip6::Netif::UnicastAddress mDomainUnicastAddress;
 #endif
 
     union
     {
         struct
         {
-            uint16_t mReregistrationDelay; ///< Delay (in seconds) for DUA re-registration.
-            uint8_t  mCheckDelay;          ///< Delay (in seconds) for checking whether or not registration is required.
+            uint16_t mReregistrationDelay; // Delay (in seconds) for DUA re-registration.
+            uint8_t  mCheckDelay;          // Delay (in seconds) for checking whether or not registration is required.
 #if OPENTHREAD_CONFIG_DUA_ENABLE
-            uint8_t mRegistrationDelay; ///< Delay (in seconds) for DUA registration.
+            uint8_t mRegistrationDelay; // Delay (in seconds) for DUA registration.
 #endif
         } mFields;
-        uint32_t mValue; ///< Non-zero indicates timer should start.
+        uint32_t mValue; // Non-zero indicates timer should start.
     } mDelay;
 
 #if OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_DUA_ENABLE
     // TODO: (DUA) may re-evaluate the alternative option of distributing the flags into the child table:
     //       - Child class itself have some padding - may save some RAM
     //       - Avoid cross reference between a bit-vector and the child entry
-    ChildMask mChildDuaMask;           ///< Child Mask for child who registers DUA via Child Update Request.
-    ChildMask mChildDuaRegisteredMask; ///< Child Mask for child's DUA that was registered by the parent on behalf.
-    uint16_t  mChildIndexDuaRegistering : 15; ///< Child Index of the DUA being registered.
-    bool      mRegisterCurrentChildIndex : 1; ///< Re-register the child just registered.
+    ChildMask mChildDuaMask;             // Child Mask for child who registers DUA via Child Update Request.
+    ChildMask mChildDuaRegisteredMask;   // Child Mask for child's DUA that was registered by the parent on behalf.
+    uint16_t  mChildIndexDuaRegistering; // Child Index of the DUA being registered.
 #endif
 };
 

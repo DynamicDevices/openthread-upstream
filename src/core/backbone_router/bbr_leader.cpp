@@ -36,7 +36,7 @@
 #if (OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2)
 
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/logging.hpp"
 
 namespace ot {
@@ -57,11 +57,11 @@ void Leader::Reset(void)
     mDomainPrefix.SetLength(0);
 }
 
-otError Leader::GetConfig(BackboneRouterConfig &aConfig) const
+Error Leader::GetConfig(BackboneRouterConfig &aConfig) const
 {
-    otError error = OT_ERROR_NONE;
+    Error error = kErrorNone;
 
-    VerifyOrExit(HasPrimary(), error = OT_ERROR_NOT_FOUND);
+    VerifyOrExit(HasPrimary(), error = kErrorNotFound);
 
     aConfig = mConfig;
 
@@ -69,21 +69,20 @@ exit:
     return error;
 }
 
-otError Leader::GetServiceId(uint8_t &aServiceId) const
+Error Leader::GetServiceId(uint8_t &aServiceId) const
 {
-    otError error       = OT_ERROR_NONE;
-    uint8_t serviceData = NetworkData::ServiceTlv::kServiceDataBackboneRouter;
+    Error error = kErrorNone;
 
-    VerifyOrExit(HasPrimary(), error = OT_ERROR_NOT_FOUND);
-
-    error = Get<NetworkData::Leader>().GetServiceId(NetworkData::ServiceTlv::kThreadEnterpriseNumber, &serviceData,
-                                                    sizeof(serviceData), true, aServiceId);
+    VerifyOrExit(HasPrimary(), error = kErrorNotFound);
+    error = Get<NetworkData::Service::Manager>().GetServiceId<NetworkData::Service::BackboneRouter>(
+        /* aServerStable */ true, aServiceId);
 
 exit:
     return error;
 }
 
 #if (OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_INFO) && (OPENTHREAD_CONFIG_LOG_BBR == 1)
+
 void Leader::LogBackboneRouterPrimary(State aState, const BackboneRouterConfig &aConfig) const
 {
     OT_UNUSED_VARIABLE(aConfig);
@@ -104,71 +103,45 @@ void Leader::LogDomainPrefix(DomainPrefixState aState, const Ip6::Prefix &aPrefi
 
 const char *Leader::StateToString(State aState)
 {
-    const char *logString = "Unknown";
+    static const char *const kStateStrings[] = {
+        "None",            //  (0) kStateNone
+        "Added",           //  (1) kStateAdded
+        "Removed",         //  (2) kStateRemoved
+        "Rereg triggered", //  (3) kStateToTriggerRereg
+        "Refreshed",       //  (4) kStateRefreshed
+        "Unchanged",       //  (5) kStateUnchanged
+    };
 
-    switch (aState)
-    {
-    case kStateNone:
-        logString = "None";
-        break;
+    static_assert(0 == kStateNone, "kStateNone value is incorrect");
+    static_assert(1 == kStateAdded, "kStateAdded value is incorrect");
+    static_assert(2 == kStateRemoved, "kStateRemoved value is incorrect");
+    static_assert(3 == kStateToTriggerRereg, "kStateToTriggerRereg value is incorrect");
+    static_assert(4 == kStateRefreshed, "kStateRefreshed value is incorrect");
+    static_assert(5 == kStateUnchanged, "kStateUnchanged value is incorrect");
 
-    case kStateAdded:
-        logString = "Added";
-        break;
-
-    case kStateRemoved:
-        logString = "Removed";
-        break;
-
-    case kStateToTriggerRereg:
-        logString = "Rereg triggered";
-        break;
-
-    case kStateRefreshed:
-        logString = "Refreshed";
-        break;
-
-    case kStateUnchanged:
-        logString = "Unchanged";
-        break;
-
-    default:
-        break;
-    }
-
-    return logString;
+    return kStateStrings[aState];
 }
 
 const char *Leader::DomainPrefixStateToString(DomainPrefixState aState)
 {
-    const char *logString = "Unknown";
+    static const char *const kPrefixStateStrings[] = {
+        "None",      // (0) kDomainPrefixNone
+        "Added",     // (1) kDomainPrefixAdded
+        "Removed",   // (2) kDomainPrefixRemoved
+        "Refreshed", // (3) kDomainPrefixRefreshed
+        "Unchanged", // (4) kDomainPrefixUnchanged
+    };
 
-    switch (aState)
-    {
-    case kDomainPrefixNone:
-        logString = "None";
-        break;
+    static_assert(0 == kDomainPrefixNone, "kDomainPrefixNone value is incorrect");
+    static_assert(1 == kDomainPrefixAdded, "kDomainPrefixAdded value is incorrect");
+    static_assert(2 == kDomainPrefixRemoved, "kDomainPrefixRemoved value is incorrect");
+    static_assert(3 == kDomainPrefixRefreshed, "kDomainPrefixRefreshed value is incorrect");
+    static_assert(4 == kDomainPrefixUnchanged, "kDomainPrefixUnchanged value is incorrect");
 
-    case kDomainPrefixAdded:
-        logString = "Added";
-        break;
-
-    case kDomainPrefixRemoved:
-        logString = "Removed";
-        break;
-
-    case kDomainPrefixRefreshed:
-        logString = "Refreshed";
-        break;
-
-    case kDomainPrefixUnchanged:
-        logString = "Unchanged";
-        break;
-    }
-
-    return logString;
+    return kPrefixStateStrings[aState];
 }
-#endif
+
+#endif // (OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_INFO) && (OPENTHREAD_CONFIG_LOG_BBR == 1)
 
 void Leader::Update(void)
 {
@@ -182,7 +155,7 @@ void Leader::UpdateBackboneRouterPrimary(void)
     State                state;
     uint32_t             origMlrTimeout;
 
-    IgnoreError(Get<NetworkData::Leader>().GetBackboneRouterPrimary(config));
+    Get<NetworkData::Service::Manager>().GetBackboneRouterPrimary(config);
 
     if (config.mServer16 != mConfig.mServer16)
     {
@@ -258,7 +231,7 @@ void Leader::UpdateDomainPrefixConfig(void)
     DomainPrefixState               state;
     bool                            found = false;
 
-    while (Get<NetworkData::Leader>().GetNextOnMeshPrefix(iterator, config) == OT_ERROR_NONE)
+    while (Get<NetworkData::Leader>().GetNextOnMeshPrefix(iterator, config) == kErrorNone)
     {
         if (config.mDp)
         {

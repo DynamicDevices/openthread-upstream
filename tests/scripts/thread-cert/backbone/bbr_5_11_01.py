@@ -57,19 +57,16 @@ class BBR_5_11_01(thread_cert.TestCase):
             'allowlist': [ROUTER1, ROUTER2],
             'is_otbr': True,
             'version': '1.2',
-            'router_selection_jitter': 1,
         },
         ROUTER1: {
             'name': 'Router_1',
             'allowlist': [ROUTER2, BR_1],
             'version': '1.2',
-            'router_selection_jitter': 1,
         },
         ROUTER2: {
             'name': 'Router_2',
             'allowlist': [ROUTER1, BR_1],
             'version': '1.2',
-            'router_selection_jitter': 1,
         },
         HOST: {
             'name': 'Host',
@@ -91,6 +88,11 @@ class BBR_5_11_01(thread_cert.TestCase):
         self.simulator.go(5)
         self.assertEqual('router', self.nodes[ROUTER2].get_state())
 
+        # The OTBR docker enables SRP Server by default, lets explicitly
+        # disable SRP server to avoid Network Data population.
+        # TODO: Enhance the test script to tolerate additional Sertivce TLV
+        # in Network Data.
+        self.nodes[BR_1].srp_server_set_enabled(False)
         self.nodes[BR_1].start()
         self.simulator.go(5)
         self.assertEqual('router', self.nodes[BR_1].get_state())
@@ -121,9 +123,8 @@ class BBR_5_11_01(thread_cert.TestCase):
         self.assertTrue(self.nodes[BR_1].ping(self.nodes[HOST].get_ip6_address(config.ADDRESS_TYPE.BACKBONE_GUA),
                                               backbone=True))
 
-        # Step 23: Host sends ping packet to destination Dg
-        # TODO: (DUA) implement DUA routing on OTBR
-        self.assertFalse(self.nodes[HOST].ping(Dg, backbone=True))
+        # Step 23: Host sends ping packet to destination Dg (successful if DUA features work)
+        self.assertTrue(self.nodes[HOST].ping(Dg, backbone=True))
 
     def verify(self, pv: PacketVerifier):
         pkts = pv.pkts

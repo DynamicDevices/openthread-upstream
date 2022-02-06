@@ -38,13 +38,25 @@
 #include <assert.h>
 
 #include <openthread-core-config.h>
+#include <openthread/border_router.h>
+#include <openthread/heap.h>
 #include <openthread/tasklet.h>
 #include <openthread/platform/alarm-milli.h>
+#include <openthread/platform/infra_if.h>
 #include <openthread/platform/otns.h>
 #include <openthread/platform/radio.h>
-#include <openthread/platform/uart.h>
 
 #include "common/code_utils.hpp"
+#include "common/debug.hpp"
+#include "posix/platform/daemon.hpp"
+#include "posix/platform/firewall.hpp"
+#include "posix/platform/infra_if.hpp"
+#include "posix/platform/mainloop.hpp"
+#include "posix/platform/radio_url.hpp"
+#include "posix/platform/udp.hpp"
+
+otInstance *gInstance = nullptr;
+bool        gDryRun   = false;
 
 #if OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE || OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
 static void processStateChange(otChangedFlags aFlags, void *aContext)
@@ -59,70 +71,192 @@ static void processStateChange(otChangedFlags aFlags, void *aContext)
 #endif
 
 #if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    platformBackboneStateChange(instance, aFlags);
+    if (gBackboneNetifIndex != 0)
+    {
+        platformBackboneStateChange(instance, aFlags);
+    }
 #endif
 }
 #endif
 
-otInstance *otSysInit(otPlatformConfig *aPlatformConfig)
+static const char *get802154RadioUrl(otPlatformConfig *aPlatformConfig)
 {
-    otInstance *        instance = nullptr;
-    ot::Posix::RadioUrl radioUrl(aPlatformConfig->mRadioUrl);
+    const char *radioUrl = nullptr;
 
-#if OPENTHREAD_POSIX_VIRTUAL_TIME
-    // The last argument must be the node id
+    for (uint8_t i = 0; i < aPlatformConfig->mRadioUrlNum; i++)
     {
-        const char *nodeId = nullptr;
+        ot::Posix::RadioUrl url(aPlatformConfig->mRadioUrls[i]);
 
-        for (const char *arg = nullptr; (arg = radioUrl.GetValue("forkpty-arg", arg)) != nullptr; nodeId = arg)
+        if (strcmp(url.GetProtocol(), "trel") == 0)
         {
+            continue;
         }
 
-        virtualTimeInit(static_cast<uint16_t>(atoi(nodeId)));
+        radioUrl = aPlatformConfig->mRadioUrls[i];
+        break;
     }
+
+    VerifyOrDie(radioUrl != nullptr, OT_EXIT_INVALID_ARGUMENTS);
+    return radioUrl;
+}
+
+#if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
+static const char *getTrelRadioUrl(otPlatformConfig *aPlatformConfig)
+{
+    const char *radioUrl = nullptr;
+
+    for (uint8_t i = 0; i < aPlatformConfig->mRadioUrlNum; i++)
+    {
+        ot::Posix::RadioUrl url(aPlatformConfig->mRadioUrls[i]);
+
+        if (strcmp(url.GetProtocol(), "trel") == 0)
+        {
+            radioUrl = aPlatformConfig->mRadioUrls[i];
+            break;
+        }
+    }
+
+    return radioUrl;
+}
 #endif
 
-    VerifyOrDie(radioUrl.GetPath() != nullptr, OT_EXIT_INVALID_ARGUMENTS);
+void platformInit(otPlatformConfig *aPlatformConfig)
+{
     platformAlarmInit(aPlatformConfig->mSpeedUpFactor, aPlatformConfig->mRealTimeSignal);
-    platformRadioInit(&radioUrl);
+    platformRadioInit(get802154RadioUrl(aPlatformConfig));
+
+    // For Dry-Run option, only init the radio.
+    VerifyOrExit(!aPlatformConfig->mDryRun);
+
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
-    platformTrelInit(aPlatformConfig->mTrelInterface);
+    platformTrelInit(getTrelRadioUrl(aPlatformConfig));
 #endif
     platformRandomInit();
 
-    instance = otInstanceInitSingle();
-    assert(instance != nullptr);
-
 #if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    platformBackboneInit(instance, aPlatformConfig->mBackboneInterfaceName);
+    platformBackboneInit(aPlatformConfig->mBackboneInterfaceName);
+#endif
+
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+    ot::Posix::InfraNetif::Get().Init(aPlatformConfig->mBackboneInterfaceName);
+#endif
+
+    gNetifName[0] = '\0';
+
+#if OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE
+    platformNetifInit(aPlatformConfig->mInterfaceName);
+#endif
+
+#if OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE
+#if OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE
+    ot::Posix::Udp::Get().Init(otSysGetThreadNetifName());
+#else
+    ot::Posix::Udp::Get().Init(aPlatformConfig->mInterfaceName);
+#endif
+#endif
+
+exit:
+    return;
+}
+
+void platformSetUp(void)
+{
+#if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
+    platformBackboneSetUp();
+#endif
+
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+    ot::Posix::InfraNetif::Get().SetUp();
 #endif
 
 #if OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE
-    platformNetifInit(instance, aPlatformConfig->mInterfaceName);
-#elif OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE
-    platformUdpInit(aPlatformConfig->mInterfaceName);
+    platformNetifSetUp();
+#endif
+
+#if OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE
+    ot::Posix::Udp::Get().SetUp();
+#endif
+
+#if OPENTHREAD_POSIX_CONFIG_DAEMON_ENABLE
+    ot::Posix::Daemon::Get().SetUp();
 #endif
 
 #if OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE || OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    SuccessOrDie(otSetStateChangedCallback(instance, processStateChange, instance));
+    SuccessOrDie(otSetStateChangedCallback(gInstance, processStateChange, gInstance));
 #endif
-
-    return instance;
 }
 
-void otSysDeinit(void)
+otInstance *otSysInit(otPlatformConfig *aPlatformConfig)
+{
+    OT_ASSERT(gInstance == nullptr);
+
+    platformInit(aPlatformConfig);
+
+    gDryRun   = aPlatformConfig->mDryRun;
+    gInstance = otInstanceInitSingle();
+    OT_ASSERT(gInstance != nullptr);
+
+    platformSetUp();
+
+    return gInstance;
+}
+
+void platformTearDown(void)
+{
+#if OPENTHREAD_POSIX_CONFIG_DAEMON_ENABLE
+    ot::Posix::Daemon::Get().TearDown();
+#endif
+
+#if OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE
+    ot::Posix::Udp::Get().TearDown();
+#endif
+
+#if OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE
+    platformNetifTearDown();
+#endif
+
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+    ot::Posix::InfraNetif::Get().TearDown();
+#endif
+
+#if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
+    platformBackboneTearDown();
+#endif
+}
+
+void platformDeinit(void)
 {
 #if OPENTHREAD_POSIX_VIRTUAL_TIME
     virtualTimeDeinit();
 #endif
     platformRadioDeinit();
+#if OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE
+    ot::Posix::Udp::Get().Deinit();
+#endif
 #if OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE
     platformNetifDeinit();
 #endif
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     platformTrelDeinit();
 #endif
-    IgnoreError(otPlatUartDisable());
+
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+    ot::Posix::InfraNetif::Get().Deinit();
+#endif
+
+#if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
+    platformBackboneDeinit();
+#endif
+}
+
+void otSysDeinit(void)
+{
+    OT_ASSERT(gInstance != nullptr);
+
+    platformTearDown();
+    otInstanceFinalize(gInstance);
+    gInstance = nullptr;
+    platformDeinit();
 }
 
 #if OPENTHREAD_POSIX_VIRTUAL_TIME
@@ -160,18 +294,12 @@ static int trySelect(fd_set *aReadFdSet, fd_set *aWriteFdSet, fd_set *aErrorFdSe
 
 void otSysMainloopUpdate(otInstance *aInstance, otSysMainloopContext *aMainloop)
 {
+    ot::Posix::Mainloop::Manager::Get().Update(*aMainloop);
+
     platformAlarmUpdateTimeout(&aMainloop->mTimeout);
-    platformUartUpdateFdSet(&aMainloop->mReadFdSet, &aMainloop->mWriteFdSet, &aMainloop->mErrorFdSet,
-                            &aMainloop->mMaxFd);
-#if OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE
-    platformUdpUpdateFdSet(aInstance, &aMainloop->mReadFdSet, &aMainloop->mMaxFd);
-#endif
 #if OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE
     platformNetifUpdateFdSet(&aMainloop->mReadFdSet, &aMainloop->mWriteFdSet, &aMainloop->mErrorFdSet,
                              &aMainloop->mMaxFd);
-#endif
-#if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    platformBackboneUpdateFdSet(aMainloop->mReadFdSet, aMainloop->mMaxFd);
 #endif
 #if OPENTHREAD_POSIX_VIRTUAL_TIME
     virtualTimeUpdateFdSet(&aMainloop->mReadFdSet, &aMainloop->mWriteFdSet, &aMainloop->mErrorFdSet, &aMainloop->mMaxFd,
@@ -235,6 +363,8 @@ int otSysMainloopPoll(otSysMainloopContext *aMainloop)
 
 void otSysMainloopProcess(otInstance *aInstance, const otSysMainloopContext *aMainloop)
 {
+    ot::Posix::Mainloop::Manager::Get().Process(*aMainloop);
+
 #if OPENTHREAD_POSIX_VIRTUAL_TIME
     virtualTimeProcess(aInstance, &aMainloop->mReadFdSet, &aMainloop->mWriteFdSet, &aMainloop->mErrorFdSet);
 #else
@@ -243,16 +373,9 @@ void otSysMainloopProcess(otInstance *aInstance, const otSysMainloopContext *aMa
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     platformTrelProcess(aInstance, &aMainloop->mReadFdSet, &aMainloop->mWriteFdSet);
 #endif
-    platformUartProcess(&aMainloop->mReadFdSet, &aMainloop->mWriteFdSet, &aMainloop->mErrorFdSet);
     platformAlarmProcess(aInstance);
 #if OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE
     platformNetifProcess(&aMainloop->mReadFdSet, &aMainloop->mWriteFdSet, &aMainloop->mErrorFdSet);
-#endif
-#if OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE
-    platformUdpProcess(aInstance, &aMainloop->mReadFdSet);
-#endif
-#if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    platformBackboneProcess(aMainloop->mReadFdSet);
 #endif
 }
 
@@ -264,3 +387,8 @@ void otPlatOtnsStatus(const char *aStatus)
 }
 
 #endif
+
+bool IsSystemDryRun(void)
+{
+    return gDryRun;
+}

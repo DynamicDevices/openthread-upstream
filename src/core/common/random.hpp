@@ -38,9 +38,8 @@
 
 #include <stdint.h>
 
-#include <openthread/error.h>
-
 #include "common/debug.hpp"
+#include "common/error.hpp"
 #include "common/random_manager.hpp"
 
 namespace ot {
@@ -170,28 +169,17 @@ namespace Crypto {
  * @param[out] aBuffer  A pointer to a buffer to fill with the random bytes.
  * @param[in]  aSize    Size of buffer (number of bytes to fill).
  *
- * @retval OT_ERROR_NONE    Successfully filled buffer with random values.
+ * @retval kErrorNone    Successfully filled buffer with random values.
  *
  */
-inline otError FillBuffer(uint8_t *aBuffer, uint16_t aSize)
+inline Error FillBuffer(uint8_t *aBuffer, uint16_t aSize)
 {
     return RandomManager::CryptoFillBuffer(aBuffer, aSize);
 }
 
-/**
- * This function returns initialized mbedtls_ctr_drbg_context.
- *
- * @returns  A pointer to initialized mbedtls_ctr_drbg_context.
- *
- */
-inline mbedtls_ctr_drbg_context *MbedTlsContextGet(void)
-{
-    return RandomManager::GetMbedTlsCtrDrbgContext();
-}
-
 } // namespace Crypto
 
-#endif // OPENTHREAD_RADIO
+#endif // !OPENTHREAD_RADIO
 
 } // namespace Random
 } // namespace ot

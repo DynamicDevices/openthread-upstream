@@ -37,14 +37,14 @@ namespace ot {
 class MaxPowerTable
 {
 public:
-    static const int8_t kPowerDefault = 30; ///< Default power 1 watt (30 dBm).
+    static constexpr int8_t kPowerDefault = 30; ///< Default power 1 watt (30 dBm).
 
     MaxPowerTable(void) { memset(mPowerTable, kPowerDefault, sizeof(mPowerTable)); }
 
     /**
      * This method gets the max allowed transmit power of channel @p aChannel.
      *
-     * @params[in]  aChannel    The radio channel number.
+     * @param[in]  aChannel    The radio channel number.
      *
      * @returns The max supported transmit power in dBm.
      *
@@ -54,8 +54,8 @@ public:
     /**
      * This method sets the max allowed transmit power of channel @p aChannel.
      *
-     * @params[in]  aChannel    The radio channel number.
-     * @params[in]  aPower      The max supported transmit power in dBm.
+     * @param[in]  aChannel    The radio channel number.
+     * @param[in]  aPower      The max supported transmit power in dBm.
      *
      */
     void SetTransmitPower(uint8_t aChannel, int8_t aPower) { mPowerTable[aChannel - Radio::kChannelMin] = aPower; }

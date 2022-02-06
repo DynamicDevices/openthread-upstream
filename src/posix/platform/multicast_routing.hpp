@@ -43,60 +43,25 @@
 #include "core/common/non_copyable.hpp"
 #include "core/net/ip6_address.hpp"
 #include "lib/url/url.hpp"
+#include "posix/platform/mainloop.hpp"
 
 namespace ot {
 namespace Posix {
 
-/**
- * This class implements Multicast Routing management.
- *
- */
-class MulticastRoutingManager : private NonCopyable
+class MulticastRoutingManager : public Mainloop::Source, private NonCopyable
 {
 public:
-    /**
-     * This constructor initializes a Multicast Routing manager instance.
-     *
-     */
     explicit MulticastRoutingManager()
+
         : mLastExpireTime(0)
         , mMulticastRouterSock(-1)
-        , mInstance(nullptr)
     {
     }
 
-    /**
-     * This method initializes the Multicast Routing manager.
-     *
-     * @param[in]  aInstance  A pointer to an OpenThread instance.
-     *
-     */
-    void Init(otInstance *aInstance);
-
-    /**
-     * This method updates the fd_set and timeout for mainloop.
-     *
-     * @param[inout]    aReadFdSet      A reference to fd_set for polling read.
-     * @param[inout]    aMaxFd          A reference to the current max fd in fd_sets.
-     *
-     */
-    void UpdateFdSet(fd_set &aReadFdSet, int &aMaxFd) const;
-
-    /**
-     * This method performs Multicast Routing processing.
-     *
-     * @param[in]   aReadFdSet   A reference to read file descriptors.
-     *
-     */
-    void Process(const fd_set &aReadFdSet);
-
-    /**
-     * This method handles Thread state changes.
-     *
-     * @param[in] aInstance  A pointer to an OpenThread instance.
-     * @param[in] aFlags     Flags that denote the state change events.
-     *
-     */
+    void SetUp(void);
+    void TearDown(void);
+    void Update(otSysMainloopContext &aContext) override;
+    void Process(const otSysMainloopContext &aContext) override;
     void HandleStateChange(otInstance *aInstance, otChangedFlags aFlags);
 
 private:
@@ -143,6 +108,7 @@ private:
     void    Disable(void);
     void    Add(const Ip6::Address &aAddress);
     void    Remove(const Ip6::Address &aAddress);
+    void    UpdateMldReport(const Ip6::Address &aAddress, bool isAdd);
     bool    HasMulticastListener(const Ip6::Address &aAddress) const;
     bool    IsEnabled(void) const { return mMulticastRouterSock >= 0; }
     void    InitMulticastRouterSock(void);
@@ -169,7 +135,6 @@ private:
     MulticastForwardingCache mMulticastForwardingCacheTable[kMulitcastForwardingCacheTableSize];
     uint64_t                 mLastExpireTime;
     int                      mMulticastRouterSock;
-    otInstance *             mInstance;
 };
 
 } // namespace Posix

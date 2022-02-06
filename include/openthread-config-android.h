@@ -26,6 +26,10 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef OPENTHREAD_CONFIG_ANDROID_VERSION_HEADER_ENABLE
+#include <openthread-config-android-version.h>
+#endif
+
 /* Define to 1 to enable the border agent feature. */
 #define OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE 1
 
@@ -53,8 +57,8 @@
 /* Define to 1 if you want to use legacy network support */
 #define OPENTHREAD_CONFIG_LEGACY_ENABLE 1
 
-/* Define to 1 to enable the NCP UART interface. */
-#define OPENTHREAD_CONFIG_NCP_UART_ENABLE 1
+/* Define to 1 to enable the NCP HDLC interface. */
+#define OPENTHREAD_CONFIG_NCP_HDLC_ENABLE 1
 
 /* Define to 1 to enable posix platform. */
 #define OPENTHREAD_PLATFORM_POSIX 1

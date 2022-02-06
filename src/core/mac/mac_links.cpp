@@ -35,7 +35,7 @@
 
 #include "common/code_utils.hpp"
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 
 namespace ot {
 namespace Mac {
@@ -50,9 +50,6 @@ TxFrames::TxFrames(Instance &aInstance)
 #endif
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     , mTxFrameTrel(aInstance.Get<Trel::Link>().GetTransmitFrame())
-#endif
-#if OPENTHREAD_CONFIG_MULTI_RADIO
-    , mSelectedRadioTypes()
 #endif
 {
 }
@@ -159,10 +156,7 @@ void Links::Send(TxFrame &aFrame, RadioTypes aRadioTypes)
 #if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
     if (aRadioTypes.Contains(kRadioTypeIeee802154))
     {
-        otError error = mSubMac.Send();
-
-        OT_ASSERT(error == OT_ERROR_NONE);
-        OT_UNUSED_VARIABLE(error);
+        SuccessOrAssert(mSubMac.Send());
     }
 #endif
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
@@ -175,11 +169,11 @@ void Links::Send(TxFrame &aFrame, RadioTypes aRadioTypes)
 
 #endif // #if OPENTHREAD_CONFIG_MULTI_RADIO
 
-const Key *Links::GetCurrentMacKey(const Frame &aFrame) const
+const KeyMaterial *Links::GetCurrentMacKey(const Frame &aFrame) const
 {
     // Gets the security MAC key (for Key Mode 1) based on radio link type of `aFrame`.
 
-    const Key *key = nullptr;
+    const KeyMaterial *key = nullptr;
 #if OPENTHREAD_CONFIG_MULTI_RADIO
     RadioType radioType = aFrame.GetRadioType();
 #endif
@@ -208,12 +202,12 @@ exit:
     return key;
 }
 
-const Key *Links::GetTemporaryMacKey(const Frame &aFrame, uint32_t aKeySequence) const
+const KeyMaterial *Links::GetTemporaryMacKey(const Frame &aFrame, uint32_t aKeySequence) const
 {
     // Gets the security MAC key (for Key Mode 1) based on radio link
     // type of `aFrame` and given Key Sequence.
 
-    const Key *key = nullptr;
+    const KeyMaterial *key = nullptr;
 #if OPENTHREAD_CONFIG_MULTI_RADIO
     RadioType radioType = aFrame.GetRadioType();
 #endif

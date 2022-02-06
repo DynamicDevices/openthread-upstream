@@ -36,12 +36,13 @@
 
 #include "openthread-core-config.h"
 
+#if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
+
+#include "common/data.hpp"
 #include "common/encoding.hpp"
 #include "common/locator.hpp"
 #include "common/string.hpp"
 #include "mac/mac_types.hpp"
-
-#if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
 
 namespace ot {
 namespace Trel {
@@ -58,7 +59,7 @@ public:
      * This enumeration defines packet types.
      *
      */
-    enum Type
+    enum Type : uint8_t
     {
         kTypeBroadcast = 0, ///< A TREL broadcast packet.
         kTypeUnicast   = 1, ///< A TREL unicast packet.
@@ -69,16 +70,13 @@ public:
      * This enumeration represents Ack Mode field in TREL header.
      *
      */
-    enum AckMode
+    enum AckMode : uint8_t
     {
         kNoAck,        ///< No TREL Ack is requested.
         kAckRequested, ///< A TREL Ack is requested.
     };
 
-    enum
-    {
-        kInfoStringSize = 128, ///< Max chars needed for the info string representation (@sa ToInfoString()).
-    };
+    static constexpr uint16_t kInfoStringSize = 128; ///< Max chars for the info string (@sa ToInfoString()).
 
     /**
      * This type defines the fixed-length `String` object returned from `ToString()` method.
@@ -237,13 +235,10 @@ public:
     InfoString ToString(void) const;
 
 private:
-    enum
-    {
-        kTypeMask    = (3 << 0), // Bits 0-1 specify packet `Type`
-        kAckModeFlag = (1 << 2), // Bit 2 indicate "ack mode" (TREL ack requested or not).
-        kVersionMask = (7 << 5), // Bits 5-7 specify the version.
-        kVersion     = (0 << 5), // Current TREL header version.
-    };
+    static constexpr uint8_t kTypeMask    = (3 << 0); // Bits 0-1 specify packet `Type`
+    static constexpr uint8_t kAckModeFlag = (1 << 2); // Bit 2 indicate "ack mode" (TREL ack requested or not).
+    static constexpr uint8_t kVersionMask = (7 << 5); // Bits 5-7 specify the version.
+    static constexpr uint8_t kVersion     = (0 << 5); // Current TREL header version.
 
     // All header fields are big-endian.
 
@@ -256,11 +251,13 @@ private:
 } OT_TOOL_PACKED_END;
 
 /**
- * This class represent a TREL radio link packet.
+ * This class represents a TREL radio link packet.
  *
  */
-class Packet
+class Packet : private MutableData<kWithUint16Length>
 {
+    using Base = MutableData<kWithUint16Length>;
+
 public:
     /**
      * This method initializes the `Packet` with a given buffer and length.
@@ -269,7 +266,7 @@ public:
      * @param[in] aLength  Length (number of bytes) of the packet (including header and payload).
      *
      */
-    void Init(uint8_t *aBuffer, uint16_t aLength);
+    void Init(uint8_t *aBuffer, uint16_t aLength) { Base::Init(aBuffer, aLength); }
 
     /**
      * This method initializes the `Packet` with a specified header type and given a payload.
@@ -284,7 +281,6 @@ public:
      * @param[in] aPayloadLength The length (number of bytes) in the payload only (not including the header).
      *
      */
-
     void Init(Header::Type aType, uint8_t *aPayload, uint16_t aPayloadLength);
 
     /**
@@ -293,7 +289,7 @@ public:
      * @returns A pointer to buffer containing the packet.
      *
      */
-    uint8_t *GetBuffer(void) { return mBuffer; }
+    uint8_t *GetBuffer(void) { return Base::GetBytes(); }
 
     /**
      * This method gets a pointer to buffer containing the packet.
@@ -301,7 +297,7 @@ public:
      * @returns A pointer to buffer containing the packet.
      *
      */
-    const uint8_t *GetBuffer(void) const { return mBuffer; }
+    const uint8_t *GetBuffer(void) const { return Base::GetBytes(); }
 
     /**
      * This method gets the length of packet.
@@ -309,7 +305,7 @@ public:
      * @returns The length (number of bytes) of packet (header and payload).
      *
      */
-    uint16_t GetLength(void) const { return mLength; }
+    uint16_t GetLength(void) const { return Base::GetLength(); }
 
     /**
      * This method checks whether or not the packet header is valid.
@@ -326,7 +322,7 @@ public:
      * @returns A reference to the packet header as `Header`.
      *
      */
-    Header &GetHeader(void) { return *reinterpret_cast<Header *>(mBuffer); }
+    Header &GetHeader(void) { return *reinterpret_cast<Header *>(Base::GetBytes()); }
 
     /**
      * This method gets the packet header.
@@ -334,7 +330,7 @@ public:
      * @returns A reference to the packet header as `Header`.
      *
      */
-    const Header &GetHeader(void) const { return *reinterpret_cast<const Header *>(mBuffer); }
+    const Header &GetHeader(void) const { return *reinterpret_cast<const Header *>(Base::GetBytes()); }
 
     /**
      * This method gets a pointer to start of packet payload.
@@ -342,7 +338,7 @@ public:
      * @returns A pointer to start of packet payload (after header).
      *
      */
-    uint8_t *GetPayload(void) { return mBuffer + GetHeader().GetLength(); }
+    uint8_t *GetPayload(void) { return Base::GetBytes() + GetHeader().GetLength(); }
 
     /**
      * This method gets a pointer to start of packet payload.
@@ -350,7 +346,7 @@ public:
      * @returns A pointer to start of packet payload (after header).
      *
      */
-    const uint8_t *GetPayload(void) const { return mBuffer + GetHeader().GetLength(); }
+    const uint8_t *GetPayload(void) const { return Base::GetBytes() + GetHeader().GetLength(); }
 
     /**
      * This method gets the payload length.
@@ -358,11 +354,7 @@ public:
      * @returns The packet payload length (number of bytes).
      *
      */
-    uint16_t GetPayloadLength(void) const { return mLength - GetHeader().GetLength(); }
-
-private:
-    uint8_t *mBuffer;
-    uint16_t mLength;
+    uint16_t GetPayloadLength(void) const { return GetLength() - GetHeader().GetLength(); }
 };
 
 } // namespace Trel

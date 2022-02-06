@@ -62,14 +62,12 @@ class TestMlrTimeout(thread_cert.TestCase):
             'allowlist': [ROUTER],
             'is_otbr': True,
             'version': '1.2',
-            'router_selection_jitter': 1,
             'bbr_registration_jitter': BBR_REGISTRATION_JITTER,
         },
         ROUTER: {
             'name': 'ROUTER',
             'allowlist': [PBBR],
             'version': '1.2',
-            'router_selection_jitter': 1,
         },
         HOST: {
             'name': 'Host',
@@ -118,7 +116,7 @@ class TestMlrTimeout(thread_cert.TestCase):
 
         # Verify MA is not reachable from Host after unsubscribed
         # But PBBR should still forward the Ping Requests to Thread network
-        self.assertFalse(self.nodes[HOST].ping(MA1, backbone=True, ttl=10))
+        self.nodes[HOST].ping(MA1, backbone=True, ttl=10)
 
         self.simulator.go(MLR_TIMEOUT + WAIT_REDUNDANCE)
 

@@ -37,6 +37,7 @@
 #include "openthread-posix-config.h"
 #include "platform-posix.h"
 #include "lib/hdlc/hdlc.hpp"
+#include "lib/spinel/openthread-spinel-config.h"
 #include "lib/spinel/spinel_interface.hpp"
 
 #if OPENTHREAD_POSIX_CONFIG_RCP_BUS == OT_POSIX_RCP_BUS_UART
@@ -81,7 +82,7 @@ public:
      * @retval OT_ERROR_INVALID_ARGS  The UART device or executable cannot be found or failed to open/run.
      *
      */
-    otError Init(const RadioUrl &aRadioUrl);
+    otError Init(const Url::Url &aRadioUrl);
 
     /**
      * This method deinitializes the interface to the RCP.
@@ -162,6 +163,12 @@ public:
      */
     void OnRcpReset(void);
 
+    /**
+     * This method is called when RCP is reset to recreate the connection with it.
+     *
+     */
+    otError ResetConnection(void);
+
 private:
     /**
      * This method instructs `HdlcInterface` to read and decode data from radio over the socket.
@@ -212,24 +219,44 @@ private:
     static void HandleHdlcFrame(void *aContext, otError aError);
     void        HandleHdlcFrame(otError aError);
 
-    int OpenFile(const RadioUrl &aRadioUrl);
+    /**
+     * This method opens file specified by aRadioUrl.
+     *
+     * @param[in] aRadioUrl  A reference to object containing path to file and data for configuring
+     *                       the connection with tty type file.
+     *
+     * @retval The file descriptor of newly opened file.
+     */
+    int OpenFile(const Url::Url &aRadioUrl);
+
+    /**
+     * This method closes file associated with the file descriptor.
+     *
+     */
+    void CloseFile(void);
+
 #if OPENTHREAD_POSIX_CONFIG_RCP_PTY_ENABLE
-    static int ForkPty(const RadioUrl &aRadioUrl);
+    static int ForkPty(const Url::Url &aRadioUrl);
 #endif
 
     enum
     {
-        kMaxFrameSize = Spinel::SpinelInterface::kMaxFrameSize,
-        kMaxWaitTime  = 2000, ///< Maximum wait time in Milliseconds for socket to become writable (see `SendFrame`).
+        kMaxFrameSize  = Spinel::SpinelInterface::kMaxFrameSize,
+        kMaxWaitTime   = 2000, ///< Maximum wait time in Milliseconds for socket to become writable (see `SendFrame`).
+        kResetTimeout  = 5000, ///< Maximum wait time in Milliseconds for file to become ready (see `ResetConnection`).
+        kOpenFileDelay = 500,  ///< Delay between open file calls, in Milliseconds (see `ResetConnection`).
+        kRemoveRcpDelay =
+            2000, ///< Delay for removing RCP device from host OS after hard reset (see `ResetConnection`).
     };
 
     Spinel::SpinelInterface::ReceiveFrameCallback mReceiveFrameCallback;
     void *                                        mReceiveFrameContext;
     Spinel::SpinelInterface::RxFrameBuffer &      mReceiveFrameBuffer;
 
-    int           mSockFd;
-    uint32_t      mBaudRate;
-    Hdlc::Decoder mHdlcDecoder;
+    int             mSockFd;
+    uint32_t        mBaudRate;
+    Hdlc::Decoder   mHdlcDecoder;
+    const Url::Url *mRadioUrl;
 
     // Non-copyable, intentionally not implemented.
     HdlcInterface(const HdlcInterface &);

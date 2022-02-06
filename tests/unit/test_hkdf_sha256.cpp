@@ -123,12 +123,13 @@ void TestHkdfSha256(void)
 
     otInstance *instance = testInitInstance();
 
-    VerifyOrQuit(instance != nullptr, "Null OpenThread instance");
+    VerifyOrQuit(instance != nullptr);
 
     for (const TestVector *test = &kTestVectors[0]; test < OT_ARRAY_END(kTestVectors); test++)
     {
         ot::Crypto::HkdfSha256 hkdf;
         uint8_t                outKey[kMaxOuttKey];
+        ot::Crypto::Key        testInputKey;
 
         printf("\n- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -");
         DumpBuffer("\nInput Key", test->mInKey, test->mInKeyLength);
@@ -137,8 +138,11 @@ void TestHkdfSha256(void)
         DumpBuffer("\nExpected Output Key", test->mOutKey, test->mOutKeyLength);
 
         memset(outKey, kFillByte, sizeof(outKey));
+        memset(&testInputKey, 0x00, sizeof(testInputKey));
+        testInputKey.mKey       = test->mInKey;
+        testInputKey.mKeyLength = test->mInKeyLength;
 
-        hkdf.Extract(test->mSalt, test->mSaltLength, test->mInKey, test->mInKeyLength);
+        hkdf.Extract(test->mSalt, test->mSaltLength, testInputKey);
         hkdf.Expand(test->mInfo, test->mInfoLength, outKey, test->mOutKeyLength);
 
         DumpBuffer("\nCalculated Output Key", outKey, test->mOutKeyLength);

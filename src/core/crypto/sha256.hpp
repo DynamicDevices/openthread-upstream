@@ -38,14 +38,20 @@
 
 #include <stdint.h>
 
-#include <mbedtls/sha256.h>
-
 #include <openthread/crypto.h>
+#include <openthread/platform/crypto.h>
 
+#include "common/as_core_type.hpp"
 #include "common/clearable.hpp"
+#include "common/code_utils.hpp"
 #include "common/equatable.hpp"
+#include "common/type_traits.hpp"
+#include "crypto/context_size.hpp"
 
 namespace ot {
+
+class Message;
+
 namespace Crypto {
 
 /**
@@ -69,10 +75,7 @@ public:
     class Hash : public otCryptoSha256Hash, public Clearable<Hash>, public Equatable<Hash>
     {
     public:
-        enum : uint8_t
-        {
-            kSize = OT_CRYPTO_SHA256_HASH_SIZE, ///< SHA-256 hash size (bytes)
-        };
+        static const uint8_t kSize = OT_CRYPTO_SHA256_HASH_SIZE; ///< SHA-256 hash size (bytes)
 
         /**
          * This method returns a pointer to a byte array containing the hash value.
@@ -80,22 +83,17 @@ public:
          * @returns A pointer to a byte array containing the hash.
          *
          */
-        const uint8_t *GetBytes(void) { return m8; }
-    };
-
-    enum
-    {
-        kHashSize = 32, ///< SHA-256 hash size (bytes)
+        const uint8_t *GetBytes(void) const { return m8; }
     };
 
     /**
-     * Constructor for initializing mbedtls_sha256_context.
+     * Constructor for `Sha256` object.
      *
      */
     Sha256(void);
 
     /**
-     * Destructor for freeing mbedtls_sha256_context.
+     * Destructor for `Sha256` object.
      *
      */
     ~Sha256(void);
@@ -113,7 +111,31 @@ public:
      * @param[in]  aBufLength  The length of @p aBuf in bytes.
      *
      */
-    void Update(const uint8_t *aBuf, uint16_t aBufLength);
+    void Update(const void *aBuf, uint16_t aBufLength);
+
+    /**
+     * This method inputs an object (treated as a sequence of bytes) into the SHA-256 computation.
+     *
+     * @tparam    ObjectType   The object type.
+     *
+     * @param[in] aObject      A reference to the object.
+     *
+     */
+    template <typename ObjectType> void Update(const ObjectType &aObject)
+    {
+        static_assert(!TypeTraits::IsPointer<ObjectType>::kValue, "ObjectType must not be a pointer");
+        return Update(&aObject, sizeof(ObjectType));
+    }
+
+    /**
+     * This method inputs the bytes read from a given message into the SHA-256 computation.
+     *
+     * @param[in] aMessage    The message to read the data from.
+     * @param[in] aOffset     The offset into @p aMessage to start to read.
+     * @param[in] aLength     The number of bytes to read.
+     *
+     */
+    void Update(const Message &aMessage, uint16_t aOffset, uint16_t aLength);
 
     /**
      * This method finalizes the hash computation.
@@ -124,7 +146,8 @@ public:
     void Finish(Hash &aHash);
 
 private:
-    mbedtls_sha256_context mContext;
+    otCryptoContext mContext;
+    OT_DEFINE_ALIGNED_VAR(mContextStorage, kSha256ContextSize, uint64_t);
 };
 
 /**
@@ -133,6 +156,9 @@ private:
  */
 
 } // namespace Crypto
+
+DefineCoreType(otCryptoSha256Hash, Crypto::Sha256::Hash);
+
 } // namespace ot
 
 #endif // SHA256_HPP_

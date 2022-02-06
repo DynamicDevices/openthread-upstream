@@ -35,10 +35,13 @@
 
 #include <stdio.h>
 
+#include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
 #include "common/encoding.hpp"
 #include "common/instance.hpp"
+#include "common/numeric_limits.hpp"
 #include "common/random.hpp"
+#include "net/ip4_address.hpp"
 #include "net/netif.hpp"
 
 using ot::Encoding::BigEndian::HostSwap32;
@@ -49,7 +52,7 @@ namespace Ip6 {
 //---------------------------------------------------------------------------------------------------------------------
 // NetworkPrefix methods
 
-otError NetworkPrefix::GenerateRandomUla(void)
+Error NetworkPrefix::GenerateRandomUla(void)
 {
     m8[0] = 0xfd;
 
@@ -68,6 +71,23 @@ void Prefix::Set(const uint8_t *aPrefix, uint8_t aLength)
 bool Prefix::IsEqual(const uint8_t *aPrefixBytes, uint8_t aPrefixLength) const
 {
     return (mLength == aPrefixLength) && (MatchLength(GetBytes(), aPrefixBytes, GetBytesSize()) >= mLength);
+}
+
+bool Prefix::operator<(const Prefix &aOther) const
+{
+    bool    isSmaller;
+    uint8_t matchedLength;
+
+    VerifyOrExit(GetLength() == aOther.GetLength(), isSmaller = GetLength() < aOther.GetLength());
+
+    matchedLength = MatchLength(GetBytes(), aOther.GetBytes(), GetBytesSize());
+
+    VerifyOrExit(matchedLength < GetLength(), isSmaller = false);
+
+    isSmaller = GetBytes()[matchedLength / CHAR_BIT] < aOther.GetBytes()[matchedLength / CHAR_BIT];
+
+exit:
+    return isSmaller;
 }
 
 uint8_t Prefix::MatchLength(const uint8_t *aPrefixA, const uint8_t *aPrefixB, uint8_t aMaxSize)
@@ -99,24 +119,40 @@ uint8_t Prefix::MatchLength(const uint8_t *aPrefixA, const uint8_t *aPrefixB, ui
     return matchedLength;
 }
 
+bool Prefix::IsValidNat64(void) const
+{
+    return (mLength == 32) || (mLength == 40) || (mLength == 48) || (mLength == 56) || (mLength == 64) ||
+           (mLength == 96);
+}
+
 Prefix::InfoString Prefix::ToString(void) const
 {
     InfoString string;
-    uint8_t    sizeInUint16 = (GetBytesSize() + sizeof(uint16_t) - 1) / sizeof(uint16_t);
 
-    for (uint16_t i = 0; i < sizeInUint16; i++)
-    {
-        IgnoreError(string.Append("%s%x", (i > 0) ? ":" : "", HostSwap16(mPrefix.mFields.m16[i])));
-    }
+    ToString(string);
+
+    return string;
+}
+
+void Prefix::ToString(char *aBuffer, uint16_t aSize) const
+{
+    StringWriter writer(aBuffer, aSize);
+
+    ToString(writer);
+}
+
+void Prefix::ToString(StringWriter &aWriter) const
+{
+    uint8_t sizeInUint16 = (GetBytesSize() + sizeof(uint16_t) - 1) / sizeof(uint16_t);
+
+    AsCoreType(&mPrefix).AppendHexWords(aWriter, sizeInUint16);
 
     if (GetBytesSize() < Address::kSize - 1)
     {
-        IgnoreError(string.Append("::"));
+        aWriter.Append("::");
     }
 
-    IgnoreError(string.Append("/%d", mLength));
-
-    return string;
+    aWriter.Append("/%d", mLength);
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -152,13 +188,7 @@ bool InterfaceIdentifier::IsReservedSubnetAnycast(void) const
 
 void InterfaceIdentifier::GenerateRandom(void)
 {
-    otError error;
-
-    OT_UNUSED_VARIABLE(error);
-
-    error = Random::Crypto::FillBuffer(mFields.m8, kSize);
-
-    OT_ASSERT(error == OT_ERROR_NONE);
+    SuccessOrAssert(Random::Crypto::FillBuffer(mFields.m8, kSize));
 }
 
 void InterfaceIdentifier::SetBytes(const uint8_t *aBuffer)
@@ -223,7 +253,7 @@ InterfaceIdentifier::InfoString InterfaceIdentifier::ToString(void) const
 {
     InfoString string;
 
-    IgnoreError(string.AppendHexBytes(mFields.m8, kSize));
+    string.AppendHexBytes(mFields.m8, kSize);
 
     return string;
 }
@@ -434,129 +464,159 @@ bool Address::MatchesFilter(TypeFilter aFilter) const
     return matches;
 }
 
-otError Address::FromString(const char *aBuf)
+void Address::SynthesizeFromIp4Address(const Prefix &aPrefix, const Ip4::Address &aIp4Address)
 {
-    otError     error  = OT_ERROR_NONE;
-    uint8_t *   dst    = reinterpret_cast<uint8_t *>(mFields.m8);
-    uint8_t *   endp   = reinterpret_cast<uint8_t *>(mFields.m8 + 15);
-    uint8_t *   colonp = nullptr;
-    const char *colonc = nullptr;
-    uint16_t    val    = 0;
-    uint8_t     count  = 0;
-    bool        first  = true;
-    bool        hasIp4 = false;
-    char        ch;
-    uint8_t     d;
+    // The prefix length must be 32, 40, 48, 56, 64, 96. IPv4 bytes are added
+    // after the prefix, skipping over the bits 64 to 71 (byte at `kSkipIndex`)
+    // which must be set to zero. The suffix is set to zero (per RFC 6502).
+    //
+    //    +--+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    //    |PL| 0-------------32--40--48--56--64--72--80--88--96--104---------|
+    //    +--+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    //    |32|     prefix    |v4(32)         | u | suffix                    |
+    //    +--+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    //    |40|     prefix        |v4(24)     | u |(8)| suffix                |
+    //    +--+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    //    |48|     prefix            |v4(16) | u | (16)  | suffix            |
+    //    +--+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    //    |56|     prefix                |(8)| u |  v4(24)   | suffix        |
+    //    +--+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    //    |64|     prefix                    | u |   v4(32)      | suffix    |
+    //    +--+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    //    |96|     prefix                                    |    v4(32)     |
+    //    +--+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+
+    constexpr uint8_t kSkipIndex = 8;
+
+    uint8_t ip6Index;
+
+    OT_ASSERT(aPrefix.IsValidNat64());
 
     Clear();
+    SetPrefix(aPrefix);
 
-    dst--;
+    ip6Index = aPrefix.GetLength() / CHAR_BIT;
 
-    for (;;)
+    for (uint8_t i = 0; i < Ip4::Address::kSize; i++)
     {
-        ch = *aBuf++;
-        d  = ch & 0xf;
-
-        if (('a' <= ch && ch <= 'f') || ('A' <= ch && ch <= 'F'))
+        if (ip6Index == kSkipIndex)
         {
-            d += 9;
+            ip6Index++;
         }
-        else if (ch == ':' || ch == '\0' || ch == ' ')
-        {
-            if (count)
-            {
-                VerifyOrExit(dst + 2 <= endp, error = OT_ERROR_PARSE);
-                *(dst + 1) = static_cast<uint8_t>(val >> 8);
-                *(dst + 2) = static_cast<uint8_t>(val);
-                dst += 2;
-                count = 0;
-                val   = 0;
-            }
-            else if (ch == ':')
-            {
-                VerifyOrExit(colonp == nullptr || first, error = OT_ERROR_PARSE);
-                colonp = dst;
-            }
 
-            if (ch == '\0' || ch == ' ')
+        mFields.m8[ip6Index++] = aIp4Address.GetBytes()[i];
+    }
+}
+
+Error Address::FromString(const char *aString)
+{
+    constexpr uint8_t kInvalidIndex = 0xff;
+    constexpr char    kColonChar    = ':';
+    constexpr char    kDotChar      = '.';
+    constexpr char    kNullChar     = '\0';
+
+    Error   error      = kErrorParse;
+    uint8_t index      = 0;
+    uint8_t endIndex   = kSize / sizeof(uint16_t);
+    uint8_t colonIndex = kInvalidIndex;
+    bool    hasIp4     = false;
+
+    // Check if the string starts with "::".
+
+    if (*aString == kColonChar)
+    {
+        aString++;
+        VerifyOrExit(*aString == kColonChar);
+        aString++;
+        colonIndex = index;
+    }
+
+    while (*aString != kNullChar)
+    {
+        const char *start = aString;
+        uint32_t    value = 0;
+
+        // Parse hex number
+
+        while (true)
+        {
+            char    c = *aString;
+            uint8_t digit;
+
+            if (('A' <= c) && (c <= 'F'))
+            {
+                digit = static_cast<uint8_t>(c - 'A' + 10);
+            }
+            else if (('a' <= c) && (c <= 'f'))
+            {
+                digit = static_cast<uint8_t>(c - 'a' + 10);
+            }
+            else if (('0' <= c) && (c <= '9'))
+            {
+                digit = static_cast<uint8_t>(c - '0');
+            }
+            else
             {
                 break;
             }
 
-            colonc = aBuf;
+            aString++;
+            value = (value << 4) + digit;
 
-            continue;
+            VerifyOrExit(value <= NumericLimits<uint16_t>::kMax);
         }
-        else if (ch == '.')
+
+        VerifyOrExit(aString != start);
+
+        if (*aString == kDotChar)
         {
-            hasIp4 = true;
-
-            // Do not count bytes of the embedded IPv4 address.
-            endp -= kIp4AddressSize;
-
-            VerifyOrExit(dst <= endp, error = OT_ERROR_PARSE);
-
+            // IPv6 address contains an embedded IPv4 address.
+            aString = start;
+            hasIp4  = true;
+            endIndex -= Ip4::Address::kSize / sizeof(uint16_t);
+            VerifyOrExit(index <= endIndex);
             break;
         }
-        else
+
+        VerifyOrExit((*aString == kColonChar) || (*aString == kNullChar));
+
+        VerifyOrExit(index < endIndex);
+        mFields.m16[index++] = HostSwap16(static_cast<uint16_t>(value));
+
+        if (*aString == kColonChar)
         {
-            VerifyOrExit('0' <= ch && ch <= '9', error = OT_ERROR_PARSE);
+            aString++;
+
+            if (*aString == kColonChar)
+            {
+                VerifyOrExit(colonIndex == kInvalidIndex);
+                colonIndex = index;
+                aString++;
+            }
         }
-
-        first = false;
-        val   = static_cast<uint16_t>((val << 4) | d);
-        VerifyOrExit(++count <= 4, error = OT_ERROR_PARSE);
     }
 
-    VerifyOrExit(colonp || dst == endp, error = OT_ERROR_PARSE);
-
-    while (colonp && dst > colonp)
+    if (index < endIndex)
     {
-        *endp-- = *dst--;
-    }
+        uint8_t wordsToCopy;
 
-    while (endp > dst)
-    {
-        *endp-- = 0;
+        VerifyOrExit(colonIndex != kInvalidIndex);
+
+        wordsToCopy = index - colonIndex;
+
+        memmove(&mFields.m16[endIndex - wordsToCopy], &mFields.m16[colonIndex], wordsToCopy * sizeof(uint16_t));
+        memset(&mFields.m16[colonIndex], 0, (endIndex - index) * sizeof(uint16_t));
     }
 
     if (hasIp4)
     {
-        val = 0;
+        Ip4::Address ip4Addr;
 
-        // Reset the start and end pointers.
-        dst  = reinterpret_cast<uint8_t *>(mFields.m8 + 12);
-        endp = reinterpret_cast<uint8_t *>(mFields.m8 + 15);
-
-        for (;;)
-        {
-            ch = *colonc++;
-
-            if (ch == '.' || ch == '\0' || ch == ' ')
-            {
-                VerifyOrExit(dst <= endp, error = OT_ERROR_PARSE);
-
-                *dst++ = static_cast<uint8_t>(val);
-                val    = 0;
-
-                if (ch == '\0' || ch == ' ')
-                {
-                    // Check if embedded IPv4 address had exactly four parts.
-                    VerifyOrExit(dst == endp + 1, error = OT_ERROR_PARSE);
-                    break;
-                }
-            }
-            else
-            {
-                VerifyOrExit('0' <= ch && ch <= '9', error = OT_ERROR_PARSE);
-
-                val = (10 * val) + (ch & 0xf);
-
-                // Single part of IPv4 address has to fit in one byte.
-                VerifyOrExit(val <= 0xff, error = OT_ERROR_PARSE);
-            }
-        }
+        SuccessOrExit(error = ip4Addr.FromString(aString));
+        memcpy(OT_ARRAY_END(mFields.m8) - Ip4::Address::kSize, ip4Addr.GetBytes(), Ip4::Address::kSize);
     }
+
+    error = kErrorNone;
 
 exit:
     return error;
@@ -564,34 +624,63 @@ exit:
 
 Address::InfoString Address::ToString(void) const
 {
-    return InfoString("%x:%x:%x:%x:%x:%x:%x:%x", HostSwap16(mFields.m16[0]), HostSwap16(mFields.m16[1]),
-                      HostSwap16(mFields.m16[2]), HostSwap16(mFields.m16[3]), HostSwap16(mFields.m16[4]),
-                      HostSwap16(mFields.m16[5]), HostSwap16(mFields.m16[6]), HostSwap16(mFields.m16[7]));
+    InfoString string;
+
+    ToString(string);
+
+    return string;
+}
+
+void Address::ToString(char *aBuffer, uint16_t aSize) const
+{
+    StringWriter writer(aBuffer, aSize);
+    ToString(writer);
+}
+
+void Address::ToString(StringWriter &aWriter) const
+{
+    AppendHexWords(aWriter, OT_ARRAY_LENGTH(mFields.m16));
+}
+
+void Address::AppendHexWords(StringWriter &aWriter, uint8_t aLength) const
+{
+    // Appends the first `aLength` elements in `mFields.m16[]` array
+    // as hex words.
+
+    for (uint8_t index = 0; index < aLength; index++)
+    {
+        if (index > 0)
+        {
+            aWriter.Append(":");
+        }
+
+        aWriter.Append("%x", HostSwap16(mFields.m16[index]));
+    }
 }
 
 const Address &Address::GetLinkLocalAllNodesMulticast(void)
 {
-    return static_cast<const Address &>(Netif::kLinkLocalAllNodesMulticastAddress.mAddress);
+    return AsCoreType(&Netif::kLinkLocalAllNodesMulticastAddress.mAddress);
 }
 
 const Address &Address::GetLinkLocalAllRoutersMulticast(void)
 {
-    return static_cast<const Address &>(Netif::kLinkLocalAllRoutersMulticastAddress.mAddress);
+    return AsCoreType(&Netif::kLinkLocalAllRoutersMulticastAddress.mAddress);
 }
 
 const Address &Address::GetRealmLocalAllNodesMulticast(void)
 {
-    return static_cast<const Address &>(Netif::kRealmLocalAllNodesMulticastAddress.mAddress);
+    return AsCoreType(&Netif::kRealmLocalAllNodesMulticastAddress.mAddress);
 }
 
 const Address &Address::GetRealmLocalAllRoutersMulticast(void)
 {
-    return static_cast<const Address &>(Netif::kRealmLocalAllRoutersMulticastAddress.mAddress);
+    return AsCoreType(&Netif::kRealmLocalAllRoutersMulticastAddress.mAddress);
 }
 
 const Address &Address::GetRealmLocalAllMplForwarders(void)
 {
-    return static_cast<const Address &>(Netif::kRealmLocalAllMplForwardersMulticastAddress.mAddress);
+    return AsCoreType(&Netif::kRealmLocalAllMplForwardersMulticastAddress.mAddress);
 }
 
 } // namespace Ip6

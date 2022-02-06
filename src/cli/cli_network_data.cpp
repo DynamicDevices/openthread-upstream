@@ -34,165 +34,275 @@
 #include "cli_network_data.hpp"
 
 #include <openthread/border_router.h>
+#include <openthread/netdata_publisher.h>
 #include <openthread/server.h>
 
 #include "cli/cli.hpp"
 #include "common/encoding.hpp"
-#include "utils/parse_cmdline.hpp"
-
-using ot::Encoding::BigEndian::HostSwap16;
-using ot::Utils::CmdLineParser::ParseAsHexString;
 
 namespace ot {
 namespace Cli {
 
 constexpr NetworkData::Command NetworkData::sCommands[];
 
-NetworkData::NetworkData(Interpreter &aInterpreter)
-    : mInterpreter(aInterpreter)
+void NetworkData::PrefixFlagsToString(const otBorderRouterConfig &aConfig, FlagsString &aString)
 {
-}
-
-void NetworkData::OutputPrefix(const otBorderRouterConfig &aConfig)
-{
-    mInterpreter.OutputFormat("%x:%x:%x:%x::/%d ", HostSwap16(aConfig.mPrefix.mPrefix.mFields.m16[0]),
-                              HostSwap16(aConfig.mPrefix.mPrefix.mFields.m16[1]),
-                              HostSwap16(aConfig.mPrefix.mPrefix.mFields.m16[2]),
-                              HostSwap16(aConfig.mPrefix.mPrefix.mFields.m16[3]), aConfig.mPrefix.mLength);
+    char *flagsPtr = &aString[0];
 
     if (aConfig.mPreferred)
     {
-        mInterpreter.OutputFormat("p");
+        *flagsPtr++ = 'p';
     }
 
     if (aConfig.mSlaac)
     {
-        mInterpreter.OutputFormat("a");
+        *flagsPtr++ = 'a';
     }
 
     if (aConfig.mDhcp)
     {
-        mInterpreter.OutputFormat("d");
+        *flagsPtr++ = 'd';
     }
 
     if (aConfig.mConfigure)
     {
-        mInterpreter.OutputFormat("c");
+        *flagsPtr++ = 'c';
     }
 
     if (aConfig.mDefaultRoute)
     {
-        mInterpreter.OutputFormat("r");
+        *flagsPtr++ = 'r';
     }
 
     if (aConfig.mOnMesh)
     {
-        mInterpreter.OutputFormat("o");
+        *flagsPtr++ = 'o';
     }
 
     if (aConfig.mStable)
     {
-        mInterpreter.OutputFormat("s");
+        *flagsPtr++ = 's';
     }
 
     if (aConfig.mNdDns)
     {
-        mInterpreter.OutputFormat("n");
+        *flagsPtr++ = 'n';
     }
 
     if (aConfig.mDp)
     {
-        mInterpreter.OutputFormat("D");
+        *flagsPtr++ = 'D';
     }
 
-    switch (aConfig.mPreference)
+    *flagsPtr = '\0';
+}
+
+void NetworkData::OutputPrefix(const otBorderRouterConfig &aConfig)
+{
+    FlagsString flagsString;
+
+    OutputIp6Prefix(aConfig.mPrefix);
+
+    PrefixFlagsToString(aConfig, flagsString);
+
+    if (flagsString[0] != '\0')
     {
-    case OT_ROUTE_PREFERENCE_LOW:
-        mInterpreter.OutputFormat(" low");
-        break;
-
-    case OT_ROUTE_PREFERENCE_MED:
-        mInterpreter.OutputFormat(" med");
-        break;
-
-    case OT_ROUTE_PREFERENCE_HIGH:
-        mInterpreter.OutputFormat(" high");
-        break;
+        OutputFormat(" %s", flagsString);
     }
 
-    mInterpreter.OutputLine(" %04x", aConfig.mRloc16);
+    OutputLine(" %s %04x", PreferenceToString(aConfig.mPreference), aConfig.mRloc16);
+}
+
+void NetworkData::RouteFlagsToString(const otExternalRouteConfig &aConfig, FlagsString &aString)
+{
+    char *flagsPtr = &aString[0];
+
+    if (aConfig.mStable)
+    {
+        *flagsPtr++ = 's';
+    }
+
+    if (aConfig.mNat64)
+    {
+        *flagsPtr++ = 'n';
+    }
+
+    *flagsPtr = '\0';
 }
 
 void NetworkData::OutputRoute(const otExternalRouteConfig &aConfig)
 {
-    mInterpreter.OutputFormat("%x:%x:%x:%x::/%d ", HostSwap16(aConfig.mPrefix.mPrefix.mFields.m16[0]),
-                              HostSwap16(aConfig.mPrefix.mPrefix.mFields.m16[1]),
-                              HostSwap16(aConfig.mPrefix.mPrefix.mFields.m16[2]),
-                              HostSwap16(aConfig.mPrefix.mPrefix.mFields.m16[3]), aConfig.mPrefix.mLength);
+    FlagsString flagsString;
 
-    if (aConfig.mStable)
+    OutputIp6Prefix(aConfig.mPrefix);
+
+    RouteFlagsToString(aConfig, flagsString);
+
+    if (flagsString[0] != '\0')
     {
-        mInterpreter.OutputFormat("s ");
+        OutputFormat(" %s", flagsString);
     }
 
-    switch (aConfig.mPreference)
+    OutputLine(" %s %04x", PreferenceToString(aConfig.mPreference), aConfig.mRloc16);
+}
+
+const char *NetworkData::PreferenceToString(signed int aPreference)
+{
+    const char *str = "";
+
+    switch (aPreference)
     {
     case OT_ROUTE_PREFERENCE_LOW:
-        mInterpreter.OutputFormat("low");
+        str = "low";
         break;
 
     case OT_ROUTE_PREFERENCE_MED:
-        mInterpreter.OutputFormat("med");
+        str = "med";
         break;
 
     case OT_ROUTE_PREFERENCE_HIGH:
-        mInterpreter.OutputFormat("high");
+        str = "high";
+        break;
+
+    default:
         break;
     }
 
-    mInterpreter.OutputLine(" %04x", aConfig.mRloc16);
+    return str;
 }
 
 void NetworkData::OutputService(const otServiceConfig &aConfig)
 {
-    mInterpreter.OutputFormat("%u ", aConfig.mEnterpriseNumber);
-    mInterpreter.OutputBytes(aConfig.mServiceData, aConfig.mServiceDataLength);
-    mInterpreter.OutputFormat(" ");
-    mInterpreter.OutputBytes(aConfig.mServerConfig.mServerData, aConfig.mServerConfig.mServerDataLength);
+    OutputFormat("%u ", aConfig.mEnterpriseNumber);
+    OutputBytes(aConfig.mServiceData, aConfig.mServiceDataLength);
+    OutputFormat(" ");
+    OutputBytes(aConfig.mServerConfig.mServerData, aConfig.mServerConfig.mServerDataLength);
 
     if (aConfig.mServerConfig.mStable)
     {
-        mInterpreter.OutputFormat(" s");
+        OutputFormat(" s");
     }
 
-    mInterpreter.OutputLine(" %04x", aConfig.mServerConfig.mRloc16);
+    OutputLine(" %04x", aConfig.mServerConfig.mRloc16);
 }
 
-otError NetworkData::ProcessHelp(uint8_t aArgsLength, char *aArgs[])
+otError NetworkData::ProcessHelp(Arg aArgs[])
 {
-    OT_UNUSED_VARIABLE(aArgsLength);
     OT_UNUSED_VARIABLE(aArgs);
 
     for (const Command &command : sCommands)
     {
-        mInterpreter.OutputLine(command.mName);
+        OutputLine(command.mName);
     }
 
     return OT_ERROR_NONE;
 }
 
-#if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE || OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
-otError NetworkData::ProcessRegister(uint8_t aArgsLength, char *aArgs[])
+#if OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE
+otError NetworkData::ProcessPublish(Arg aArgs[])
 {
-    OT_UNUSED_VARIABLE(aArgsLength);
+    otError error = OT_ERROR_NONE;
+
+#if OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
+    if (aArgs[0] == "dnssrp")
+    {
+        if (aArgs[1] == "anycast")
+        {
+            uint8_t sequenceNumber;
+
+            SuccessOrExit(error = aArgs[2].ParseAsUint8(sequenceNumber));
+            otNetDataPublishDnsSrpServiceAnycast(GetInstancePtr(), sequenceNumber);
+            ExitNow();
+        }
+
+        if (aArgs[1] == "unicast")
+        {
+            otIp6Address address;
+            uint16_t     port;
+
+            if (aArgs[3].IsEmpty())
+            {
+                SuccessOrExit(error = aArgs[2].ParseAsUint16(port));
+                otNetDataPublishDnsSrpServiceUnicastMeshLocalEid(GetInstancePtr(), port);
+                ExitNow();
+            }
+
+            SuccessOrExit(error = aArgs[2].ParseAsIp6Address(address));
+            SuccessOrExit(error = aArgs[3].ParseAsUint16(port));
+            otNetDataPublishDnsSrpServiceUnicast(GetInstancePtr(), &address, port);
+            ExitNow();
+        }
+    }
+#endif // OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
+
+#if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
+    if (aArgs[0] == "prefix")
+    {
+        otBorderRouterConfig config;
+
+        SuccessOrExit(error = Interpreter::ParsePrefix(aArgs + 1, config));
+        error = otNetDataPublishOnMeshPrefix(GetInstancePtr(), &config);
+        ExitNow();
+    }
+
+    if (aArgs[0] == "route")
+    {
+        otExternalRouteConfig config;
+
+        SuccessOrExit(error = Interpreter::ParseRoute(aArgs + 1, config));
+        error = otNetDataPublishExternalRoute(GetInstancePtr(), &config);
+        ExitNow();
+    }
+#endif // OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
+
+    error = OT_ERROR_INVALID_ARGS;
+
+exit:
+    return error;
+}
+
+otError NetworkData::ProcessUnpublish(Arg aArgs[])
+{
+    otError error = OT_ERROR_NONE;
+
+#if OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
+    if (aArgs[0] == "dnssrp")
+    {
+        otNetDataUnpublishDnsSrpService(GetInstancePtr());
+        ExitNow();
+    }
+#endif
+
+#if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
+    {
+        otIp6Prefix prefix;
+
+        if (aArgs[0].ParseAsIp6Prefix(prefix) == OT_ERROR_NONE)
+        {
+            error = otNetDataUnpublishPrefix(GetInstancePtr(), &prefix);
+            ExitNow();
+        }
+    }
+#endif
+
+    error = OT_ERROR_INVALID_ARGS;
+
+exit:
+    return error;
+}
+#endif // OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE
+
+#if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE || OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
+otError NetworkData::ProcessRegister(Arg aArgs[])
+{
     OT_UNUSED_VARIABLE(aArgs);
 
     otError error = OT_ERROR_NONE;
 
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
-    SuccessOrExit(error = otBorderRouterRegister(mInterpreter.mInstance));
+    SuccessOrExit(error = otBorderRouterRegister(GetInstancePtr()));
 #else
-    SuccessOrExit(error = otServerRegister(mInterpreter.mInstance));
+    SuccessOrExit(error = otServerRegister(GetInstancePtr()));
 #endif
 
 exit:
@@ -200,128 +310,215 @@ exit:
 }
 #endif
 
-otError NetworkData::ProcessSteeringData(uint8_t aArgsLength, char *aArgs[])
+otError NetworkData::ProcessSteeringData(Arg aArgs[])
 {
-    otError           error = OT_ERROR_INVALID_ARGS;
+    otError           error;
     otExtAddress      addr;
     otJoinerDiscerner discerner;
 
-    VerifyOrExit((aArgsLength > 1) && (strcmp(aArgs[0], "check") == 0));
-
-    discerner.mLength = 0;
+    VerifyOrExit(aArgs[0] == "check", error = OT_ERROR_INVALID_ARGS);
 
     error = Interpreter::ParseJoinerDiscerner(aArgs[1], discerner);
 
     if (error == OT_ERROR_NOT_FOUND)
     {
-        SuccessOrExit(error = ParseAsHexString(aArgs[1], addr.m8));
+        discerner.mLength = 0;
+        error             = aArgs[1].ParseAsHexString(addr.m8);
     }
-    else if (error != OT_ERROR_NONE)
-    {
-        ExitNow();
-    }
+
+    SuccessOrExit(error);
 
     if (discerner.mLength)
     {
-        error = otNetDataSteeringDataCheckJoinerWithDiscerner(mInterpreter.mInstance, &discerner);
+        error = otNetDataSteeringDataCheckJoinerWithDiscerner(GetInstancePtr(), &discerner);
     }
     else
     {
-        error = otNetDataSteeringDataCheckJoiner(mInterpreter.mInstance, &addr);
+        error = otNetDataSteeringDataCheckJoiner(GetInstancePtr(), &addr);
     }
 
 exit:
     return error;
 }
 
-void NetworkData::OutputPrefixes(void)
+otError NetworkData::GetNextPrefix(otNetworkDataIterator *aIterator, otBorderRouterConfig *aConfig, bool aLocal)
+{
+    otError error;
+
+    if (aLocal)
+    {
+#if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
+        error = otBorderRouterGetNextOnMeshPrefix(GetInstancePtr(), aIterator, aConfig);
+#else
+        error = OT_ERROR_NOT_FOUND;
+#endif
+    }
+    else
+    {
+        error = otNetDataGetNextOnMeshPrefix(GetInstancePtr(), aIterator, aConfig);
+    }
+
+    return error;
+}
+
+void NetworkData::OutputPrefixes(bool aLocal)
 {
     otNetworkDataIterator iterator = OT_NETWORK_DATA_ITERATOR_INIT;
     otBorderRouterConfig  config;
 
-    mInterpreter.OutputLine("Prefixes:");
+    OutputLine("Prefixes:");
 
-    while (otNetDataGetNextOnMeshPrefix(mInterpreter.mInstance, &iterator, &config) == OT_ERROR_NONE)
+    while (GetNextPrefix(&iterator, &config, aLocal) == OT_ERROR_NONE)
     {
         OutputPrefix(config);
     }
 }
 
-void NetworkData::OutputRoutes(void)
+otError NetworkData::GetNextRoute(otNetworkDataIterator *aIterator, otExternalRouteConfig *aConfig, bool aLocal)
+{
+    otError error;
+
+    if (aLocal)
+    {
+#if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
+        error = otBorderRouterGetNextRoute(GetInstancePtr(), aIterator, aConfig);
+#else
+        error = OT_ERROR_NOT_FOUND;
+#endif
+    }
+    else
+    {
+        error = otNetDataGetNextRoute(GetInstancePtr(), aIterator, aConfig);
+    }
+
+    return error;
+}
+
+void NetworkData::OutputRoutes(bool aLocal)
 {
     otNetworkDataIterator iterator = OT_NETWORK_DATA_ITERATOR_INIT;
     otExternalRouteConfig config;
 
-    mInterpreter.OutputLine("Routes:");
+    OutputLine("Routes:");
 
-    while (otNetDataGetNextRoute(mInterpreter.mInstance, &iterator, &config) == OT_ERROR_NONE)
+    while (GetNextRoute(&iterator, &config, aLocal) == OT_ERROR_NONE)
     {
         OutputRoute(config);
     }
 }
 
-void NetworkData::OutputServices(void)
+otError NetworkData::GetNextService(otNetworkDataIterator *aIterator, otServiceConfig *aConfig, bool aLocal)
+{
+    otError error;
+
+    if (aLocal)
+    {
+#if OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
+        error = otServerGetNextService(GetInstancePtr(), aIterator, aConfig);
+#else
+        error = OT_ERROR_NOT_FOUND;
+#endif
+    }
+    else
+    {
+        error = otNetDataGetNextService(GetInstancePtr(), aIterator, aConfig);
+    }
+
+    return error;
+}
+
+void NetworkData::OutputServices(bool aLocal)
 {
     otNetworkDataIterator iterator = OT_NETWORK_DATA_ITERATOR_INIT;
     otServiceConfig       config;
 
-    mInterpreter.OutputLine("Services:");
+    OutputLine("Services:");
 
-    while (otNetDataGetNextService(mInterpreter.mInstance, &iterator, &config) == OT_ERROR_NONE)
+    while (GetNextService(&iterator, &config, aLocal) == OT_ERROR_NONE)
     {
         OutputService(config);
     }
 }
 
-otError NetworkData::OutputBinary(void)
+otError NetworkData::OutputBinary(bool aLocal)
 {
-    otError error = OT_ERROR_NONE;
+    otError error;
     uint8_t data[255];
     uint8_t len = sizeof(data);
 
-    SuccessOrExit(error = otNetDataGet(mInterpreter.mInstance, false, data, &len));
+    if (aLocal)
+    {
+#if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
+        error = otBorderRouterGetNetData(GetInstancePtr(), false, data, &len);
+#else
+        error = OT_ERROR_NOT_IMPLEMENTED;
+#endif
+    }
+    else
+    {
+        error = otNetDataGet(GetInstancePtr(), false, data, &len);
+    }
+    SuccessOrExit(error);
 
-    mInterpreter.OutputBytes(data, static_cast<uint8_t>(len));
-    mInterpreter.OutputLine("");
+    OutputBytesLine(data, static_cast<uint8_t>(len));
 
 exit:
     return error;
 }
 
-otError NetworkData::ProcessShow(uint8_t aArgsLength, char *aArgs[])
+otError NetworkData::ProcessShow(Arg aArgs[])
 {
-    otError error;
+    otError error  = OT_ERROR_INVALID_ARGS;
+    bool    local  = false;
+    bool    binary = false;
 
-    if (aArgsLength == 0)
+    for (uint8_t i = 0; !aArgs[i].IsEmpty(); i++)
     {
-        OutputPrefixes();
-        OutputRoutes();
-        OutputServices();
-        error = OT_ERROR_NONE;
+        if (aArgs[i] == "local")
+        {
+            local = true;
+        }
+        else if (aArgs[i] == "-x")
+        {
+            binary = true;
+        }
+        else
+        {
+            ExitNow(error = OT_ERROR_INVALID_ARGS);
+        }
     }
-    else if (strcmp(aArgs[0], "-x") == 0)
+
+    if (binary)
     {
-        error = OutputBinary();
+        error = OutputBinary(local);
     }
     else
     {
-        error = OT_ERROR_INVALID_ARGS;
+        OutputPrefixes(local);
+        OutputRoutes(local);
+        OutputServices(local);
+        error = OT_ERROR_NONE;
     }
 
+exit:
     return error;
 }
 
-otError NetworkData::Process(uint8_t aArgsLength, char *aArgs[])
+otError NetworkData::Process(Arg aArgs[])
 {
     otError        error = OT_ERROR_INVALID_COMMAND;
     const Command *command;
 
-    VerifyOrExit(aArgsLength != 0, IgnoreError(ProcessHelp(0, nullptr)));
+    if (aArgs[0].IsEmpty())
+    {
+        IgnoreError(ProcessHelp(aArgs));
+        ExitNow();
+    }
 
-    command = Utils::LookupTable::Find(aArgs[0], sCommands);
+    command = BinarySearch::Find(aArgs[0].GetCString(), sCommands);
     VerifyOrExit(command != nullptr);
 
-    error = (this->*command->mHandler)(aArgsLength - 1, aArgs + 1);
+    error = (this->*command->mHandler)(aArgs + 1);
 
 exit:
     return error;

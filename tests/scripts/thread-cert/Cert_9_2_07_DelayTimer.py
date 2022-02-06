@@ -30,7 +30,7 @@
 import unittest
 
 import thread_cert
-from pktverify.consts import MLE_CHILD_ID_RESPONSE, MLE_DATA_RESPONSE, MGMT_PENDING_SET_URI, MGMT_ACTIVE_SET_URI, MGMT_DATASET_CHANGED_URI, COAP_CODE_ACK, ACTIVE_OPERATION_DATASET_TLV, ACTIVE_TIMESTAMP_TLV, PENDING_TIMESTAMP_TLV, NM_CHANNEL_TLV, NM_CHANNEL_MASK_TLV, NM_EXTENDED_PAN_ID_TLV, NM_NETWORK_MASTER_KEY_TLV, NM_NETWORK_MESH_LOCAL_PREFIX_TLV, NM_NETWORK_NAME_TLV, NM_PAN_ID_TLV, NM_PSKC_TLV, NM_SECURITY_POLICY_TLV, SOURCE_ADDRESS_TLV, LEADER_DATA_TLV, ACTIVE_TIMESTAMP_TLV, NETWORK_DATA_TLV, NM_BORDER_AGENT_LOCATOR_TLV, NM_COMMISSIONER_SESSION_ID_TLV, NM_DELAY_TIMER_TLV, PENDING_OPERATION_DATASET_TLV
+from pktverify.consts import MLE_CHILD_ID_RESPONSE, MLE_DATA_RESPONSE, MGMT_PENDING_SET_URI, MGMT_ACTIVE_SET_URI, MGMT_DATASET_CHANGED_URI, COAP_CODE_ACK, ACTIVE_OPERATION_DATASET_TLV, ACTIVE_TIMESTAMP_TLV, PENDING_TIMESTAMP_TLV, NM_CHANNEL_TLV, NM_CHANNEL_MASK_TLV, NM_EXTENDED_PAN_ID_TLV, NM_NETWORK_KEY_TLV, NM_NETWORK_MESH_LOCAL_PREFIX_TLV, NM_NETWORK_NAME_TLV, NM_PAN_ID_TLV, NM_PSKC_TLV, NM_SECURITY_POLICY_TLV, SOURCE_ADDRESS_TLV, LEADER_DATA_TLV, ACTIVE_TIMESTAMP_TLV, NETWORK_DATA_TLV, NM_BORDER_AGENT_LOCATOR_TLV, NM_COMMISSIONER_SESSION_ID_TLV, NM_DELAY_TIMER_TLV, PENDING_OPERATION_DATASET_TLV
 from pktverify.packet_verifier import PacketVerifier
 
 PANID_INIT = 0xface
@@ -59,24 +59,18 @@ class Cert_9_2_7_DelayTimer(thread_cert.TestCase):
         COMMISSIONER: {
             'name': 'COMMISSIONER',
             'mode': 'rdn',
-            'panid': 0xface,
-            'router_selection_jitter': 1,
             'allowlist': [LEADER]
         },
         LEADER: {
             'name': 'LEADER',
             'mode': 'rdn',
-            'panid': 0xface,
             'partition_id': 0xffffffff,
-            'router_selection_jitter': 1,
             'allowlist': [COMMISSIONER]
         },
         ROUTER: {
             'name': 'ROUTER',
             'mode': 'rdn',
-            'panid': 0xface,
             'partition_id': 1,
-            'router_selection_jitter': 1
         },
     }
 
@@ -165,7 +159,7 @@ class Cert_9_2_7_DelayTimer(thread_cert.TestCase):
         # Step 4: Leader MUST send a unicast MLE Child ID Response to the Router
         _lpkts.filter_wpan_dst64(ROUTER).filter_mle_cmd(MLE_CHILD_ID_RESPONSE).must_next(
         ).must_verify(lambda p: {ACTIVE_OPERATION_DATASET_TLV, ACTIVE_TIMESTAMP_TLV} < set(p.mle.tlv.type) and {
-            NM_CHANNEL_TLV, NM_CHANNEL_MASK_TLV, NM_EXTENDED_PAN_ID_TLV, NM_NETWORK_MASTER_KEY_TLV,
+            NM_CHANNEL_TLV, NM_CHANNEL_MASK_TLV, NM_EXTENDED_PAN_ID_TLV, NM_NETWORK_KEY_TLV,
             NM_NETWORK_MESH_LOCAL_PREFIX_TLV, NM_NETWORK_NAME_TLV, NM_PAN_ID_TLV, NM_PSKC_TLV, NM_SECURITY_POLICY_TLV
         } <= set(p.thread_meshcop.tlv.type) and p.mle.tlv.active_tstamp == LEADER_ACTIVE_TIMESTAMP)
 
@@ -183,7 +177,7 @@ class Cert_9_2_7_DelayTimer(thread_cert.TestCase):
         # Step 10: Leader MUST send a unicast MLE Data Response to the Router
         _lpkts.filter_wpan_dst64(ROUTER).filter_mle_cmd(MLE_DATA_RESPONSE).must_next(
         ).must_verify(lambda p: {ACTIVE_OPERATION_DATASET_TLV, ACTIVE_TIMESTAMP_TLV} < set(p.mle.tlv.type) and {
-            NM_CHANNEL_TLV, NM_CHANNEL_MASK_TLV, NM_EXTENDED_PAN_ID_TLV, NM_NETWORK_MASTER_KEY_TLV,
+            NM_CHANNEL_TLV, NM_CHANNEL_MASK_TLV, NM_EXTENDED_PAN_ID_TLV, NM_NETWORK_KEY_TLV,
             NM_NETWORK_MESH_LOCAL_PREFIX_TLV, NM_NETWORK_NAME_TLV, NM_PAN_ID_TLV, NM_PSKC_TLV, NM_SECURITY_POLICY_TLV
         } <= set(p.thread_meshcop.tlv.type) and p.mle.tlv.active_tstamp == ROUTER_ACTIVE_TIMESTAMP)
 
@@ -223,7 +217,7 @@ class Cert_9_2_7_DelayTimer(thread_cert.TestCase):
             p.mle.tlv.type) and {NM_CHANNEL_TLV, NM_COMMISSIONER_SESSION_ID_TLV, NM_PAN_ID_TLV, NM_DELAY_TIMER_TLV} <=
                       set(p.thread_meshcop.tlv.type) and p.mle.tlv.active_tstamp == ROUTER_ACTIVE_TIMESTAMP and p.mle.
                       tlv.pending_tstamp == COMMISSIONER_PENDING_TIMESTAMP and p.thread_meshcop.tlv.pan_id ==
-                      COMMISSIONER_PENDING_PANID and p.thread_meshcop.tlv.channel == COMMISSIONER_PENDING_CHANNEL)
+                      [COMMISSIONER_PENDING_PANID] and p.thread_meshcop.tlv.channel == [COMMISSIONER_PENDING_CHANNEL])
 
         # Step 21: Router MUST respond with an ICMPv6 Echo Reply
         pkts.filter_wpan_src16_dst16(ROUTER_RLOC16, LEADER_RLOC16).filter_ping_reply().must_next()

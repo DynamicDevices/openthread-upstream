@@ -62,10 +62,11 @@ class DiscoverScanner : public InstanceLocator, private NonCopyable
     friend class Mle;
 
 public:
-    enum
-    {
-        kDefaultScanDuration = Mac::kScanDurationDefault, ///< Default scan duration (per channel), in milliseconds.
-    };
+    /**
+     * Default scan duration (per channel), in milliseconds.
+     *
+     */
+    static constexpr uint32_t kDefaultScanDuration = Mac::kScanDurationDefault;
 
     /**
      * This type represents Discover Scan result.
@@ -78,7 +79,7 @@ public:
      * completes.
      *
      * The handler function format is `void (*oHandler)(ScanResult *aResult, void *aContext);`. End of scan is
-     * indicated by `aResult` pointer being set to nullptr.
+     * indicated by `aResult` pointer being set to `nullptr`.
      *
      */
     typedef otHandleActiveScanResult Handler;
@@ -110,22 +111,24 @@ public:
      * @param[in]  aEnableFiltering   Enable filtering MLE Discovery Responses with steering data not containing a
      *                                given filter indexes.
      * @param[in]  aFilterIndexes     A pointer to `FilterIndexes` to use for filtering (when enabled).
-     *                                If set to nullptr, filter indexes are derived from hash of factory-assigned EUI64.
+     *                                If set to `nullptr`, filter indexes are derived from hash of factory-assigned
+     *                                EUI64.
      * @param[in]  aHandler           A pointer to a function that is called on receiving an MLE Discovery Response.
      * @param[in]  aContext           A pointer to arbitrary context information.
      *
-     * @retval OT_ERROR_NONE       Successfully started a Thread Discovery Scan.
-     * @retval OT_ERROR_NO_BUFS    Could not allocate message for Discovery Request.
-     * @retval OT_ERROR_BUSY       Thread Discovery Scan is already in progress.
+     * @retval kErrorNone           Successfully started a Thread Discovery Scan.
+     * @retval kErrorInvalidState   The IPv6 interface is not enabled (netif is not up).
+     * @retval kErrorNoBufs         Could not allocate message for Discovery Request.
+     * @retval kErrorBusy           Thread Discovery Scan is already in progress.
      *
      */
-    otError Discover(const Mac::ChannelMask &aScanChannels,
-                     Mac::PanId              aPanId,
-                     bool                    aJoiner,
-                     bool                    aEnableFiltering,
-                     const FilterIndexes *   aFilterIndexes,
-                     Handler                 aCallback,
-                     void *                  aContext);
+    Error Discover(const Mac::ChannelMask &aScanChannels,
+                   Mac::PanId              aPanId,
+                   bool                    aJoiner,
+                   bool                    aEnableFiltering,
+                   const FilterIndexes *   aFilterIndexes,
+                   Handler                 aCallback,
+                   void *                  aContext);
 
     /**
      * This method indicates whether or not an MLE Thread Discovery Scan is currently in progress.
@@ -142,24 +145,21 @@ public:
      * @param[in]  aAdvData         A pointer to AdvData for Joiner Advertisement.
      * @param[in]  aAdvDataLength   The length of AdvData.
      *
-     * @retval OT_ERROR_NONE            Successfully set Joiner Advertisement.
-     * @retval OT_ERROR_INVALID_ARGS    Invalid AdvData.
+     * @retval kErrorNone           Successfully set Joiner Advertisement.
+     * @retval kErrorInvalidArgs    Invalid AdvData.
      *
      */
-    otError SetJoinerAdvertisement(uint32_t aOui, const uint8_t *aAdvData, uint8_t aAdvDataLength);
+    Error SetJoinerAdvertisement(uint32_t aOui, const uint8_t *aAdvData, uint8_t aAdvDataLength);
 
 private:
-    enum State
+    enum State : uint8_t
     {
         kStateIdle,
         kStateScanning,
         kStateScanDone,
     };
 
-    enum : uint32_t
-    {
-        kMaxOui = 0xffffff,
-    };
+    static constexpr uint32_t kMaxOui = 0xffffff;
 
     // Methods used by `MeshForwarder`
     Mac::TxFrame *PrepareDiscoveryRequestFrame(Mac::TxFrame &aFrame);

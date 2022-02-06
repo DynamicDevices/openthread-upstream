@@ -37,7 +37,7 @@ set(COMMON_SOURCES
     ncp_base_dispatcher.cpp
     ncp_base_radio.cpp
     ncp_spi.cpp
-    ncp_uart.cpp
+    ncp_hdlc.cpp
 )
 
 set(OT_NCP_VENDOR_HOOK_SOURCE "" CACHE STRING "set vendor hook source file for NCP")
@@ -51,6 +51,12 @@ set(COMMON_NCP_SOURCES
     ncp_base_ftd.cpp
     ncp_base_mtd.cpp
 )
+option(OT_NCP_SPI "enable NCP SPI support")
+if(OT_NCP_SPI)
+    target_compile_definitions(ot-config INTERFACE "OPENTHREAD_CONFIG_NCP_SPI_ENABLE=1")
+else()
+    target_compile_definitions(ot-config INTERFACE "OPENTHREAD_CONFIG_NCP_HDLC_ENABLE=1")
+endif()
 
 if(OT_FTD)
     include(ftd.cmake)
@@ -63,3 +69,7 @@ endif()
 if(OT_RCP)
     include(radio.cmake)
 endif()
+
+set_property(SOURCE ncp_base_mtd.cpp
+    APPEND PROPERTY COMPILE_DEFINITIONS "PACKAGE_VERSION=\"${OT_PACKAGE_VERSION}\""
+)

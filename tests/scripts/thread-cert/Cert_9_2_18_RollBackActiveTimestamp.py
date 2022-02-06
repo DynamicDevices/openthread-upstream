@@ -31,7 +31,7 @@ import unittest
 
 import config
 import thread_cert
-from pktverify.consts import MLE_CHILD_ID_RESPONSE, MLE_CHILD_UPDATE_REQUEST, MLE_DATA_RESPONSE, MLE_DATA_REQUEST, MGMT_ACTIVE_SET_URI, MGMT_PENDING_SET_URI, LINK_LOCAL_ALL_NODES_MULTICAST_ADDRESS, TLV_REQUEST_TLV, SOURCE_ADDRESS_TLV, LEADER_DATA_TLV, NETWORK_DATA_TLV, ACTIVE_TIMESTAMP_TLV, PENDING_TIMESTAMP_TLV, PENDING_OPERATION_DATASET_TLV, NM_COMMISSIONER_SESSION_ID_TLV, NM_BORDER_AGENT_LOCATOR_TLV, NM_ACTIVE_TIMESTAMP_TLV, NM_NETWORK_NAME_TLV, NM_NETWORK_MASTER_KEY_TLV, NM_CHANNEL_TLV, NM_CHANNEL_MASK_TLV, NM_EXTENDED_PAN_ID_TLV, NM_NETWORK_MESH_LOCAL_PREFIX_TLV, NM_PAN_ID_TLV, NM_PSKC_TLV, NM_SECURITY_POLICY_TLV, NM_DELAY_TIMER_TLV
+from pktverify.consts import MLE_CHILD_ID_RESPONSE, MLE_CHILD_UPDATE_REQUEST, MLE_DATA_RESPONSE, MLE_DATA_REQUEST, MGMT_ACTIVE_SET_URI, MGMT_PENDING_SET_URI, LINK_LOCAL_ALL_NODES_MULTICAST_ADDRESS, TLV_REQUEST_TLV, SOURCE_ADDRESS_TLV, LEADER_DATA_TLV, NETWORK_DATA_TLV, ACTIVE_TIMESTAMP_TLV, PENDING_TIMESTAMP_TLV, PENDING_OPERATION_DATASET_TLV, NM_COMMISSIONER_SESSION_ID_TLV, NM_BORDER_AGENT_LOCATOR_TLV, NM_ACTIVE_TIMESTAMP_TLV, NM_NETWORK_NAME_TLV, NM_NETWORK_KEY_TLV, NM_CHANNEL_TLV, NM_CHANNEL_MASK_TLV, NM_EXTENDED_PAN_ID_TLV, NM_NETWORK_MESH_LOCAL_PREFIX_TLV, NM_PAN_ID_TLV, NM_PSKC_TLV, NM_SECURITY_POLICY_TLV, NM_DELAY_TIMER_TLV
 from pktverify.packet_verifier import PacketVerifier
 from pktverify.addrs import Ipv6Addr
 
@@ -60,10 +60,9 @@ class Cert_9_2_18_RollBackActiveTimestamp(thread_cert.TestCase):
                 'timestamp': 1,
                 'panid': PANID_INIT,
                 'channel': CHANNEL_INIT,
-                'master_key': KEY1
+                'network_key': KEY1
             },
             'mode': 'rdn',
-            'router_selection_jitter': 1,
             'allowlist': [LEADER]
         },
         LEADER: {
@@ -72,11 +71,10 @@ class Cert_9_2_18_RollBackActiveTimestamp(thread_cert.TestCase):
                 'timestamp': 1,
                 'panid': PANID_INIT,
                 'channel': CHANNEL_INIT,
-                'master_key': KEY1
+                'network_key': KEY1
             },
             'mode': 'rdn',
             'partition_id': 0xffffffff,
-            'router_selection_jitter': 1,
             'allowlist': [COMMISSIONER, ROUTER1]
         },
         ROUTER1: {
@@ -85,17 +83,16 @@ class Cert_9_2_18_RollBackActiveTimestamp(thread_cert.TestCase):
                 'timestamp': 1,
                 'panid': PANID_INIT,
                 'channel': CHANNEL_INIT,
-                'master_key': KEY1
+                'network_key': KEY1
             },
             'mode': 'rdn',
-            'router_selection_jitter': 1,
             'allowlist': [LEADER, ED1, SED1]
         },
         ED1: {
             'name': 'ED',
             'channel': CHANNEL_INIT,
             'is_mtd': True,
-            'masterkey': KEY1,
+            'networkkey': KEY1,
             'mode': 'rn',
             'panid': PANID_INIT,
             'allowlist': [ROUTER1]
@@ -104,7 +101,7 @@ class Cert_9_2_18_RollBackActiveTimestamp(thread_cert.TestCase):
             'name': 'SED',
             'channel': CHANNEL_INIT,
             'is_mtd': True,
-            'masterkey': KEY1,
+            'networkkey': KEY1,
             'mode': '-',
             'panid': PANID_INIT,
             'timeout': config.DEFAULT_CHILD_TIMEOUT,
@@ -151,15 +148,15 @@ class Cert_9_2_18_RollBackActiveTimestamp(thread_cert.TestCase):
             active_timestamp=20,
             delay_timer=300,
             network_name='MyHouse',
-            master_key=KEY2,
+            network_key=KEY2,
         )
         self.simulator.go(310)
 
-        self.assertEqual(self.nodes[COMMISSIONER].get_masterkey(), KEY2)
-        self.assertEqual(self.nodes[LEADER].get_masterkey(), KEY2)
-        self.assertEqual(self.nodes[ROUTER1].get_masterkey(), KEY2)
-        self.assertEqual(self.nodes[ED1].get_masterkey(), KEY2)
-        self.assertEqual(self.nodes[SED1].get_masterkey(), KEY2)
+        self.assertEqual(self.nodes[COMMISSIONER].get_networkkey(), KEY2)
+        self.assertEqual(self.nodes[LEADER].get_networkkey(), KEY2)
+        self.assertEqual(self.nodes[ROUTER1].get_networkkey(), KEY2)
+        self.assertEqual(self.nodes[ED1].get_networkkey(), KEY2)
+        self.assertEqual(self.nodes[SED1].get_networkkey(), KEY2)
 
         self.collect_rlocs()
         ed_rloc = self.nodes[ED1].get_rloc()
@@ -214,7 +211,7 @@ class Cert_9_2_18_RollBackActiveTimestamp(thread_cert.TestCase):
                     PENDING_OPERATION_DATASET_TLV
                 } == set(p.mle.tlv.type) and {
                     NM_COMMISSIONER_SESSION_ID_TLV, NM_BORDER_AGENT_LOCATOR_TLV, NM_ACTIVE_TIMESTAMP_TLV,
-                    NM_NETWORK_NAME_TLV, NM_NETWORK_MASTER_KEY_TLV
+                    NM_NETWORK_NAME_TLV, NM_NETWORK_KEY_TLV
                 } <= set(p.thread_meshcop.tlv.type) and p.thread_nwd.tlv.stable == [0])
 
         # Copy a pv.pkts here to filter SED related packets for potential sequence packets disorder
@@ -248,9 +245,9 @@ class Cert_9_2_18_RollBackActiveTimestamp(thread_cert.TestCase):
                     PENDING_OPERATION_DATASET_TLV
                 } <= set(p.mle.tlv.type) and {
                     NM_CHANNEL_TLV, NM_NETWORK_MESH_LOCAL_PREFIX_TLV, NM_PAN_ID_TLV, NM_DELAY_TIMER_TLV,
-                    NM_ACTIVE_TIMESTAMP_TLV, NM_NETWORK_NAME_TLV, NM_NETWORK_MASTER_KEY_TLV
-                } <= set(p.thread_meshcop.tlv.type) and p.thread_meshcop.tlv.net_name == "MyHouse" and p.thread_meshcop
-                .tlv.master_key == KEY2)
+                    NM_ACTIVE_TIMESTAMP_TLV, NM_NETWORK_NAME_TLV, NM_NETWORK_KEY_TLV
+                } <= set(p.thread_meshcop.tlv.type) and p.thread_meshcop.tlv.net_name == ["MyHouse"] and p.
+                thread_meshcop.tlv.master_key == KEY2)
 
         # Step 17: MED and SED MUST respond with an ICMPv6 Echo Reply
         pkts.filter_ipv6_src_dst(ED_RLOC, COMMISSIONER_RLOC).filter_ping_reply().must_next()

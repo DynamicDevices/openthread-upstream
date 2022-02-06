@@ -40,6 +40,7 @@
 #include <openthread/backbone_router_ftd.h>
 
 #include "backbone_router/bbr_leader.hpp"
+#include "common/iterator_utils.hpp"
 #include "common/locator.hpp"
 #include "common/non_copyable.hpp"
 #include "common/time.hpp"
@@ -139,30 +140,30 @@ public:
     }
 
     /**
-     * This method registers a given Ip6 address IID with related information to the NdProxy table.
+     * This method registers a given IPv6 address IID with related information to the NdProxy table.
      *
-     * @param[in] aAddressIid                The Ip6 address IID.
+     * @param[in] aAddressIid                The IPv6 address IID.
      * @param[in] aMeshLocalIid              The Mesh-Local IID.
      * @param[in] aRloc16                    The RLOC16.
      * @param[in] aTimeSinceLastTransaction  Time since last transaction (in seconds).
      *
-     * @retval OT_ERROR_NONE        If registered successfully.
-     * @retval OT_ERROR_DUPLICATED  If the Ip6 address IID is a duplicate.
-     * @retval OT_ERROR_NO_BUFS     Insufficient buffer space available to register.
+     * @retval kErrorNone        If registered successfully.
+     * @retval kErrorDuplicated  If the IPv6 address IID is a duplicate.
+     * @retval kErrorNoBufs      Insufficient buffer space available to register.
      *
      */
-    otError Register(const Ip6::InterfaceIdentifier &aAddressIid,
-                     const Ip6::InterfaceIdentifier &aMeshLocalIid,
-                     uint16_t                        aRloc16,
-                     const uint32_t *                aTimeSinceLastTransaction);
+    Error Register(const Ip6::InterfaceIdentifier &aAddressIid,
+                   const Ip6::InterfaceIdentifier &aMeshLocalIid,
+                   uint16_t                        aRloc16,
+                   const uint32_t *                aTimeSinceLastTransaction);
 
     /**
-     * This method checks if a given Ip6 address IID was registered.
+     * This method checks if a given IPv6 address IID was registered.
      *
-     * @param[in] aAddressIid  The Ip6 address IID.
+     * @param[in] aAddressIid  The IPv6 address IID.
      *
-     * @retval TRUE   If the Ip6 address IID was registered.
-     * @retval FALSE  If the Ip6 address IID was not registered.
+     * @retval TRUE   If the IPv6 address IID was registered.
+     * @retval FALSE  If the IPv6 address IID was not registered.
      *
      */
     bool IsRegistered(const Ip6::InterfaceIdentifier &aAddressIid) { return FindByAddressIid(aAddressIid) != nullptr; }
@@ -184,7 +185,7 @@ public:
     /**
      * This method gets the ND Proxy info for a given Domain Unicast Address.
      *
-     * @param[in] aDua  The Domain Unicaste Address.
+     * @param[in] aDua  The Domain Unicast Address.
      *
      * @returns The `NdProxy` instance matching the specified @p aDua, or nullptr if not found.
      *
@@ -223,17 +224,14 @@ public:
      * @param[in] aDua          The Domain Unicast Address to get info.
      * @param[in] aNdProxyInfo  A pointer to the ND Proxy info.
      *
-     * @retval OT_ERROR_NONE       Successfully retrieve the ND Proxy info.
-     * @retval OT_ERROR_NOT_FOUND  Failed to find the Domain Unicast Address in the ND Proxy table.
+     * @retval kErrorNone       Successfully retrieve the ND Proxy info.
+     * @retval kErrorNotFound   Failed to find the Domain Unicast Address in the ND Proxy table.
      *
      */
-    otError GetInfo(const Ip6::Address &aDua, otBackboneRouterNdProxyInfo &aNdProxyInfo);
+    Error GetInfo(const Ip6::Address &aDua, otBackboneRouterNdProxyInfo &aNdProxyInfo);
 
 private:
-    enum
-    {
-        kMaxNdProxyNum = OPENTHREAD_CONFIG_NDPROXY_TABLE_ENTRY_NUM,
-    };
+    static constexpr uint16_t kMaxNdProxyNum = OPENTHREAD_CONFIG_NDPROXY_TABLE_ENTRY_NUM;
 
     enum Filter : uint8_t
     {
@@ -246,13 +244,14 @@ private:
      * This class represents an iterator for iterating through the NdProxy Table.
      *
      */
-    class Iterator : public InstanceLocator
+    class Iterator : public InstanceLocator, public ItemPtrIterator<NdProxy, Iterator>
     {
+        friend class ItemPtrIterator<NdProxy, Iterator>;
         friend class NdProxyTable;
         friend class IteratorBuilder;
 
     private:
-        enum IteratorType
+        enum IteratorType : uint8_t
         {
             kEndIterator,
         };
@@ -260,18 +259,9 @@ private:
         Iterator(Instance &aInstance, Filter aFilter);
         Iterator(Instance &aInstance, IteratorType);
 
-        bool           IsDone(void) const { return (mCurrent == nullptr); }
-        void           Advance(void);
-        void           operator++(void) { Advance(); }
-        void           operator++(int) { Advance(); }
-        const NdProxy &operator*(void)const { return *mCurrent; }
-        bool           operator==(const Iterator &aOther) const { return mCurrent == aOther.mCurrent; }
-        bool           operator!=(const Iterator &aOther) const { return !(*this == aOther); }
-        NdProxy *      operator->(void) { return mCurrent; }
-        NdProxy &      operator*(void) { return *mCurrent; }
+        void Advance(void);
 
-        NdProxy *mCurrent;
-        Filter   mFilter;
+        Filter mFilter;
     };
 
     class IteratorBuilder : public InstanceLocator

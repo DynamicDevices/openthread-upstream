@@ -48,7 +48,8 @@
 
 #include <openthread/tasklet.h>
 #include <openthread/platform/alarm-milli.h>
-#include <openthread/platform/uart.h>
+
+#include "utils/uart.h"
 
 uint32_t gNodeId = 1;
 
@@ -126,7 +127,7 @@ static void platformSendSleepEvent(void)
 
     assert(platformAlarmGetNext() > 0);
 
-    event.mDelay      = (uint64_t)platformAlarmGetNext();
+    event.mDelay      = platformAlarmGetNext();
     event.mEvent      = OT_SIM_EVENT_ALARM_FIRED;
     event.mDataLength = 0;
 
@@ -168,7 +169,7 @@ otError otPlatUartSend(const uint8_t *aData, uint16_t aLength)
 
 otError otPlatUartFlush(void)
 {
-    return OT_ERROR_NOT_IMPLEMENTED;
+    return OT_ERROR_NONE;
 }
 #endif // OPENTHREAD_SIMULATION_VIRTUAL_TIME_UART
 

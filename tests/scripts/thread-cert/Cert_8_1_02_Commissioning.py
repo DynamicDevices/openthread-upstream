@@ -43,15 +43,13 @@ class Cert_8_1_02_Commissioning(thread_cert.TestCase):
     TOPOLOGY = {
         COMMISSIONER: {
             'name': 'COMMISSIONER',
-            'masterkey': '00112233445566778899aabbccddeeff',
+            'networkkey': '00112233445566778899aabbccddeeff',
             'mode': 'rdn',
-            'panid': 0xface
         },
         JOINER: {
             'name': 'JOINER',
-            'masterkey': 'deadbeefdeadbeefdeadbeefdeadbeef',
+            'networkkey': 'deadbeefdeadbeefdeadbeefdeadbeef',
             'mode': 'rdn',
-            'router_selection_jitter': 1
         },
     }
 

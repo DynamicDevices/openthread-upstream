@@ -31,7 +31,7 @@ import unittest
 
 import mesh_cop
 import thread_cert
-from pktverify.consts import MLE_DATA_RESPONSE, MGMT_ACTIVE_GET_URI, NM_CHANNEL_TLV, NM_COMMISSIONER_ID_TLV, NM_COMMISSIONER_SESSION_ID_TLV, NM_STEERING_DATA_TLV, NM_BORDER_AGENT_LOCATOR_TLV, NM_PAN_ID_TLV, NM_NETWORK_NAME_TLV, NM_NETWORK_MESH_LOCAL_PREFIX_TLV, NM_PSKC_TLV, NM_SCAN_DURATION, NM_ENERGY_LIST_TLV, NM_ACTIVE_TIMESTAMP_TLV, NM_CHANNEL_MASK_TLV, NM_EXTENDED_PAN_ID_TLV, NM_NETWORK_MASTER_KEY_TLV, NM_SECURITY_POLICY_TLV, LEADER_ALOC
+from pktverify.consts import MLE_DATA_RESPONSE, MGMT_ACTIVE_GET_URI, NM_CHANNEL_TLV, NM_COMMISSIONER_ID_TLV, NM_COMMISSIONER_SESSION_ID_TLV, NM_STEERING_DATA_TLV, NM_BORDER_AGENT_LOCATOR_TLV, NM_PAN_ID_TLV, NM_NETWORK_NAME_TLV, NM_NETWORK_MESH_LOCAL_PREFIX_TLV, NM_PSKC_TLV, NM_SCAN_DURATION, NM_ENERGY_LIST_TLV, NM_ACTIVE_TIMESTAMP_TLV, NM_CHANNEL_MASK_TLV, NM_EXTENDED_PAN_ID_TLV, NM_NETWORK_KEY_TLV, NM_SECURITY_POLICY_TLV, LEADER_ALOC
 from pktverify.packet_verifier import PacketVerifier
 from pktverify.null_field import nullField
 
@@ -57,20 +57,17 @@ LEADER = 2
 
 class Cert_9_2_03_ActiveDatasetGet(thread_cert.TestCase):
     SUPPORT_NCP = False
+    USE_MESSAGE_FACTORY = False
 
     TOPOLOGY = {
         COMMISSIONER: {
             'name': 'COMMISSIONER',
             'mode': 'rdn',
-            'panid': 0xface,
-            'router_selection_jitter': 1,
             'allowlist': [LEADER]
         },
         LEADER: {
             'name': 'LEADER',
             'mode': 'rdn',
-            'panid': 0xface,
-            'router_selection_jitter': 1,
             'allowlist': [COMMISSIONER]
         },
     }
@@ -83,7 +80,6 @@ class Cert_9_2_03_ActiveDatasetGet(thread_cert.TestCase):
         self.nodes[COMMISSIONER].start()
         self.simulator.go(5)
         self.assertEqual(self.nodes[COMMISSIONER].get_state(), 'router')
-        self.simulator.get_messages_sent_by(LEADER)
 
         self.collect_rlocs()
         self.collect_rloc16s()
@@ -147,12 +143,12 @@ class Cert_9_2_03_ActiveDatasetGet(thread_cert.TestCase):
         #             Channel Mask TLV
         #             Extended PAN ID TLV
         #             Network Mesh-Local Prefix TLV
-        #             Network Master Key TLV
+        #             Network Key TLV
         #             Network Name TLV
         #             PAN ID TLV
         #             PSKc TLV
         #             Security Policy TLV
-        pkts.filter_ipv6_src_dst(LEADER_RLOC, COMMISSIONER_RLOC).\
+        pkts.filter_ipv6_src_dst(_pkt.ipv6.dst, COMMISSIONER_RLOC).\
             filter_coap_ack(MGMT_ACTIVE_GET_URI).\
             filter(lambda p: {
                               NM_ACTIVE_TIMESTAMP_TLV,
@@ -160,7 +156,7 @@ class Cert_9_2_03_ActiveDatasetGet(thread_cert.TestCase):
                               NM_CHANNEL_MASK_TLV,
                               NM_EXTENDED_PAN_ID_TLV,
                               NM_NETWORK_MESH_LOCAL_PREFIX_TLV,
-                              NM_NETWORK_MASTER_KEY_TLV,
+                              NM_NETWORK_KEY_TLV,
                               NM_NETWORK_NAME_TLV,
                               NM_PAN_ID_TLV,
                               NM_PSKC_TLV,

@@ -26,13 +26,6 @@
 #  POSSIBILITY OF SUCH DAMAGE.
 #
 
-set(OT_CLI_TRANSPORT "UART" CACHE STRING "set the CLI transport")
-set(OT_CLI_TRANSPORT_VALUES
-    "UART"
-    "CONSOLE"
-)
-set_property(CACHE OT_CLI_TRANSPORT PROPERTY STRINGS ${OT_CLI_TRANSPORT_VALUES})
-
 set(COMMON_INCLUDES
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/src/core
@@ -43,11 +36,14 @@ set(COMMON_SOURCES
     cli_coap.cpp
     cli_coap_secure.cpp
     cli_commissioner.cpp
-    cli_console.cpp
     cli_dataset.cpp
+    cli_history.cpp
     cli_joiner.cpp
     cli_network_data.cpp
-    cli_uart.cpp
+    cli_output.cpp
+    cli_srp_client.cpp
+    cli_srp_server.cpp
+    cli_tcp.cpp
     cli_udp.cpp
 )
 
@@ -58,3 +54,11 @@ endif()
 if(OT_MTD)
     include(mtd.cmake)
 endif()
+
+if(OT_RCP)
+    include(radio.cmake)
+endif()
+
+set_property(SOURCE cli_joiner.cpp
+    APPEND PROPERTY COMPILE_DEFINITIONS "PACKAGE_VERSION=\"${OT_PACKAGE_VERSION}\""
+)

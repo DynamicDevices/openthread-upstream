@@ -76,35 +76,28 @@ class Cert_7_1_6_BorderRouterAsLeader(thread_cert.TestCase):
         LEADER: {
             'name': 'LEADER',
             'mode': 'rdn',
-            'panid': 0xface,
             'allowlist': [ROUTER_1, ROUTER_2, MED, SED]
         },
         ROUTER_1: {
             'name': 'ROUTER_1',
             'mode': 'rdn',
-            'panid': 0xface,
-            'router_selection_jitter': 1,
             'allowlist': [LEADER]
         },
         ROUTER_2: {
             'name': 'ROUTER_2',
             'mode': 'rdn',
-            'panid': 0xface,
-            'router_selection_jitter': 1,
             'allowlist': [LEADER]
         },
         MED: {
             'name': 'MED',
             'is_mtd': True,
             'mode': 'rn',
-            'panid': 0xface,
             'allowlist': [LEADER]
         },
         SED: {
             'name': 'SED',
             'is_mtd': True,
             'mode': '-',
-            'panid': 0xface,
             'timeout': config.DEFAULT_CHILD_TIMEOUT,
             'allowlist': [LEADER]
         },
@@ -245,33 +238,34 @@ class Cert_7_1_6_BorderRouterAsLeader(thread_cert.TestCase):
                    p.thread_nwd.tlv.prefix
                    ).\
             must_next()
-        _dr_pkt1 = pkts.filter_wpan_src64(LEADER).\
-            filter_LLANMA().\
-            filter_mle_cmd(MLE_DATA_RESPONSE).\
-            filter(lambda p: {
-                              NETWORK_DATA_TLV,
-                              SOURCE_ADDRESS_TLV,
-                              LEADER_DATA_TLV
-                             } <= set(p.mle.tlv.type) and\
-                             {
-                              NWD_BORDER_ROUTER_TLV,
-                              NWD_BORDER_ROUTER_TLV,
-                              NWD_6LOWPAN_ID_TLV
-                             } <= set(p.thread_nwd.tlv.type) and\
-                   p.thread_nwd.tlv.border_router.flag.p == [1, 1] and\
-                   p.thread_nwd.tlv.border_router.flag.s == [1, 1] and\
-                   p.thread_nwd.tlv.border_router.flag.r == [1, 1] and\
-                   p.thread_nwd.tlv.border_router.flag.o == [1, 1] and\
-                   p.mle.tlv.leader_data.data_version ==
-                   (_dr_pkt.mle.tlv.leader_data.data_version + 1) % 256 and\
-                   (p.mle.tlv.leader_data.stable_data_version ==
-                    (_dr_pkt.mle.tlv.leader_data.stable_data_version + 1) % 256 or\
-                   p.mle.tlv.leader_data.stable_data_version ==
-                    (_pkt.mle.tlv.leader_data.stable_data_version + 1) % 256) and\
-                   [Ipv6Addr(PREFIX_2001[:-3])] ==
-                   p.thread_nwd.tlv.prefix
-                   ).\
-            must_next()
+        with pkts.save_index():
+            _dr_pkt1 = pkts.filter_wpan_src64(LEADER).\
+                filter_LLANMA().\
+                filter_mle_cmd(MLE_DATA_RESPONSE).\
+                filter(lambda p: {
+                                  NETWORK_DATA_TLV,
+                                  SOURCE_ADDRESS_TLV,
+                                  LEADER_DATA_TLV
+                                 } <= set(p.mle.tlv.type) and\
+                                 {
+                                  NWD_BORDER_ROUTER_TLV,
+                                  NWD_BORDER_ROUTER_TLV,
+                                  NWD_6LOWPAN_ID_TLV
+                                 } <= set(p.thread_nwd.tlv.type) and\
+                       p.thread_nwd.tlv.border_router.flag.p == [1, 1] and\
+                       p.thread_nwd.tlv.border_router.flag.s == [1, 1] and\
+                       p.thread_nwd.tlv.border_router.flag.r == [1, 1] and\
+                       p.thread_nwd.tlv.border_router.flag.o == [1, 1] and\
+                       p.mle.tlv.leader_data.data_version ==
+                       (_dr_pkt.mle.tlv.leader_data.data_version + 1) % 256 and\
+                       (p.mle.tlv.leader_data.stable_data_version ==
+                        (_dr_pkt.mle.tlv.leader_data.stable_data_version + 1) % 256 or\
+                       p.mle.tlv.leader_data.stable_data_version ==
+                        (_pkt.mle.tlv.leader_data.stable_data_version + 1) % 256) and\
+                       [Ipv6Addr(PREFIX_2001[:-3])] ==
+                       p.thread_nwd.tlv.prefix
+                       ).\
+                must_next()
 
         # Step 6: Leader MUST send a MLE Child Update Request or MLE Data
         #         Response to SED, including the following TLVs:

@@ -51,6 +51,7 @@
 namespace ot {
 
 class ThreadNetif;
+class Child;
 
 namespace Utils {
 
@@ -84,7 +85,9 @@ namespace Utils {
  *
  */
 
-#if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE && OPENTHREAD_FTD
+#if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE
+
+#if OPENTHREAD_FTD
 
 /**
  * This class implements a child supervisor.
@@ -140,8 +143,8 @@ public:
      *
      * @param[in] aMessage The message for which to get the destination.
      *
-     * @returns  A pointer to the destination child of the message, or nullptr if @p aMessage is not of supervision
-     * type.
+     * @returns  A pointer to the destination child of the message, or `nullptr` if @p aMessage is not of supervision
+     *           type.
      *
      */
     Child *GetDestination(const Message &aMessage) const;
@@ -156,11 +159,7 @@ public:
     void UpdateOnSend(Child &aChild);
 
 private:
-    enum
-    {
-        kDefaultSupervisionInterval = OPENTHREAD_CONFIG_CHILD_SUPERVISION_INTERVAL, // (seconds)
-        kOneSecond                  = 1000,                                         // One second interval (in ms).
-    };
+    static constexpr uint16_t kDefaultSupervisionInterval = OPENTHREAD_CONFIG_CHILD_SUPERVISION_INTERVAL; // (seconds)
 
     void SendMessage(Child &aChild);
     void CheckState(void);
@@ -170,23 +169,7 @@ private:
     uint16_t mSupervisionInterval;
 };
 
-#else // #if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE && OPENTHREAD_FTD
-
-class ChildSupervisor
-{
-public:
-    explicit ChildSupervisor(otInstance &) {}
-    void     Start(void) {}
-    void     Stop(void) {}
-    void     SetSupervisionInterval(uint16_t) {}
-    uint16_t GetSupervisionInterval(void) const { return 0; }
-    Child *  GetDestination(const Message &) const { return nullptr; }
-    void     UpdateOnSend(Child &) {}
-};
-
-#endif // #if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE && OPENTHREAD_FTD
-
-#if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE
+#endif // #if OPENTHREAD_FTD
 
 /**
  * This class implements a child supervision listener.
@@ -248,10 +231,7 @@ public:
     void UpdateOnReceive(const Mac::Address &aSourceAddress, bool aIsSecure);
 
 private:
-    enum
-    {
-        kDefaultTimeout = OPENTHREAD_CONFIG_CHILD_SUPERVISION_CHECK_TIMEOUT, // (seconds)
-    };
+    static constexpr uint16_t kDefaultTimeout = OPENTHREAD_CONFIG_CHILD_SUPERVISION_CHECK_TIMEOUT; // (seconds)
 
     void        RestartTimer(void);
     static void HandleTimer(Timer &aTimer);
@@ -259,19 +239,6 @@ private:
 
     uint16_t   mTimeout;
     TimerMilli mTimer;
-};
-
-#else // #if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE
-
-class SupervisionListener : private NonCopyable
-{
-public:
-    SupervisionListener(otInstance &) {}
-    void     Start(void) {}
-    void     Stop(void) {}
-    void     SetTimeout(uint16_t) {}
-    uint16_t GetTimeout(void) const { return 0; }
-    void     UpdateOnReceive(const Mac::Address &, bool) {}
 };
 
 #endif // #if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE

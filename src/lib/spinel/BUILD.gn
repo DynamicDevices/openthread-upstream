@@ -51,6 +51,14 @@ config("spinel_config") {
   include_dirs = [ ".." ]
 }
 
+config("spinel_config_openthread_message_enable") {
+  defines = [ "OPENTHREAD_SPINEL_CONFIG_OPENTHREAD_MESSAGE_ENABLE=1" ]
+}
+
+config("spinel_config_openthread_message_disable") {
+  defines = [ "OPENTHREAD_SPINEL_CONFIG_OPENTHREAD_MESSAGE_ENABLE=0" ]
+}
+
 source_set("spinel-api") {
   public = [ "spinel.h" ]
   public_configs = [ ":spinel_config" ]
@@ -61,8 +69,9 @@ static_library("libopenthread-spinel-ncp") {
   public_deps = [
     ":spinel-api",
     "../../core:libopenthread_core_headers",
+    "../platform:libopenthread-platform",
   ]
-  defines = [ "OPENTHREAD_SPINEL_CONFIG_OPENTHREAD_MESSAGE_ENABLE=1" ]
+  public_configs = [ ":spinel_config_openthread_message_enable" ]
 }
 
 static_library("libopenthread-spinel-rcp") {
@@ -70,6 +79,7 @@ static_library("libopenthread-spinel-rcp") {
   public_deps = [
     ":spinel-api",
     "../../core:libopenthread_core_headers",
+    "../platform:libopenthread-platform",
   ]
-  defines = [ "OPENTHREAD_SPINEL_CONFIG_OPENTHREAD_MESSAGE_ENABLE=0" ]
+  public_configs = [ ":spinel_config_openthread_message_disable" ]
 }

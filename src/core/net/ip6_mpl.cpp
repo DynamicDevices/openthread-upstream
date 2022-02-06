@@ -35,9 +35,10 @@
 
 #include "common/code_utils.hpp"
 #include "common/instance.hpp"
-#include "common/locator-getters.hpp"
+#include "common/locator_getters.hpp"
 #include "common/message.hpp"
 #include "common/random.hpp"
+#include "common/serial_number.hpp"
 #include "net/ip6.hpp"
 
 namespace ot {
@@ -46,11 +47,11 @@ namespace Ip6 {
 Mpl::Mpl(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mMatchingAddress(nullptr)
-    , mSeedSetTimer(aInstance, Mpl::HandleSeedSetTimer, this)
+    , mSeedSetTimer(aInstance, Mpl::HandleSeedSetTimer)
     , mSeedId(0)
     , mSequence(0)
 #if OPENTHREAD_FTD
-    , mRetransmissionTimer(aInstance, Mpl::HandleRetransmissionTimer, this)
+    , mRetransmissionTimer(aInstance, Mpl::HandleRetransmissionTimer)
     , mTimerExpirations(0)
 #endif
 {
@@ -77,15 +78,15 @@ void Mpl::InitOption(OptionMpl &aOption, const Address &aAddress)
     }
 }
 
-otError Mpl::ProcessOption(Message &aMessage, const Address &aAddress, bool aIsOutbound, bool &aReceive)
+Error Mpl::ProcessOption(Message &aMessage, const Address &aAddress, bool aIsOutbound, bool &aReceive)
 {
-    otError   error;
+    Error     error;
     OptionMpl option;
 
     VerifyOrExit(aMessage.ReadBytes(aMessage.GetOffset(), &option, sizeof(option)) >= OptionMpl::kMinLength &&
                      (option.GetSeedIdLength() == OptionMpl::kSeedIdLength0 ||
                       option.GetSeedIdLength() == OptionMpl::kSeedIdLength2),
-                 error = OT_ERROR_PARSE);
+                 error = kErrorParse);
 
     if (option.GetSeedIdLength() == OptionMpl::kSeedIdLength0)
     {
@@ -96,7 +97,7 @@ otError Mpl::ProcessOption(Message &aMessage, const Address &aAddress, bool aIsO
     // Check if the MPL Data Message is new.
     error = UpdateSeedSet(option.GetSeedId(), option.GetSequence());
 
-    if (error == OT_ERROR_NONE)
+    if (error == kErrorNone)
     {
 #if OPENTHREAD_FTD
         AddBufferedMessage(aMessage, option.GetSeedId(), option.GetSequence(), aIsOutbound);
@@ -107,7 +108,7 @@ otError Mpl::ProcessOption(Message &aMessage, const Address &aAddress, bool aIsO
         aReceive = false;
         // In case MPL Data Message is generated locally, ignore potential error of the MPL Seed Set
         // to allow subsequent retransmissions with the same sequence number.
-        ExitNow(error = OT_ERROR_NONE);
+        ExitNow(error = kErrorNone);
     }
 
 exit:
@@ -135,9 +136,9 @@ exit:
  *   - Require group size to have >=2 entries.
  *   - If inserting into existing group, require Sequence to be larger than oldest stored Sequence in group.
  */
-otError Mpl::UpdateSeedSet(uint16_t aSeedId, uint8_t aSequence)
+Error Mpl::UpdateSeedSet(uint16_t aSeedId, uint8_t aSequence)
 {
-    otError    error    = OT_ERROR_NONE;
+    Error      error    = kErrorNone;
     SeedEntry *insert   = nullptr;
     SeedEntry *group    = mSeedSet;
     SeedEntry *evict    = mSeedSet;
@@ -187,14 +188,12 @@ otError Mpl::UpdateSeedSet(uint16_t aSeedId, uint8_t aSequence)
         {
             // have existing entries for aSeedId
 
-            int8_t diff = static_cast<int8_t>(aSequence - mSeedSet[i].mSequence);
-
-            if (diff == 0)
+            if (aSequence == mSeedSet[i].mSequence)
             {
                 // already received, drop message
-                ExitNow(error = OT_ERROR_DROP);
+                ExitNow(error = kErrorDrop);
             }
-            else if (insert == nullptr && diff < 0)
+            else if (insert == nullptr && SerialNumber::IsLess(aSequence, mSeedSet[i].mSequence))
             {
                 // insert in order of sequence
                 insert = &mSeedSet[i];
@@ -223,7 +222,7 @@ otError Mpl::UpdateSeedSet(uint16_t aSeedId, uint8_t aSequence)
         }
 
         // require evict group size to have >= 2 entries
-        VerifyOrExit(maxCount > 1, error = OT_ERROR_DROP);
+        VerifyOrExit(maxCount > 1, error = kErrorDrop);
 
         if (insert == nullptr)
         {
@@ -233,7 +232,7 @@ otError Mpl::UpdateSeedSet(uint16_t aSeedId, uint8_t aSequence)
         else
         {
             // require Sequence to be larger than oldest stored Sequence in group
-            VerifyOrExit(insert > mSeedSet && aSeedId == (insert - 1)->mSeedId, error = OT_ERROR_DROP);
+            VerifyOrExit(insert > mSeedSet && aSeedId == (insert - 1)->mSeedId, error = kErrorDrop);
         }
     }
 
@@ -264,7 +263,7 @@ exit:
 
 void Mpl::HandleSeedSetTimer(Timer &aTimer)
 {
-    aTimer.GetOwner<Mpl>().HandleSeedSetTimer();
+    aTimer.Get<Mpl>().HandleSeedSetTimer();
 }
 
 void Mpl::HandleSeedSetTimer(void)
@@ -298,7 +297,7 @@ void Mpl::HandleSeedSetTimer(void)
 
 void Mpl::AddBufferedMessage(Message &aMessage, uint16_t aSeedId, uint8_t aSequence, bool aIsOutbound)
 {
-    otError  error       = OT_ERROR_NONE;
+    Error    error       = kErrorNone;
     Message *messageCopy = nullptr;
     Metadata metadata;
     uint8_t  hopLimit = 0;
@@ -311,12 +310,12 @@ void Mpl::AddBufferedMessage(Message &aMessage, uint16_t aSeedId, uint8_t aSeque
 #endif
 
     VerifyOrExit(GetTimerExpirations() > 0);
-    VerifyOrExit((messageCopy = aMessage.Clone()) != nullptr, error = OT_ERROR_NO_BUFS);
+    VerifyOrExit((messageCopy = aMessage.Clone()) != nullptr, error = kErrorNoBufs);
 
     if (!aIsOutbound)
     {
         IgnoreError(aMessage.Read(Header::kHopLimitFieldOffset, hopLimit));
-        VerifyOrExit(hopLimit-- > 1, error = OT_ERROR_DROP);
+        VerifyOrExit(hopLimit-- > 1, error = kErrorDrop);
         messageCopy->Write(Header::kHopLimitFieldOffset, hopLimit);
     }
 
@@ -337,7 +336,7 @@ exit:
 
 void Mpl::HandleRetransmissionTimer(Timer &aTimer)
 {
-    aTimer.GetOwner<Mpl>().HandleRetransmissionTimer();
+    aTimer.Get<Mpl>().HandleRetransmissionTimer();
 }
 
 void Mpl::HandleRetransmissionTimer(void)
@@ -427,10 +426,7 @@ void Mpl::Metadata::ReadFrom(const Message &aMessage)
 
 void Mpl::Metadata::RemoveFrom(Message &aMessage) const
 {
-    otError error = aMessage.SetLength(aMessage.GetLength() - sizeof(*this));
-
-    OT_ASSERT(error == OT_ERROR_NONE);
-    OT_UNUSED_VARIABLE(error);
+    SuccessOrAssert(aMessage.SetLength(aMessage.GetLength() - sizeof(*this)));
 }
 
 void Mpl::Metadata::UpdateIn(Message &aMessage) const
