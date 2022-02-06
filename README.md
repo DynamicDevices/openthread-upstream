@@ -53,19 +53,15 @@ OpenThread released by Google is an open-source implementation of the Thread net
 
 ### Build and flash RCP
 
-OpenThread Border Router runs on an RCP design. First clone openthread MQTT-SN repository:
+OpenThread Border Router runs on an RCP design. Select a supported OpenThread platform to use as an RCP and follow the 
+[official building instructions](https://openthread.io/guides/border-router/build). For example for KW41Z platform run
+following commands:
 
 ```
-git clone https://github.com/kyberpunk/openthread.git --recursive
-```
-
-Select a supported OpenThread platform to use as an RCP and follow the [official building instructions](https://openthread.io/guides/border-router/build). For example for KW41Z platform run following commands:
-
-```
-cd openthread
+git clone https://github.com/openthread/ot-kw41z.git --recursive
+cd ot-kw41z
 ./script/bootstrap
-./bootstrap
-make -f examples/Makefile-kw41z BORDER_AGENT=1 BORDER_ROUTER=1 COMMISSIONER=1 UDP_FORWARD=1
+./script/build -DOT_BORDER_AGENT=ON -DOT_BORDER_ROUTER=ON -DOT_COMMISSIONER=ON -DOT_UDP_FORWARD=ON
 ```
 
 After a successful build, the elf files are found in output/kw41z/bin. You can convert them to bin files using arm-none-eabi-objcopy:
@@ -124,10 +120,18 @@ MQTT-SN gateway service address is 172.18.0.8 which can be translated to IPv6 as
 
 ### Build CLI example
 
-Build the CLI example firmware accordingly to your [platform](https://openthread.io/platforms). For example for KW41Z platform run:
+Build the CLI example firmware accordingly to your [platform](https://openthread.io/platforms). Original openthread submodule **must** be replaced by [kyberpunk/openthread](https://github.com/kyberpunk/openthread). For example for KW41Z platform run:
 
 ```
-make -f examples/Makefile-kw41z MQTT=1 JOINER=1
+git clone https://github.com/openthread/ot-kw41z.git
+cd ot-kw41z
+git submodule remove openthread
+rm -rf openthread
+echo "" > .gitmodules
+git submodule add https://github.com/kyberpunk/openthread.git openthread
+git submodule update --init --recursive
+./script/bootstrap
+./script/build -DOT_MQTT=ON -DOT_JOINER=ON
 ```
 
 Convert fimware to binary and flash your device with `ot-cli-ftd.bin`.
