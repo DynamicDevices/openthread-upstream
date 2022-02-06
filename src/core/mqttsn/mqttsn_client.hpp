@@ -553,7 +553,7 @@ public:
      */
     void SetClientId(const char* aClientId)
     {
-        mClientId.Set("%s", aClientId);
+        mClientId.Clear().Append("%s", aClientId);
     }
 
     /**
@@ -642,6 +642,24 @@ public:
     void SetRetransmissionCount(uint8_t aCount)
     {
         mRetransmissionCount = aCount;
+    }
+
+    /**
+     * This method overloads assignment `=` operator to copy elements from another config into this config.
+     *
+     * @param[in] aOtherConfig  Another config to copy from.
+     *
+     */
+    MqttsnConfig &operator=(const MqttsnConfig &aOtherConfig)
+    {
+        SetAddress(aOtherConfig.GetAddress());
+        SetPort(aOtherConfig.GetPort());
+        SetClientId(aOtherConfig.GetClientId().AsCString());
+        SetKeepAlive(aOtherConfig.GetKeepAlive());
+        SetCleanSession(aOtherConfig.GetCleanSession());
+        SetRetransmissionTimeout(aOtherConfig.GetRetransmissionTimeout());
+        SetRetransmissionCount(aOtherConfig.GetRetransmissionCount());
+        return *this;
     }
 
 private:
@@ -1102,7 +1120,7 @@ private:
     ClientState mClientState;
     bool mIsRunning;
     ActiveGatewayList mActiveGateways;
-    Tasklet mProcessTask;
+    TaskletContext mProcessTask;
     WaitingMessagesQueue<otMqttsnSubscribedHandler> mSubscribeQueue;
     WaitingMessagesQueue<otMqttsnRegisteredHandler> mRegisterQueue;
     WaitingMessagesQueue<otMqttsnUnsubscribedHandler> mUnsubscribeQueue;

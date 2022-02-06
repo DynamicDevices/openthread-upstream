@@ -176,7 +176,7 @@ otError ConnectMessage::Deserialize(const uint8_t* aBuffer, int32_t aBufferLengt
     mCleanSessionFlag = static_cast<bool>(data.cleansession);
     mWillFlag = static_cast<bool>(data.willFlag);
     mDuration = data.duration;
-    SuccessOrExit(error = mClientId.Set("%.*s", data.clientID.lenstring.len, data.clientID.lenstring.data));
+    mClientId.Clear().Append("%.*s", data.clientID.lenstring.len, data.clientID.lenstring.data);
 
 exit:
     return error;
@@ -219,7 +219,6 @@ otError RegisterMessage::Serialize(uint8_t* aBuffer, uint8_t aBufferLength, int3
 
 otError RegisterMessage::Deserialize(const uint8_t* aBuffer, int32_t aBufferLength)
 {
-    otError error = OT_ERROR_NONE;
     unsigned short topicId;
     MQTTSNString topicName = MQTTSNString_initializer;
     if (MQTTSNDeserialize_register(&topicId, &mMessageId, &topicName, const_cast<unsigned char*>(aBuffer), aBufferLength) != 1)
@@ -227,10 +226,8 @@ otError RegisterMessage::Deserialize(const uint8_t* aBuffer, int32_t aBufferLeng
         return OT_ERROR_FAILED;
     }
     mTopicId = static_cast<TopicId>(topicId);
-    SuccessOrExit(error = mTopicName.Set("%.*s", topicName.lenstring.len, topicName.lenstring.data));
-
-exit:
-    return error;
+    mTopicName.Clear().Append("%.*s", topicName.lenstring.len, topicName.lenstring.data);
+    return OT_ERROR_NONE;
 }
 
 otError RegackMessage::Serialize(uint8_t* aBuffer, uint8_t aBufferLength, int32_t* aLength) const
@@ -503,11 +500,11 @@ otError SubscribeMessage::Deserialize(const uint8_t* aBuffer, int32_t aBufferLen
     switch (topicId.type)
     {
     case MQTTSN_TOPIC_TYPE_NORMAL:
-        SuccessOrExit(error = mTopicName.Set("%.*s", topicId.data.long_.len, topicId.data.long_.name));
+        mTopicName.Clear().Append("%.*s", topicId.data.long_.len, topicId.data.long_.name);
         mTopic = Topic::FromTopicName(mTopicName.AsCString());
         break;
     case MQTTSN_TOPIC_TYPE_SHORT:
-        SuccessOrExit(error = mTopicName.Set("%.*s", 2, topicId.data.short_name));
+        mTopicName.Clear().Append("%.*s", 2, topicId.data.short_name);
         mTopic = Topic::FromShortTopicName(mTopicName.AsCString());
         break;
     case MQTTSN_TOPIC_TYPE_PREDEFINED:
@@ -600,11 +597,11 @@ otError UnsubscribeMessage::Deserialize(const uint8_t* aBuffer, int32_t aBufferL
     switch (topicId.type)
     {
     case MQTTSN_TOPIC_TYPE_NORMAL:
-        SuccessOrExit(error = mTopicName.Set("%.*s", topicId.data.long_.len, topicId.data.long_.name));
+        mTopicName.Clear().Append("%.*s", topicId.data.long_.len, topicId.data.long_.name);
         mTopic = Topic::FromTopicName(mTopicName.AsCString());
         break;
     case MQTTSN_TOPIC_TYPE_SHORT:
-        SuccessOrExit(error = mTopicName.Set("%.*s", 2, topicId.data.short_name));
+        mTopicName.Clear().Append("%.*s", 2, topicId.data.short_name);
         mTopic = Topic::FromShortTopicName(mTopicName.AsCString());
         break;
     case MQTTSN_TOPIC_TYPE_PREDEFINED:
@@ -654,7 +651,6 @@ otError PingreqMessage::Serialize(uint8_t* aBuffer, uint8_t aBufferLength, int32
 
 otError PingreqMessage::Deserialize(const uint8_t* aBuffer, int32_t aBufferLength)
 {
-    otError error = OT_ERROR_NONE;
     MQTTSNString clientId = MQTTSNString_initializer;
     if (MQTTSNDeserialize_pingreq(&clientId, const_cast<unsigned char*>(aBuffer), aBufferLength) != 1)
     {
@@ -662,11 +658,9 @@ otError PingreqMessage::Deserialize(const uint8_t* aBuffer, int32_t aBufferLengt
     }
     if (clientId.lenstring.data != NULL)
     {
-        SuccessOrExit(error = mClientId.Set("%.*s", clientId.lenstring.len, clientId.lenstring.data));
+        mClientId.Clear().Append("%.*s", clientId.lenstring.len, clientId.lenstring.data);
     }
-
-exit:
-    return error;
+    return OT_ERROR_NONE;
 }
 
 otError PingrespMessage::Serialize(uint8_t* aBuffer, uint8_t aBufferLength, int32_t* aLength) const

@@ -2888,9 +2888,9 @@ exit:
 }
 
 #if OPENTHREAD_CONFIG_MQTTSN_ENABLE
-otError Interpreter::ProcessMqtt(uint8_t aArgsLength, char *aArgs[])
+otError Interpreter::ProcessMqtt(Arg aArgs[])
 {
-	return mMqtt.Process(aArgsLength, aArgs);
+	return mMqtt.Process(aArgs);
 }
 #endif
 

@@ -241,9 +241,9 @@ public:
         , mCleanSessionFlag(aCleanSessionFlag)
         , mWillFlag(aWillFlag)
         , mDuration(aDuration)
-        , mClientId("%s", aClientId)
+        , mClientId()
     {
-        ;
+        mClientId.Append("%s", aClientId);
     }
 
     bool GetCleanSessionFlag() const { return mCleanSessionFlag; }
@@ -260,7 +260,7 @@ public:
 
     const ClientIdString &GetClientId() const { return mClientId; }
 
-    void SetClientId(const char* aClientId) { mClientId.Set("%s", aClientId); }
+    void SetClientId(const char* aClientId) { mClientId.Append("%s", aClientId); }
 
     otError Serialize(uint8_t* aBuffer, uint8_t aBufferLength, int32_t* aLength) const;
 
@@ -318,9 +318,9 @@ public:
         : MessageBase(kTypeRegister)
         , mTopicId(aTopicId)
         , mMessageId(aMessageId)
-        , mTopicName("%s", aTopicName)
+        , mTopicName()
     {
-        ;
+        mTopicName.Append("%s", aTopicName);
     }
 
     TopicId GetTopicId() const { return mTopicId; }
@@ -333,7 +333,7 @@ public:
 
     const TopicNameString &GetTopicName() const { return mTopicName; }
 
-    void SetTopicName(const char* aTopicName) { mTopicName.Set("%s", aTopicName); }
+    void SetTopicName(const char* aTopicName) { mTopicName.Append("%s", aTopicName); }
 
     otError Serialize(uint8_t* aBuffer, uint8_t aBufferLength, int32_t* aLength) const;
 
@@ -766,14 +766,14 @@ public:
 
     PingreqMessage (const char* aClientId)
         : MessageBase(kTypePingreq)
-        , mClientId("%s", aClientId)
+        , mClientId()
     {
-        ;
+        mClientId.Append("%s", aClientId);
     }
 
     const ClientIdString &GetClientId() const { return mClientId; }
 
-    void SetClientId(const char* aClientId) { mClientId.Set("%s", aClientId); }
+    void SetClientId(const char* aClientId) { mClientId.Append("%s", aClientId); }
 
     otError Serialize(uint8_t* aBuffer, uint8_t aBufferLength, int32_t* aLength) const;
 

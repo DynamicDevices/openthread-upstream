@@ -33,61 +33,57 @@
 
 #include <openthread/error.h>
 #include <openthread/mqttsn.h>
+#include "cli/cli_output.hpp"
 
 namespace ot {
 namespace Cli {
-
-class Interpreter;
 
 /**
  * This class implements the CLI CoAP server and client.
  *
  */
-class Mqtt
+class Mqtt : private OutputWrapper
 {
 public:
+    typedef Utils::CmdLineParser::Arg Arg;
+
     /**
      * Constructor
      *
-     * @param[in]  aInterpreter  The CLI interpreter.
+     * @param[in]  aOutput The CLI console output context
      *
      */
-    explicit Mqtt(Interpreter &aInterpreter);
+    explicit Mqtt(Output &aOutput);
 
     /**
      * This method interprets a list of CLI arguments.
      *
-     * @param[in]  argc  The number of elements in argv.
-     * @param[in]  argv  A pointer to an array of command line arguments.
+     * @param[in]  aArgs  An array of command line arguments.
      *
      */
-    otError Process(uint8_t aArgsLength, char *aArgs[]);
+    otError Process(Arg aArgs[]);
 
 private:
-    struct Command
-    {
-        const char *mName;
-        otError (Mqtt::*mCommand)(uint8_t aArgsLength, char *aArgs[]);
-    };
+    using Command = CommandEntry<Mqtt>;
 
-    otError ProcessHelp(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessStart(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessStop(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessConnect(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessReconnect(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessSubscribe(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessState(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessRegister(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessPublish(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessPublishm1(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessUnsubscribe(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessDisconnect(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessSleep(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessAwake(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessSearchgw(uint8_t aArgsLength, char *aArgs[]);
-    otError ProcessGateways(uint8_t aArgsLength, char *aArgs[]);
+    otError ProcessHelp(Arg aArgs[]);
+    otError ProcessStart(Arg aArgs[]);
+    otError ProcessStop(Arg aArgs[]);
+    otError ProcessConnect(Arg aArgs[]);
+    otError ProcessReconnect(Arg aArgs[]);
+    otError ProcessSubscribe(Arg aArgs[]);
+    otError ProcessState(Arg aArgs[]);
+    otError ProcessRegister(Arg aArgs[]);
+    otError ProcessPublish(Arg aArgs[]);
+    otError ProcessPublishm1(Arg aArgs[]);
+    otError ProcessUnsubscribe(Arg aArgs[]);
+    otError ProcessDisconnect(Arg aArgs[]);
+    otError ProcessSleep(Arg aArgs[]);
+    otError ProcessAwake(Arg aArgs[]);
+    otError ProcessSearchgw(Arg aArgs[]);
+    otError ProcessGateways(Arg aArgs[]);
 
-    otError ParseTopic(char *aValue, otMqttsnTopic *aTopic);
+    otError ParseTopic(const Arg &aArg, otMqttsnTopic *aTopic);
 
     static void HandleConnected(otMqttsnReturnCode aCode, void *aContext);
     void        HandleConnected(otMqttsnReturnCode aCode);
@@ -108,8 +104,26 @@ private:
 
     void PrintFailedWithCode(const char *aCommandName, otMqttsnReturnCode aCode);
 
-    static const Command sCommands[];
-    Interpreter &        mInterpreter;
+    static constexpr Command sCommands[] = {
+        {"awake", &Mqtt::ProcessAwake},
+        {"connect", &Mqtt::ProcessConnect},
+        {"disconnect", &Mqtt::ProcessDisconnect},
+        {"gateways", &Mqtt::ProcessGateways},
+        {"help", &Mqtt::ProcessHelp},
+        {"publish", &Mqtt::ProcessPublish},
+        {"publishm1", &Mqtt::ProcessPublishm1},
+        {"reconnect", &Mqtt::ProcessReconnect},
+        {"register", &Mqtt::ProcessRegister},
+        {"searchgw", &Mqtt::ProcessSearchgw},
+        {"sleep", &Mqtt::ProcessSleep},
+        {"start", &Mqtt::ProcessStart},
+        {"state", &Mqtt::ProcessState},
+        {"stop", &Mqtt::ProcessStop},
+        {"subscribe", &Mqtt::ProcessSubscribe},
+        {"unsubscribe", &Mqtt::ProcessUnsubscribe},
+    };
+
+    static_assert(BinarySearch::IsSorted(sCommands), "Command Table is not sorted");
 };
 
 } // namespace Cli

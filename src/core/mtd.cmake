@@ -49,3 +49,7 @@ target_link_libraries(openthread-mtd
 if(NOT OT_EXCLUDE_TCPLP_LIB)
     target_link_libraries(openthread-mtd PRIVATE tcplp)
 endif()
+
+if(OT_MQTT)
+    target_link_libraries(openthread-mtd PRIVATE libpaho)
+endif()

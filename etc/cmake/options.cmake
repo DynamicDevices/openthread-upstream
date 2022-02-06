@@ -281,6 +281,11 @@ if(OT_MLE_LONG_ROUTES)
     target_compile_definitions(ot-config INTERFACE "OPENTHREAD_CONFIG_MLE_LONG_ROUTES_ENABLE=1")
 endif()
 
+option(OT_MQTT "enable mqtt-sn support")
+if(OT_MQTT)
+    target_compile_definitions(ot-config INTERFACE "OPENTHREAD_CONFIG_MQTTSN_ENABLE=1")
+endif()
+
 option(OT_MTD_NETDIAG "enable TMF network diagnostics on MTDs")
 if(OT_MTD_NETDIAG)
     target_compile_definitions(ot-config INTERFACE "OPENTHREAD_CONFIG_TMF_NETWORK_DIAG_MTD_ENABLE=1")

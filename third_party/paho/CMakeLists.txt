@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2020, The OpenThread Authors.
+#  Copyright (c) 2019, Vit Holasek.
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -26,30 +26,32 @@
 #  POSSIBILITY OF SUCH DAMAGE.
 #
 
-add_library(openthread-ftd)
+project("libpaho" C)
 
-target_compile_definitions(openthread-ftd PRIVATE
-    OPENTHREAD_FTD=1
+set(src_libpaho
+    paho/MQTTSNPacket/src/MQTTSNConnectClient.c
+    paho/MQTTSNPacket/src/MQTTSNConnectServer.c
+    paho/MQTTSNPacket/src/MQTTSNDeserializePublish.c
+    paho/MQTTSNPacket/src/MQTTSNPacket.c
+    paho/MQTTSNPacket/src/MQTTSNSearchClient.c
+    paho/MQTTSNPacket/src/MQTTSNSearchServer.c
+    paho/MQTTSNPacket/src/MQTTSNSerializePublish.c
+    paho/MQTTSNPacket/src/MQTTSNSubscribeClient.c
+    paho/MQTTSNPacket/src/MQTTSNSubscribeServer.c
+    paho/MQTTSNPacket/src/MQTTSNUnsubscribeClient.c
+    paho/MQTTSNPacket/src/MQTTSNUnsubscribeServer.c
 )
 
-target_compile_options(openthread-ftd PRIVATE
-    ${OT_CFLAGS}
+set(libpaho_static_target "libpaho")
+
+string(REPLACE "-pedantic-errors" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+string(REPLACE "-Wshadow" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+string(REPLACE "-Wextra" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+string(REPLACE "-Wsign-compare" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+
+add_library(${libpaho_static_target} STATIC ${src_libpaho})
+set_target_properties(${libpaho_static_target} PROPERTIES OUTPUT_NAME libpaho)
+target_include_directories(${libpaho_static_target}
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/paho/MQTTSNPacket/src
 )
-
-target_include_directories(openthread-ftd PUBLIC ${OT_PUBLIC_INCLUDES} PRIVATE ${COMMON_INCLUDES})
-
-target_sources(openthread-ftd PRIVATE ${COMMON_SOURCES})
-
-target_link_libraries(openthread-ftd
-    PRIVATE
-        ${OT_MBEDTLS}
-        ot-config
-)
-
-if(NOT OT_EXCLUDE_TCPLP_LIB)
-    target_link_libraries(openthread-ftd PRIVATE tcplp)
-endif()
-
-if(OT_MQTT)
-    target_link_libraries(openthread-ftd PRIVATE libpaho)
-endif()

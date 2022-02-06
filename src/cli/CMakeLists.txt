@@ -39,6 +39,7 @@ set(COMMON_SOURCES
     cli_dataset.cpp
     cli_history.cpp
     cli_joiner.cpp
+    cli_mqtt.cpp
     cli_network_data.cpp
     cli_output.cpp
     cli_srp_client.cpp

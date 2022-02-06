@@ -443,7 +443,7 @@ private:
     void        HandleLocateResult(otError aError, const otIp6Address *aMeshLocalAddress, uint16_t aRloc16);
 #endif
 #if OPENTHREAD_CONFIG_MQTTSN_ENABLE
-    otError ProcessMqtt(uint8_t aArgsLength, char *aArgs[]);
+    otError ProcessMqtt(Arg aArgs[]);
 #endif
 #if OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE && OPENTHREAD_CONFIG_COMMISSIONER_ENABLE
     otError ProcessMlr(Arg aArgs[]);
