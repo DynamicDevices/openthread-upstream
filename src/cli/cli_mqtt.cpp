@@ -77,12 +77,13 @@ template <> otError Mqtt::Process<Cmd("connect")>(Arg aArgs[])
 	otError error;
 	otIp6Address destinationIp;
 	uint16_t destinationPort;
+    bool nat64SynthesizedAddress;
 
     if (aArgs[1].IsEmpty())
     {
     	ExitNow(error = OT_ERROR_INVALID_ARGS);
     }
-    SuccessOrExit(error = aArgs[0].ParseAsIp6Address(destinationIp));
+    SuccessOrExit(error = Interpreter::ParseToIp6Address(GetInstancePtr(), aArgs[0], destinationIp, nat64SynthesizedAddress));
     SuccessOrExit(error = aArgs[1].ParseAsUint16(destinationPort));
     SuccessOrExit(error = otMqttsnSetConnectedHandler(GetInstancePtr(), &Mqtt::HandleConnected, this));
     SuccessOrExit(error = otMqttsnSetDisconnectedHandler(GetInstancePtr(), &Mqtt::HandleDisconnected, this));
@@ -208,13 +209,14 @@ template <> otError Mqtt::Process<Cmd("publishm1")>(Arg aArgs[])
     const char* data = "";
     int32_t length = 0;
     otMqttsnTopic topic;
+    bool nat64SynthesizedAddress;
 
     if (aArgs[2].IsEmpty())
     {
         ExitNow(error = OT_ERROR_INVALID_ARGS);
     }
 
-    SuccessOrExit(error = aArgs[0].ParseAsIp6Address(destinationIp));
+    SuccessOrExit(error = Interpreter::ParseToIp6Address(GetInstancePtr(), aArgs[0], destinationIp, nat64SynthesizedAddress));
     SuccessOrExit(error = aArgs[1].ParseAsUint16(destinationPort));
     SuccessOrExit(error = ParseTopic(aArgs[2], &topic));
     if (!aArgs[3].IsEmpty())

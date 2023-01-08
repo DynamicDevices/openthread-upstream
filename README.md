@@ -95,11 +95,28 @@ Run new OTBR container from official image:
 sudo docker run -d --name otbr --sysctl "net.ipv6.conf.all.disable_ipv6=0 \
         net.ipv4.conf.all.forwarding=1 net.ipv6.conf.all.forwarding=1" -p 8080:80 \
         --dns=127.0.0.1 -v /dev/ttyACM0:/dev/ttyACM0 --net test --ip 172.18.0.6 \
-        --privileged openthread/otbr --radio-url spinel+hdlc+uart:///dev/ttyACM0 \
-        --nat64-prefix "2018:ff9b::/96"
+        --privileged openthread/otbr --radio-url spinel+hdlc+uart:///dev/ttyACM0"
 ```
 
-Container will use `test` network with static IP address 172.18.0.6. If needed replace `/dev/ttyACM0` in `-v` and `--radio-url` parameter with name under which appear RCP device in your system (`/dev/ttyS0`, `/dev/ttyUSB0` etc.). NAT-64 prefix is set to `2018:ff9b::/96`. It allows address translation and routing to local addresses. Border Router web GUI is bound to port 8080.
+Container will use `test` network with static IP address 172.18.0.6. If needed replace `/dev/ttyACM0` in `-v` and `--radio-url` parameter with name under which appear RCP device in your system (`/dev/ttyS0`, `/dev/ttyUSB0` etc.).
+
+In latest OTBR image it may be necessary to manually activate NAT64 feature by running following command in running container (after the network is setup and up).
+
+```
+# ot-ctl nat64 enable
+Done
+```
+
+You can check if NAT64 is enabled:
+
+```
+# ot-ctl nat64 state
+PrefixManager: Active
+Translator: Active
+Done
+```
+
+ NAT-64 prefix is set automatically by OpenThread. It allows address translation and routing to local addresses. Border Router web GUI is bound to port 8080.
 
 Next step is to run Mosquitto container as MQTT broker for sample test. Broker IP address in `test` network will be 172.18.0.7:
 
@@ -143,9 +160,9 @@ arm-none-eabi-objcopy -O binary ot-cli-ftd ot-cli-ftd.bin
 
 ### Connect to the broker
 
-Firs of all the CLI device must be commisioned into the Thread network. Follow the the [OTBR commissioning guide](https://openthread.io/guides/border-router/external-commissioning). When device joined the Thread network you can start MQTT-SN service and connect to gateway which is reachable on NAT-64 translated IPv6 address 2018:ff9b::ac12:8.
+Firs of all the CLI device must be commisioned into the Thread network. Follow the the [OTBR commissioning guide](https://openthread.io/guides/border-router/external-commissioning). When device joined the Thread network you can start MQTT-SN service and connect to gateway which is reachable on NAT-64 translated IPv6 address e.g. 2018:ff9b::ac12:8.
 
-```bash
+```
 > mqtt start
 Done
 > mqtt connect 2018:ff9b::ac12:8 10000
@@ -159,6 +176,14 @@ You can also see log of messages forwarded by MQTT-SN gateway:
 
 ```
 docker logs paho
+```
+
+CLI also supports automatic IPv4 address translation using preferred NAT64 prefix. You can then use MQTT-SN gateway IPv4 address directly in command:
+
+```
+> mqtt connect 172.18.0.8 10000
+Done
+connected
 ```
 
 ### Subscribe the topic
