@@ -257,10 +257,10 @@ public:
         void  SelectSection(Section aSection, uint16_t &aOffset, uint16_t &aNumRecord) const;
         Error CheckForHostNameAlias(Section aSection, Name &aHostName) const;
         Error FindHostAddress(Section       aSection,
-                              const Name &  aHostName,
+                              const Name   &aHostName,
                               uint16_t      aIndex,
                               Ip6::Address &aAddress,
-                              uint32_t &    aTtl) const;
+                              uint32_t     &aTtl) const;
 #if OPENTHREAD_CONFIG_DNS_CLIENT_NAT64_ENABLE
         Error FindARecord(Section aSection, const Name &aHostName, uint16_t aIndex, ARecord &aARecord) const;
 #endif
@@ -269,8 +269,8 @@ public:
         Error FindServiceInfo(Section aSection, const Name &aName, ServiceInfo &aServiceInfo) const;
 #endif
 
-        Instance *     mInstance;              // The OpenThread instance.
-        Query *        mQuery;                 // The associated query.
+        Instance      *mInstance;              // The OpenThread instance.
+        Query         *mQuery;                 // The associated query.
         const Message *mMessage;               // The response message.
         uint16_t       mAnswerOffset;          // Answer section offset in `mMessage`.
         uint16_t       mAnswerRecordCount;     // Number of records in answer section.
@@ -331,9 +331,10 @@ public:
          * @param[out] aAddress      A reference to an IPv6 address to output the address.
          * @param[out] aTtl          A reference to a `uint32_t` to output TTL for the address.
          *
-         * @retval kErrorNone       The address was read successfully.
-         * @retval kErrorNotFound   No address record at @p aIndex.
-         * @retval kErrorParse      Could not parse the records.
+         * @retval kErrorNone          The address was read successfully.
+         * @retval kErrorNotFound      No address record at @p aIndex.
+         * @retval kErrorParse         Could not parse the records.
+         * @retval kErrorInvalidState  No NAT64 prefix (applicable only when NAT64 is allowed).
          *
          */
         Error GetAddress(uint16_t aIndex, Ip6::Address &aAddress, uint32_t &aTtl) const;
@@ -390,7 +391,6 @@ public:
          * Note that this method gets the service instance label and not the full service instance name which is of the
          * form `<Instance>.<Service>.<Domain>`.
          *
-         * @param[in]  aResponse          A pointer to a response.
          * @param[in]  aIndex             The service instance record index to retrieve.
          * @param[out] aLabelBuffer       A char array to output the service instance label (MUST NOT be NULL).
          * @param[in]  aLabelBufferSize   The size of @p aLabelBuffer.
@@ -486,9 +486,9 @@ public:
          * @retval kErrorNoBufs  Either the label or name does not fit in the given buffers.
          *
          */
-        Error GetServiceName(char *   aLabelBuffer,
+        Error GetServiceName(char    *aLabelBuffer,
                              uint8_t  aLabelBufferSize,
-                             char *   aNameBuffer,
+                             char    *aNameBuffer,
                              uint16_t aNameBufferSize) const;
 
         /**
@@ -604,10 +604,38 @@ public:
      * @retval kErrorInvalidState   Cannot send query since Thread interface is not up.
      *
      */
-    Error ResolveAddress(const char *       aHostName,
+    Error ResolveAddress(const char        *aHostName,
                          AddressCallback    aCallback,
-                         void *             aContext,
+                         void              *aContext,
                          const QueryConfig *aConfig = nullptr);
+
+#if OPENTHREAD_CONFIG_DNS_CLIENT_NAT64_ENABLE
+    /**
+     * This method sends an address resolution DNS query for A (IPv4) record for a given host name.
+     *
+     * When a successful response is received, the addresses are returned from @p aCallback as NAT64 IPv6 translated
+     * versions of the IPv4 addresses from the query response.
+     *
+     * The @p aConfig can be nullptr. In this case the default config (from `GetDefaultConfig()`) will be used as
+     * the config for this query. In a non-nullptr @p aConfig, some of the fields can be left unspecified (value zero).
+     * The unspecified fields are then replaced by the values from the default config.
+     *
+     * @param[in]  aHostName        The host name for which to query the address (MUST NOT be `nullptr`).
+     * @param[in]  aCallback        A callback function pointer to report the result of query.
+     * @param[in]  aContext         A pointer to arbitrary context information passed to @p aCallback.
+     * @param[in]  aConfig          The config to use for this query.
+     *
+     * @retval kErrorNone           Successfully sent DNS query.
+     * @retval kErrorNoBufs         Failed to allocate retransmission data.
+     * @retval kErrorInvalidArgs    The host name is not valid format or NAT64 is not enabled in config.
+     * @retval kErrorInvalidState   Cannot send query since Thread interface is not up, or there is no NAT64 prefix.
+     *
+     */
+    Error ResolveIp4Address(const char        *aHostName,
+                            AddressCallback    aCallback,
+                            void              *aContext,
+                            const QueryConfig *aConfig = nullptr);
+#endif
 
 #if OPENTHREAD_CONFIG_DNS_CLIENT_SERVICE_DISCOVERY_ENABLE
 
@@ -627,9 +655,9 @@ public:
      * @retval kErrorNoBufs     Insufficient buffer to prepare and send query.
      *
      */
-    Error Browse(const char *       aServiceName,
+    Error Browse(const char        *aServiceName,
                  BrowseCallback     aCallback,
-                 void *             aContext,
+                 void              *aContext,
                  const QueryConfig *aConfig = nullptr);
 
     /**
@@ -639,7 +667,6 @@ public:
      * the config for this query. In a non-`nullptr` @p aConfig, some of the fields can be left unspecified (value
      * zero). The unspecified fields are then replaced by the values from the default config.
      *
-     * @param[in]  aServerSockAddr    The server socket address.
      * @param[in]  aInstanceLabel     The service instance label.
      * @param[in]  aServiceName       The service name (together with @p aInstanceLabel form full instance name).
      * @param[in]  aCallback          A function pointer that shall be called on response reception or time-out.
@@ -651,11 +678,11 @@ public:
      * @retval kErrorInvalidArgs  @p aInstanceLabel is `nullptr`.
      *
      */
-    Error ResolveService(const char *         aInstanceLabel,
-                         const char *         aServiceName,
+    Error ResolveService(const char          *aInstanceLabel,
+                         const char          *aServiceName,
                          otDnsServiceCallback aCallback,
-                         void *               aContext,
-                         const QueryConfig *  aConfig = nullptr);
+                         void                *aContext,
+                         const QueryConfig   *aConfig = nullptr);
 
 #endif // OPENTHREAD_CONFIG_DNS_CLIENT_SERVICE_DISCOVERY_ENABLE
 
@@ -690,7 +717,7 @@ private:
         QueryType   mQueryType;
         uint16_t    mMessageId;
         Callback    mCallback;
-        void *      mCallbackContext;
+        void       *mCallbackContext;
         TimeMilli   mRetransmissionTime;
         QueryConfig mConfig;
         uint8_t     mTransmissionCount;
@@ -699,11 +726,11 @@ private:
 
     static constexpr uint16_t kNameOffsetInQuery = sizeof(QueryInfo);
 
-    Error       StartQuery(QueryInfo &        aInfo,
+    Error       StartQuery(QueryInfo         &aInfo,
                            const QueryConfig *aConfig,
-                           const char *       aLabel,
-                           const char *       aName,
-                           void *             aContext);
+                           const char        *aLabel,
+                           const char        *aName,
+                           void              *aContext);
     Error       AllocateQuery(const QueryInfo &aInfo, const char *aLabel, const char *aName, Query *&aQuery);
     void        FreeQuery(Query &aQuery);
     void        UpdateQuery(Query &aQuery, const QueryInfo &aInfo) { aQuery.Write(0, aInfo); }
@@ -712,11 +739,10 @@ private:
     void        FinalizeQuery(Response &Response, QueryType aType, Error aError);
     static void GetCallback(const Query &aQuery, Callback &aCallback, void *&aContext);
     Error       AppendNameFromQuery(const Query &aQuery, Message &aMessage);
-    Query *     FindQueryById(uint16_t aMessageId);
+    Query      *FindQueryById(uint16_t aMessageId);
     static void HandleUdpReceive(void *aContext, otMessage *aMessage, const otMessageInfo *aMsgInfo);
     void        ProcessResponse(const Message &aMessage);
     Error       ParseResponse(Response &aResponse, QueryType &aType, Error &aResponseError);
-    static void HandleTimer(Timer &aTimer);
     void        HandleTimer(void);
 #if OPENTHREAD_CONFIG_DNS_CLIENT_NAT64_ENABLE
     Error CheckAddressResponse(Response &aResponse, Error aResponseError) const;
@@ -737,9 +763,11 @@ private:
     static const uint16_t kServiceQueryRecordTypes[];
 #endif
 
+    using RetryTimer = TimerMilliIn<Client, &Client::HandleTimer>;
+
     Ip6::Udp::Socket mSocket;
     QueryList        mQueries;
-    TimerMilli       mTimer;
+    RetryTimer       mTimer;
     QueryConfig      mDefaultConfig;
 #if OPENTHREAD_CONFIG_DNS_CLIENT_DEFAULT_SERVER_ADDRESS_AUTO_SET_ENABLE
     bool mUserDidSetDefaultAddress;

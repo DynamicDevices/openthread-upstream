@@ -103,7 +103,7 @@ static void	 tcp_dooptions(struct tcpopt *, uint8_t *, int, int);
 static void
 tcp_do_segment(struct ip6_hdr* ip6, struct tcphdr *th, otMessage* msg,
     struct tcpcb *tp, int drop_hdrlen, int tlen, uint8_t iptos,
-    struct signals* sig);
+    struct tcplp_signals* sig);
 static void	 tcp_xmit_timer(struct tcpcb *, int);
 void tcp_hc_get(/*struct in_conninfo *inc*/ struct tcpcb* tp, struct hc_metrics_lite *hc_metrics_lite);
 static void	 tcp_newreno_partial_ack(struct tcpcb *, struct tcphdr *);
@@ -241,8 +241,12 @@ cc_cong_signal(struct tcpcb *tp, struct tcphdr *th, uint32_t type)
 		tp->t_dupacks = 0;
 		tp->t_bytes_acked = 0;
 		EXIT_RECOVERY(tp->t_flags);
+		/*
+		 * samkumar: I added the cast to uint64_t below to fix an OpenThread
+		 * code scanning alert relating to integer overflow in multiplication.
+		 */
 		tp->snd_ssthresh = max(2, min(tp->snd_wnd, tp->snd_cwnd) / 2 /
-		    tp->t_maxseg) * tp->t_maxseg;
+		    tp->t_maxseg) * ((uint64_t) tp->t_maxseg);
 		tp->snd_cwnd = tp->t_maxseg;
 
 		/*
@@ -431,7 +435,7 @@ tcp_dropwithreset(struct ip6_hdr* ip6, struct tcphdr *th, struct tcpcb *tp, otIn
 /* NOTE: tcp_fields_to_host(th) must be called before this function is called. */
 int
 tcp_input(struct ip6_hdr* ip6, struct tcphdr* th, otMessage* msg, struct tcpcb* tp, struct tcpcb_listen* tpl,
-          struct signals* sig)
+          struct tcplp_signals* sig)
 {
 	/*
 	 * samkumar: I significantly modified this function, compared to the
@@ -766,13 +770,14 @@ tcp_input(struct ip6_hdr* ip6, struct tcphdr* th, otMessage* msg, struct tcpcb* 
 		 */
 
 		tcp_dooptions(&to, optp, optlen, TO_SYN);
-		tp = tcplp_sys_accept_ready(tpl, &ip6->ip6_dst, th->th_sport); // Try to allocate an active socket to accept into
+		tp = tcplp_sys_accept_ready(tpl, &ip6->ip6_src, th->th_sport); // Try to allocate an active socket to accept into
 		if (tp == NULL) {
 			/* If we couldn't allocate, just ignore the SYN. */
 			return IPPROTO_DONE;
 		}
 		if (tp == (struct tcpcb *) -1) {
 			rstreason = ECONNREFUSED;
+			tp = NULL;
 			goto dropwithreset;
 		}
 		tcp_state_change(tp, TCPS_SYN_RECEIVED);
@@ -948,7 +953,7 @@ drop:
 static void
 tcp_do_segment(struct ip6_hdr* ip6, struct tcphdr *th, otMessage* msg,
     struct tcpcb *tp, int drop_hdrlen, int tlen, uint8_t iptos,
-    struct signals* sig)
+    struct tcplp_signals* sig)
 {
 	/*
 	 * samkumar: All code pertaining to locks, stats, and debug has been
@@ -1186,6 +1191,7 @@ tcp_do_segment(struct ip6_hdr* ip6, struct tcphdr *th, otMessage* msg,
 				{
 					uint32_t poppedbytes = lbuf_pop(&tp->sendbuf, acked, &sig->links_popped);
 					KASSERT(poppedbytes == acked, ("More bytes were acked than are in the send buffer"));
+					sig->bytes_acked += poppedbytes;
 				}
 				if (SEQ_GT(tp->snd_una, tp->snd_recover) &&
 				    SEQ_LEQ(th->th_ack, tp->snd_recover))
@@ -1329,10 +1335,9 @@ tcp_do_segment(struct ip6_hdr* ip6, struct tcphdr *th, otMessage* msg,
 			 */
 
 			if (!tpiscantrcv(tp)) {
-				size_t usedbefore = cbuf_used_space(&tp->recvbuf);
 				cbuf_write(&tp->recvbuf, msg, otMessageGetOffset(msg) + drop_hdrlen, tlen, cbuf_copy_from_message);
-				if (usedbefore == 0 && tlen > 0) {
-					sig->recvbuf_notempty = true;
+				if (tlen > 0) {
+					sig->recvbuf_added = true;
 				}
 			} else {
 				/*
@@ -2012,9 +2017,14 @@ tcp_do_segment(struct ip6_hdr* ip6, struct tcphdr *th, otMessage* msg,
 					tp->snd_nxt = th->th_ack;
 					tp->snd_cwnd = tp->t_maxseg;
 					(void) tcp_output(tp);
+					/*
+					 * samkumar: I added casts to uint64_t below to
+					 * fix an OpenThread code scanning alert relating
+					 * to integer overflow in multiplication.
+					 */
 					tp->snd_cwnd = tp->snd_ssthresh +
-					     tp->t_maxseg *
-					     (tp->t_dupacks - tp->snd_limited);
+					     ((uint64_t) tp->t_maxseg) *
+					     ((uint64_t) (tp->t_dupacks - tp->snd_limited));
 #ifdef INSTRUMENT_TCP
 					tcplp_sys_log("TCP SET_cwnd %d", (int) tp->snd_cwnd);
 #endif
@@ -2213,10 +2223,12 @@ process_ACK:
 			tp->snd_wnd -= usedspace;
 			poppedbytes = lbuf_pop(&tp->sendbuf, usedspace, &sig->links_popped);
 			KASSERT(poppedbytes == usedspace, ("Could not fully empty send buffer"));
+			sig->bytes_acked += poppedbytes;
 			ourfinisacked = 1;
 		} else {
 			uint32_t poppedbytes = lbuf_pop(&tp->sendbuf, acked, &sig->links_popped);
 			KASSERT(poppedbytes == acked, ("Could not remove acked bytes from send buffer"));
+			sig->bytes_acked += poppedbytes;
 			tp->snd_wnd -= acked;
 			ourfinisacked = 0;
 		}
@@ -2414,10 +2426,9 @@ step6:
 			 * sbappendstream_locked(&so->so_rcv, m, 0);).
 			 */
 			if (!tpiscantrcv(tp)) {
-				size_t usedbefore = cbuf_used_space(&tp->recvbuf);
 				cbuf_write(&tp->recvbuf, msg, otMessageGetOffset(msg) + drop_hdrlen, tlen, cbuf_copy_from_message);
-				if (usedbefore == 0 && tlen > 0) {
-					sig->recvbuf_notempty = true;
+				if (tlen > 0) {
+					sig->recvbuf_added = true;
 				}
 			} else if (tlen > 0) {
 				/*

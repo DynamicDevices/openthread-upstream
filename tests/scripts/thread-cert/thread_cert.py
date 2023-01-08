@@ -38,7 +38,7 @@ import sys
 import time
 import traceback
 import unittest
-from typing import Optional, Callable, Union, Any
+from typing import Optional, Callable, Union, Mapping, Any
 
 import config
 import debug
@@ -183,6 +183,8 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
             self.nodes[i].set_panid(params['panid'])
             self.nodes[i].set_mode(params['mode'])
 
+            if 'extended_panid' in params:
+                self.nodes[i].set_extpanid(params['extended_panid'])
             if 'partition_id' in params:
                 self.nodes[i].set_preferred_partition_id(params['partition_id'])
             if 'channel' in params:
@@ -327,6 +329,7 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
     def _verify_packets(self, test_info_path: str):
         pv = PacketVerifier(test_info_path, self.CASE_WIRESHARK_PREFS)
         pv.add_common_vars()
+        pv.pkts.filter_thread_unallowed_icmpv6().must_not_next()
         self.verify(pv)
         print("Packet verification passed: %s" % test_info_path, file=sys.stderr)
 
@@ -479,14 +482,19 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
         params = params or {}
 
         if params.get('is_bbr') or params.get('is_otbr'):
-            # BBRs must use thread version 1.2
-            assert params.get('version', '1.2') == '1.2', params
-            params['version'] = '1.2'
+            # BBRs must not use thread version 1.1
+            version = params.get('version', '1.3')
+            assert version != '1.1', params
+            params['version'] = version
             params.setdefault('bbr_registration_jitter', config.DEFAULT_BBR_REGISTRATION_JITTER)
         elif params.get('is_host'):
             # Hosts must not specify thread version
             assert params.get('version', '') == '', params
             params['version'] = ''
+
+        # use 1.3 node for 1.2 tests
+        if params.get('version') == '1.2':
+            params['version'] = '1.3'
 
         is_ftd = (not params.get('is_mtd') and not params.get('is_host'))
 
@@ -584,3 +592,16 @@ class TestCase(NcpSupportMixin, unittest.TestCase):
 
         else:
             raise Exception("Route between node %d and %d is not established" % (node1, node2))
+
+    def assertDictIncludes(self, actual: Mapping[str, str], expected: Mapping[str, str]):
+        """ Asserts the `actual` dict includes the `expected` dict.
+
+        Args:
+            actual: A dict for checking.
+            expected: The expected items that the actual dict should contains.
+        """
+        for k, v in expected.items():
+            if k not in actual:
+                raise AssertionError(f"key {k} is not found in first dict")
+            if v != actual[k]:
+                raise AssertionError(f"{repr(actual[k])} != {repr(v)} for key {k}")

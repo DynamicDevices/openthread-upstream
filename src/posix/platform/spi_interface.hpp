@@ -65,8 +65,8 @@ public:
      *
      */
     SpiInterface(Spinel::SpinelInterface::ReceiveFrameCallback aCallback,
-                 void *                                        aCallbackContext,
-                 Spinel::SpinelInterface::RxFrameBuffer &      aFrameBuffer);
+                 void                                         *aCallbackContext,
+                 Spinel::SpinelInterface::RxFrameBuffer       &aFrameBuffer);
 
     /**
      * This destructor deinitializes the object.
@@ -122,10 +122,10 @@ public:
     /**
      * This method updates the file descriptor sets with file descriptors used by the radio driver.
      *
-     * @param[inout]  aReadFdSet   A reference to the read file descriptors.
-     * @param[inout]  aWriteFdSet  A reference to the write file descriptors.
-     * @param[inout]  aMaxFd       A reference to the max file descriptor.
-     * @param[inout]  aTimeout     A reference to the timeout.
+     * @param[in,out]  aReadFdSet   A reference to the read file descriptors.
+     * @param[in,out]  aWriteFdSet  A reference to the write file descriptors.
+     * @param[in,out]  aMaxFd       A reference to the max file descriptor.
+     * @param[in,out]  aTimeout     A reference to the timeout.
      *
      */
     void UpdateFdSet(fd_set &aReadFdSet, fd_set &aWriteFdSet, int &aMaxFd, struct timeval &aTimeout);
@@ -159,6 +159,14 @@ public:
      */
     otError ResetConnection(void) { return OT_ERROR_NONE; }
 
+    /**
+     * This method returns the RCP interface metrics.
+     *
+     * @returns The RCP interface metrics.
+     *
+     */
+    const otRcpInterfaceMetrics *GetRcpInterfaceMetrics(void) const { return &mInterfaceMetrics; }
+
 private:
     int     SetupGpioHandle(int aFd, uint8_t aLine, uint32_t aHandleFlags, const char *aLabel);
     int     SetupGpioEvent(int aFd, uint8_t aLine, uint32_t aHandleFlags, uint32_t aEventFlags, const char *aLabel);
@@ -173,6 +181,7 @@ private:
     uint8_t *GetRealRxFrameStart(uint8_t *aSpiRxFrameBuffer, uint8_t aAlignAllowance, uint16_t &aSkipLength);
     otError  DoSpiTransfer(uint8_t *aSpiRxFrameBuffer, uint32_t aTransferLength);
     otError  PushPullSpi(void);
+    void     Process(const fd_set *aReadFdSet, const fd_set *aWriteFdSet);
 
     bool CheckInterrupt(void);
     void LogStats(void);
@@ -212,8 +221,8 @@ private:
     };
 
     Spinel::SpinelInterface::ReceiveFrameCallback mReceiveFrameCallback;
-    void *                                        mReceiveFrameContext;
-    Spinel::SpinelInterface::RxFrameBuffer &      mRxFrameBuffer;
+    void                                         *mReceiveFrameContext;
+    Spinel::SpinelInterface::RxFrameBuffer       &mRxFrameBuffer;
 
     int mSpiDevFd;
     int mResetGpioValueFd;
@@ -227,15 +236,8 @@ private:
     uint32_t mSpiSpeedHz;
 
     uint64_t mSlaveResetCount;
-    uint64_t mSpiFrameCount;
-    uint64_t mSpiValidFrameCount;
-    uint64_t mSpiGarbageFrameCount;
     uint64_t mSpiDuplexFrameCount;
     uint64_t mSpiUnresponsiveFrameCount;
-    uint64_t mSpiRxFrameCount;
-    uint64_t mSpiRxFrameByteCount;
-    uint64_t mSpiTxFrameCount;
-    uint64_t mSpiTxFrameByteCount;
 
     bool     mSpiTxIsReady;
     uint16_t mSpiTxRefusedCount;
@@ -244,6 +246,10 @@ private:
 
     bool     mDidPrintRateLimitLog;
     uint16_t mSpiSlaveDataLen;
+
+    bool mDidRxFrame;
+
+    otRcpInterfaceMetrics mInterfaceMetrics;
 
     // Non-copyable, intentionally not implemented.
     SpiInterface(const SpiInterface &);

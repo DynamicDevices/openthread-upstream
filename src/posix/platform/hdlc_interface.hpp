@@ -61,8 +61,8 @@ public:
      *
      */
     HdlcInterface(Spinel::SpinelInterface::ReceiveFrameCallback aCallback,
-                  void *                                        aCallbackContext,
-                  Spinel::SpinelInterface::RxFrameBuffer &      aFrameBuffer);
+                  void                                         *aCallbackContext,
+                  Spinel::SpinelInterface::RxFrameBuffer       &aFrameBuffer);
 
     /**
      * This destructor deinitializes the object.
@@ -120,10 +120,10 @@ public:
     /**
      * This method updates the file descriptor sets with file descriptors used by the radio driver.
      *
-     * @param[inout]  aReadFdSet   A reference to the read file descriptors.
-     * @param[inout]  aWriteFdSet  A reference to the write file descriptors.
-     * @param[inout]  aMaxFd       A reference to the max file descriptor.
-     * @param[inout]  aTimeout     A reference to the timeout.
+     * @param[in,out]  aReadFdSet   A reference to the read file descriptors.
+     * @param[in,out]  aWriteFdSet  A reference to the write file descriptors.
+     * @param[in,out]  aMaxFd       A reference to the max file descriptor.
+     * @param[in,out]  aTimeout     A reference to the timeout.
      *
      */
     void UpdateFdSet(fd_set &aReadFdSet, fd_set &aWriteFdSet, int &aMaxFd, struct timeval &aTimeout);
@@ -168,6 +168,14 @@ public:
      *
      */
     otError ResetConnection(void);
+
+    /**
+     * This method returns the RCP interface metrics.
+     *
+     * @returns The RCP interface metrics.
+     *
+     */
+    const otRcpInterfaceMetrics *GetRcpInterfaceMetrics(void) const { return &mInterfaceMetrics; }
 
 private:
     /**
@@ -250,13 +258,15 @@ private:
     };
 
     Spinel::SpinelInterface::ReceiveFrameCallback mReceiveFrameCallback;
-    void *                                        mReceiveFrameContext;
-    Spinel::SpinelInterface::RxFrameBuffer &      mReceiveFrameBuffer;
+    void                                         *mReceiveFrameContext;
+    Spinel::SpinelInterface::RxFrameBuffer       &mReceiveFrameBuffer;
 
     int             mSockFd;
     uint32_t        mBaudRate;
     Hdlc::Decoder   mHdlcDecoder;
     const Url::Url *mRadioUrl;
+
+    otRcpInterfaceMetrics mInterfaceMetrics;
 
     // Non-copyable, intentionally not implemented.
     HdlcInterface(const HdlcInterface &);

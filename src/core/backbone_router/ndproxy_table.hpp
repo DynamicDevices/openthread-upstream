@@ -40,6 +40,7 @@
 #include <openthread/backbone_router_ftd.h>
 
 #include "backbone_router/bbr_leader.hpp"
+#include "common/callback.hpp"
 #include "common/iterator_utils.hpp"
 #include "common/locator.hpp"
 #include "common/non_copyable.hpp"
@@ -65,6 +66,7 @@ public:
     class NdProxy : private Clearable<NdProxy>
     {
         friend class NdProxyTable;
+        friend class Clearable<NdProxy>;
 
     public:
         /**
@@ -111,8 +113,8 @@ public:
                   uint32_t                        aTimeSinceLastTransaction);
 
         void Update(uint16_t aRloc16, uint32_t aTimeSinceLastTransaction);
-        void IncreaseDadAttampts(void) { mDadAttempts++; }
-        bool IsDadAttamptsComplete() const { return mDadAttempts == Mle::kDuaDadRepeats; }
+        void IncreaseDadAttempts(void) { mDadAttempts++; }
+        bool IsDadAttemptsComplete() const { return mDadAttempts == Mle::kDuaDadRepeats; }
 
         Ip6::InterfaceIdentifier mAddressIid;
         Ip6::InterfaceIdentifier mMeshLocalIid;
@@ -133,8 +135,6 @@ public:
      */
     explicit NdProxyTable(Instance &aInstance)
         : InstanceLocator(aInstance)
-        , mCallback(nullptr)
-        , mCallbackContext(nullptr)
         , mIsAnyDadInProcess(false)
     {
     }
@@ -155,7 +155,7 @@ public:
     Error Register(const Ip6::InterfaceIdentifier &aAddressIid,
                    const Ip6::InterfaceIdentifier &aMeshLocalIid,
                    uint16_t                        aRloc16,
-                   const uint32_t *                aTimeSinceLastTransaction);
+                   const uint32_t                 *aTimeSinceLastTransaction);
 
     /**
      * This method checks if a given IPv6 address IID was registered.
@@ -216,7 +216,7 @@ public:
      * @param[in] aContext   A user context pointer.
      *
      */
-    void SetCallback(otBackboneRouterNdProxyCallback aCallback, void *aContext);
+    void SetCallback(otBackboneRouterNdProxyCallback aCallback, void *aContext) { mCallback.Set(aCallback, aContext); }
 
     /**
      * This method retrieves the ND Proxy info of the Domain Unicast Address.
@@ -284,17 +284,16 @@ private:
     IteratorBuilder Iterate(Filter aFilter) { return IteratorBuilder(GetInstance(), aFilter); }
     void            Clear(void);
     static bool     MatchesFilter(const NdProxy &aProxy, Filter aFilter);
-    NdProxy *       FindByAddressIid(const Ip6::InterfaceIdentifier &aAddressIid);
-    NdProxy *       FindByMeshLocalIid(const Ip6::InterfaceIdentifier &aMeshLocalIid);
-    NdProxy *       FindInvalid(void);
+    NdProxy        *FindByAddressIid(const Ip6::InterfaceIdentifier &aAddressIid);
+    NdProxy        *FindByMeshLocalIid(const Ip6::InterfaceIdentifier &aMeshLocalIid);
+    NdProxy        *FindInvalid(void);
     Ip6::Address    GetDua(NdProxy &aNdProxy);
     void            NotifyDuaRegistrationOnBackboneLink(NdProxy &aNdProxy, bool aIsRenew);
     void TriggerCallback(otBackboneRouterNdProxyEvent aEvent, const Ip6::InterfaceIdentifier &aAddressIid) const;
 
-    NdProxy                         mProxies[kMaxNdProxyNum];
-    otBackboneRouterNdProxyCallback mCallback;
-    void *                          mCallbackContext;
-    bool                            mIsAnyDadInProcess : 1;
+    NdProxy                                   mProxies[kMaxNdProxyNum];
+    Callback<otBackboneRouterNdProxyCallback> mCallback;
+    bool                                      mIsAnyDadInProcess : 1;
 };
 
 } // namespace BackboneRouter

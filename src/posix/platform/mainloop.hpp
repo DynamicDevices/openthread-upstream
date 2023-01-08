@@ -52,7 +52,7 @@ public:
     /**
      * This method registers events in the mainloop.
      *
-     * @param[inout]    aContext    A reference to the mainloop context.
+     * @param[in,out]   aContext    A reference to the mainloop context.
      *
      */
     virtual void Update(otSysMainloopContext &aContext) = 0;
@@ -64,6 +64,12 @@ public:
      *
      */
     virtual void Process(const otSysMainloopContext &aContext) = 0;
+
+    /**
+     * This method marks desturctor virtual method.
+     *
+     */
+    virtual ~Source() = default;
 
 private:
     Source *mNext = nullptr;
@@ -79,7 +85,7 @@ public:
     /**
      * This method updates event polls in the mainloop context.
      *
-     * @param[inout]    aContext    A reference to the mainloop context.
+     * @param[in,out]   aContext    A reference to the mainloop context.
      *
      */
     void Update(otSysMainloopContext &aContext);

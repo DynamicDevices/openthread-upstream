@@ -99,6 +99,7 @@ typedef struct
     int8_t       mLastRssi;             ///< Last observed RSSI
     uint16_t     mFrameErrorRate;       ///< Frame error rate (0xffff->100%). Requires error tracking feature.
     uint16_t     mMessageErrorRate;     ///< (IPv6) msg error rate (0xffff->100%). Requires error tracking feature.
+    uint16_t     mVersion;              ///< Thread version of the neighbor
     bool         mRxOnWhenIdle : 1;     ///< rx-on-when-idle
     bool         mFullThreadDevice : 1; ///< Full Thread Device
     bool         mFullNetworkData : 1;  ///< Full Network Data
@@ -138,6 +139,14 @@ typedef struct
     uint8_t      mAge;                 ///< Time last heard
     bool         mAllocated : 1;       ///< Router ID allocated or not
     bool         mLinkEstablished : 1; ///< Link established with Router ID or not
+    uint8_t      mVersion;             ///< Thread version
+
+    /**
+     * Parent CSL parameters are only relevant when OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE is enabled.
+     *
+     */
+    uint8_t mCslClockAccuracy; ///< CSL clock accuracy, in ± ppm
+    uint8_t mCslUncertainty;   ///< CSL uncertainty, in ±10 us
 } otRouterInfo;
 
 /**
@@ -168,6 +177,19 @@ typedef struct otMleCounters
     uint16_t mBetterPartitionAttachAttempts; ///< Number of attempts to attach to a better partition.
 
     /**
+     * Role time tracking.
+     *
+     * When uptime feature is enabled (OPENTHREAD_CONFIG_UPTIME_ENABLE = 1) time spent in each MLE role is tracked.
+     *
+     */
+    uint64_t mDisabledTime; ///< Number of milliseconds device has been in OT_DEVICE_ROLE_DISABLED role.
+    uint64_t mDetachedTime; ///< Number of milliseconds device has been in OT_DEVICE_ROLE_DETACHED role.
+    uint64_t mChildTime;    ///< Number of milliseconds device has been in OT_DEVICE_ROLE_CHILD role.
+    uint64_t mRouterTime;   ///< Number of milliseconds device has been in OT_DEVICE_ROLE_ROUTER role.
+    uint64_t mLeaderTime;   ///< Number of milliseconds device has been in OT_DEVICE_ROLE_LEADER role.
+    uint64_t mTrackedTime;  ///< Number of milliseconds tracked by previous counters.
+
+    /**
      * Number of times device changed its parent.
      *
      * A parent change can happen if device detaches from its current parent and attaches to a different one, or even
@@ -195,9 +217,20 @@ typedef struct otThreadParentResponseInfo
 } otThreadParentResponseInfo;
 
 /**
+ * This callback informs the application that the detaching process has finished.
+ *
+ * @param[in] aContext A pointer to application-specific context.
+ *
+ */
+typedef void (*otDetachGracefullyCallback)(void *aContext);
+
+/**
  * This function starts Thread protocol operation.
  *
  * The interface must be up when calling this function.
+ *
+ * Calling this function with @p aEnabled set to FALSE stops any ongoing processes of detaching started by
+ * otThreadDetachGracefully(). Its callback will be called.
  *
  * @param[in] aInstance A pointer to an OpenThread instance.
  * @param[in] aEnabled  TRUE if Thread is enabled, FALSE otherwise.
@@ -245,13 +278,13 @@ bool otThreadIsSingleton(otInstance *aInstance);
  * @retval OT_ERROR_BUSY           Thread Discovery Scan is already in progress.
  *
  */
-otError otThreadDiscover(otInstance *             aInstance,
+otError otThreadDiscover(otInstance              *aInstance,
                          uint32_t                 aScanChannels,
                          uint16_t                 aPanId,
                          bool                     aJoiner,
                          bool                     aEnableEui64Filtering,
                          otHandleActiveScanResult aCallback,
-                         void *                   aCallbackContext);
+                         void                    *aCallbackContext);
 
 /**
  * This function determines if an MLE Thread Discovery is currently in progress.
@@ -278,7 +311,7 @@ bool otThreadIsDiscoverInProgress(otInstance *aInstance);
  * @retval OT_ERROR_INVALID_ARGS Invalid AdvData.
  *
  */
-otError otThreadSetJoinerAdvertisement(otInstance *   aInstance,
+otError otThreadSetJoinerAdvertisement(otInstance    *aInstance,
                                        uint32_t       aOui,
                                        const uint8_t *aAdvData,
                                        uint8_t        aAdvDataLength);
@@ -286,7 +319,7 @@ otError otThreadSetJoinerAdvertisement(otInstance *   aInstance,
 #define OT_JOINER_ADVDATA_MAX_LENGTH 64 ///< Maximum AdvData Length of Joiner Advertisement
 
 /**
- * Get the Thread Child Timeout used when operating in the Child role.
+ * Gets the Thread Child Timeout (in seconds) used when operating in the Child role.
  *
  * @param[in]  aInstance A pointer to an OpenThread instance.
  *
@@ -298,7 +331,7 @@ otError otThreadSetJoinerAdvertisement(otInstance *   aInstance,
 uint32_t otThreadGetChildTimeout(otInstance *aInstance);
 
 /**
- * Set the Thread Child Timeout used when operating in the Child role.
+ * Sets the Thread Child Timeout (in seconds) used when operating in the Child role.
  *
  * @param[in]  aInstance A pointer to an OpenThread instance.
  * @param[in]  aTimeout  The timeout value in seconds.
@@ -309,7 +342,7 @@ uint32_t otThreadGetChildTimeout(otInstance *aInstance);
 void otThreadSetChildTimeout(otInstance *aInstance, uint32_t aTimeout);
 
 /**
- * Get the IEEE 802.15.4 Extended PAN ID.
+ * Gets the IEEE 802.15.4 Extended PAN ID.
  *
  * @param[in]  aInstance A pointer to an OpenThread instance.
  *
@@ -321,9 +354,9 @@ void otThreadSetChildTimeout(otInstance *aInstance, uint32_t aTimeout);
 const otExtendedPanId *otThreadGetExtendedPanId(otInstance *aInstance);
 
 /**
- * Set the IEEE 802.15.4 Extended PAN ID.
+ * Sets the IEEE 802.15.4 Extended PAN ID.
  *
- * This function can only be called while Thread protocols are disabled.  A successful
+ * @note Can only be called while Thread protocols are disabled. A successful
  * call to this function invalidates the Active and Pending Operational Datasets in
  * non-volatile memory.
  *
@@ -440,7 +473,7 @@ otError otThreadSetNetworkKey(otInstance *aInstance, const otNetworkKey *aKey);
 otError otThreadSetNetworkKeyRef(otInstance *aInstance, otNetworkKeyRef aKeyRef);
 
 /**
- * This function returns a pointer to the Thread Routing Locator (RLOC) address.
+ * Gets the Thread Routing Locator (RLOC) address.
  *
  * @param[in]  aInstance A pointer to an OpenThread instance.
  *
@@ -450,7 +483,7 @@ otError otThreadSetNetworkKeyRef(otInstance *aInstance, otNetworkKeyRef aKeyRef)
 const otIp6Address *otThreadGetRloc(otInstance *aInstance);
 
 /**
- * This function returns a pointer to the Mesh Local EID address.
+ * Gets the Mesh Local EID address.
  *
  * @param[in]  aInstance A pointer to an OpenThread instance.
  *
@@ -486,7 +519,7 @@ const otMeshLocalPrefix *otThreadGetMeshLocalPrefix(otInstance *aInstance);
 otError otThreadSetMeshLocalPrefix(otInstance *aInstance, const otMeshLocalPrefix *aMeshLocalPrefix);
 
 /**
- * This function returns the Thread link-local IPv6 address.
+ * Gets the Thread link-local IPv6 address.
  *
  * The Thread link local address is derived using IEEE802.15.4 Extended Address as Interface Identifier.
  *
@@ -498,9 +531,9 @@ otError otThreadSetMeshLocalPrefix(otInstance *aInstance, const otMeshLocalPrefi
 const otIp6Address *otThreadGetLinkLocalIp6Address(otInstance *aInstance);
 
 /**
- * This function returns the Thread Link-Local All Thread Nodes multicast address.
+ * Gets the Thread Link-Local All Thread Nodes multicast address.
  *
- * The address is a link-local Unicast Prefix-Based Multcast Address [RFC 3306], with:
+ * The address is a link-local Unicast Prefix-Based Multicast Address [RFC 3306], with:
  *   - flgs set to 3 (P = 1 and T = 1)
  *   - scop set to 2
  *   - plen set to 64
@@ -515,9 +548,9 @@ const otIp6Address *otThreadGetLinkLocalIp6Address(otInstance *aInstance);
 const otIp6Address *otThreadGetLinkLocalAllThreadNodesMulticastAddress(otInstance *aInstance);
 
 /**
- * This function returns the Thread Realm-Local All Thread Nodes multicast address.
+ * Gets the Thread Realm-Local All Thread Nodes multicast address.
  *
- * The address is a realm-local Unicast Prefix-Based Multcast Address [RFC 3306], with:
+ * The address is a realm-local Unicast Prefix-Based Multicast Address [RFC 3306], with:
  *   - flgs set to 3 (P = 1 and T = 1)
  *   - scop set to 3
  *   - plen set to 64
@@ -574,9 +607,9 @@ const char *otThreadGetNetworkName(otInstance *aInstance);
 otError otThreadSetNetworkName(otInstance *aInstance, const char *aNetworkName);
 
 /**
- * Get the Thread Domain Name.
+ * Gets the Thread Domain Name.
  *
- * This function is only available since Thread 1.2.
+ * @note Available since Thread 1.2.
  *
  * @param[in]  aInstance A pointer to an OpenThread instance.
  *
@@ -588,10 +621,9 @@ otError otThreadSetNetworkName(otInstance *aInstance, const char *aNetworkName);
 const char *otThreadGetDomainName(otInstance *aInstance);
 
 /**
- * Set the Thread Domain Name.
+ * Sets the Thread Domain Name. Only succeeds when Thread protocols are disabled.
  *
- * This function is only available since Thread 1.2.
- * This function succeeds only when Thread protocols are disabled.
+ * @note Available since Thread 1.2.
  *
  * @param[in]  aInstance     A pointer to an OpenThread instance.
  * @param[in]  aDomainName   A pointer to the Thread Domain Name.
@@ -605,9 +637,11 @@ const char *otThreadGetDomainName(otInstance *aInstance);
 otError otThreadSetDomainName(otInstance *aInstance, const char *aDomainName);
 
 /**
- * Set/Clear the Interface Identifier manually specified for the Thread Domain Unicast Address.
+ * Sets or clears the Interface Identifier manually specified for the Thread Domain Unicast Address.
  *
- * This function is only available since Thread 1.2 when `OPENTHREAD_CONFIG_DUA_ENABLE` is enabled.
+ * Available when `OPENTHREAD_CONFIG_DUA_ENABLE` is enabled.
+ *
+ * @note Only available since Thread 1.2.
  *
  * @param[in]  aInstance   A pointer to an OpenThread instance.
  * @param[in]  aIid        A pointer to the Interface Identifier to set or NULL to clear.
@@ -620,9 +654,11 @@ otError otThreadSetDomainName(otInstance *aInstance, const char *aDomainName);
 otError otThreadSetFixedDuaInterfaceIdentifier(otInstance *aInstance, const otIp6InterfaceIdentifier *aIid);
 
 /**
- * Get the Interface Identifier manually specified for the Thread Domain Unicast Address.
+ * Gets the Interface Identifier manually specified for the Thread Domain Unicast Address.
  *
- * This function is only available since Thread 1.2 when `OPENTHREAD_CONFIG_DUA_ENABLE` is enabled.
+ * Available when `OPENTHREAD_CONFIG_DUA_ENABLE` is enabled.
+ *
+ * @note Only available since Thread 1.2.
  *
  * @param[in]  aInstance A pointer to an OpenThread instance.
  *
@@ -634,7 +670,7 @@ otError otThreadSetFixedDuaInterfaceIdentifier(otInstance *aInstance, const otIp
 const otIp6InterfaceIdentifier *otThreadGetFixedDuaInterfaceIdentifier(otInstance *aInstance);
 
 /**
- * Get the thrKeySequenceCounter.
+ * Gets the thrKeySequenceCounter.
  *
  * @param[in]  aInstance A pointer to an OpenThread instance.
  *
@@ -646,7 +682,7 @@ const otIp6InterfaceIdentifier *otThreadGetFixedDuaInterfaceIdentifier(otInstanc
 uint32_t otThreadGetKeySequenceCounter(otInstance *aInstance);
 
 /**
- * Set the thrKeySequenceCounter.
+ * Sets the thrKeySequenceCounter.
  *
  * @note This API is reserved for testing and demo purposes only. Changing settings with
  * this API will render a production application non-compliant with the Thread Specification.
@@ -660,7 +696,7 @@ uint32_t otThreadGetKeySequenceCounter(otInstance *aInstance);
 void otThreadSetKeySequenceCounter(otInstance *aInstance, uint32_t aKeySequenceCounter);
 
 /**
- * Get the thrKeySwitchGuardTime
+ * Gets the thrKeySwitchGuardTime (in hours).
  *
  * @param[in]  aInstance A pointer to an OpenThread instance.
  *
@@ -672,7 +708,7 @@ void otThreadSetKeySequenceCounter(otInstance *aInstance, uint32_t aKeySequenceC
 uint32_t otThreadGetKeySwitchGuardTime(otInstance *aInstance);
 
 /**
- * Set the thrKeySwitchGuardTime
+ * Sets the thrKeySwitchGuardTime (in hours).
  *
  * @note This API is reserved for testing and demo purposes only. Changing settings with
  * this API will render a production application non-compliant with the Thread Specification.
@@ -714,10 +750,10 @@ otError otThreadBecomeChild(otInstance *aInstance);
  * This function gets the next neighbor information. It is used to go through the entries of
  * the neighbor table.
  *
- * @param[in]     aInstance  A pointer to an OpenThread instance.
- * @param[inout]  aIterator  A pointer to the iterator context. To get the first neighbor entry
-                             it should be set to OT_NEIGHBOR_INFO_ITERATOR_INIT.
- * @param[out]    aInfo      A pointer to the neighbor information.
+ * @param[in]      aInstance  A pointer to an OpenThread instance.
+ * @param[in,out]  aIterator  A pointer to the iterator context. To get the first neighbor entry
+                              it should be set to OT_NEIGHBOR_INFO_ITERATOR_INIT.
+ * @param[out]     aInfo      A pointer to the neighbor information.
  *
  * @retval OT_ERROR_NONE         Successfully found the next neighbor entry in table.
  * @retval OT_ERROR_NOT_FOUND     No subsequent neighbor entry exists in the table.
@@ -834,7 +870,18 @@ otError otThreadGetParentAverageRssi(otInstance *aInstance, int8_t *aParentRssi)
 otError otThreadGetParentLastRssi(otInstance *aInstance, int8_t *aLastRssi);
 
 /**
- * Get the IPv6 counters.
+ * Starts the process for child to search for a better parent while staying attached to its current parent.
+ *
+ * Must be used when device is attached as a child.
+ *
+ * @retval OT_ERROR_NONE           Successfully started the process to search for a better parent.
+ * @retval OT_ERROR_INVALID_STATE  Device role is not child.
+ *
+ */
+otError otThreadSearchForBetterParent(otInstance *aInstance);
+
+/**
+ * Gets the IPv6 counters.
  *
  * @param[in]  aInstance  A pointer to an OpenThread instance.
  *
@@ -844,7 +891,7 @@ otError otThreadGetParentLastRssi(otInstance *aInstance, int8_t *aLastRssi);
 const otIpCounters *otThreadGetIp6Counters(otInstance *aInstance);
 
 /**
- * Reset the IPv6 counters.
+ * Resets the IPv6 counters.
  *
  * @param[in]  aInstance  A pointer to an OpenThread instance.
  *
@@ -852,7 +899,7 @@ const otIpCounters *otThreadGetIp6Counters(otInstance *aInstance);
 void otThreadResetIp6Counters(otInstance *aInstance);
 
 /**
- * Get the Thread MLE counters.
+ * Gets the Thread MLE counters.
  *
  * @param[in]  aInstance  A pointer to an OpenThread instance.
  *
@@ -862,7 +909,7 @@ void otThreadResetIp6Counters(otInstance *aInstance);
 const otMleCounters *otThreadGetMleCounters(otInstance *aInstance);
 
 /**
- * Reset the Thread MLE counters.
+ * Resets the Thread MLE counters.
  *
  * @param[in]  aInstance  A pointer to an OpenThread instance.
  *
@@ -872,7 +919,7 @@ void otThreadResetMleCounters(otInstance *aInstance);
 /**
  * This function pointer is called every time an MLE Parent Response message is received.
  *
- * @param[in]  aStats    pointer to a location on stack holding the stats data.
+ * @param[in]  aInfo     A pointer to a location on stack holding the stats data.
  * @param[in]  aContext  A pointer to callback client-specific context.
  *
  */
@@ -886,9 +933,9 @@ typedef void (*otThreadParentResponseCallback)(otThreadParentResponseInfo *aInfo
  * @param[in]  aContext   A pointer to callback client-specific context.
  *
  */
-void otThreadRegisterParentResponseCallback(otInstance *                   aInstance,
+void otThreadRegisterParentResponseCallback(otInstance                    *aInstance,
                                             otThreadParentResponseCallback aCallback,
-                                            void *                         aContext);
+                                            void                          *aContext);
 
 /**
  * This structure represents the Thread Discovery Request data.
@@ -918,9 +965,9 @@ typedef void (*otThreadDiscoveryRequestCallback)(const otThreadDiscoveryRequestI
  * @param[in]  aContext   A pointer to callback application-specific context.
  *
  */
-void otThreadSetDiscoveryRequestCallback(otInstance *                     aInstance,
+void otThreadSetDiscoveryRequestCallback(otInstance                      *aInstance,
                                          otThreadDiscoveryRequestCallback aCallback,
-                                         void *                           aContext);
+                                         void                            *aContext);
 
 /**
  * This function pointer type defines the callback to notify the outcome of a `otThreadLocateAnycastDestination()`
@@ -935,7 +982,7 @@ void otThreadSetDiscoveryRequestCallback(otInstance *                     aInsta
  * @param[in] aRloc16             The RLOC16 of the destination if found, otherwise invalid RLOC16 (0xfffe).
  *
  */
-typedef void (*otThreadAnycastLocatorCallback)(void *              aContext,
+typedef void (*otThreadAnycastLocatorCallback)(void               *aContext,
                                                otError             aError,
                                                const otIp6Address *aMeshLocalAddress,
                                                uint16_t            aRloc16);
@@ -957,10 +1004,10 @@ typedef void (*otThreadAnycastLocatorCallback)(void *              aContext,
  * @retval OT_ERROR_NO_BUFS       Out of buffer to prepare and send the request message.
  *
  */
-otError otThreadLocateAnycastDestination(otInstance *                   aInstance,
-                                         const otIp6Address *           aAnycastAddress,
+otError otThreadLocateAnycastDestination(otInstance                    *aInstance,
+                                         const otIp6Address            *aAnycastAddress,
                                          otThreadAnycastLocatorCallback aCallback,
-                                         void *                         aContext);
+                                         void                          *aContext);
 
 /**
  * This function indicates whether an anycast locate request is currently in progress.
@@ -985,9 +1032,9 @@ bool otThreadIsAnycastLocateInProgress(otInstance *aInstance);
  * @param[in]  aMlIid        The ML-IID of the ADDR_NTF.ntf message.
  *
  */
-void otThreadSendAddressNotification(otInstance *              aInstance,
-                                     otIp6Address *            aDestination,
-                                     otIp6Address *            aTarget,
+void otThreadSendAddressNotification(otInstance               *aInstance,
+                                     otIp6Address             *aDestination,
+                                     otIp6Address             *aTarget,
                                      otIp6InterfaceIdentifier *aMlIid);
 
 /**
@@ -1004,10 +1051,25 @@ void otThreadSendAddressNotification(otInstance *              aInstance,
  * @retval OT_ERROR_NO_BUFS        If insufficient message buffers available.
  *
  */
-otError otThreadSendProactiveBackboneNotification(otInstance *              aInstance,
-                                                  otIp6Address *            aTarget,
+otError otThreadSendProactiveBackboneNotification(otInstance               *aInstance,
+                                                  otIp6Address             *aTarget,
                                                   otIp6InterfaceIdentifier *aMlIid,
                                                   uint32_t                  aTimeSinceLastTransaction);
+
+/**
+ * This function notifies other nodes in the network (if any) and then stops Thread protocol operation.
+ *
+ * It sends an Address Release if it's a router, or sets its child timeout to 0 if it's a child.
+ *
+ * @param[in] aInstance A pointer to an OpenThread instance.
+ * @param[in] aCallback A pointer to a function that is called upon finishing detaching.
+ * @param[in] aContext  A pointer to callback application-specific context.
+ *
+ * @retval OT_ERROR_NONE Successfully started detaching.
+ * @retval OT_ERROR_BUSY Detaching is already in progress.
+ *
+ */
+otError otThreadDetachGracefully(otInstance *aInstance, otDetachGracefullyCallback aCallback, void *aContext);
 
 /**
  * @}

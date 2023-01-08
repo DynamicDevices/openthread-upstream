@@ -34,17 +34,28 @@
 #include "timestamp.hpp"
 
 #include "common/code_utils.hpp"
+#include "common/num_utils.hpp"
 
 namespace ot {
 namespace MeshCoP {
 
+void Timestamp::ConvertTo(otTimestamp &aTimestamp) const
+{
+    aTimestamp.mSeconds       = GetSeconds();
+    aTimestamp.mTicks         = GetTicks();
+    aTimestamp.mAuthoritative = GetAuthoritative();
+}
+
+void Timestamp::SetFromTimestamp(const otTimestamp &aTimestamp)
+{
+    SetSeconds(aTimestamp.mSeconds);
+    SetTicks(aTimestamp.mTicks);
+    SetAuthoritative(aTimestamp.mAuthoritative);
+}
+
 int Timestamp::Compare(const Timestamp *aFirst, const Timestamp *aSecond)
 {
-    int      rval;
-    uint64_t firstSeconds;
-    uint64_t secondSeconds;
-    uint16_t firstTicks;
-    uint16_t secondTicks;
+    int rval;
 
     if (aFirst == nullptr)
     {
@@ -62,23 +73,23 @@ int Timestamp::Compare(const Timestamp *aFirst, const Timestamp *aSecond)
 
     // Both are non-null.
 
-    firstSeconds  = aFirst->GetSeconds();
-    secondSeconds = aSecond->GetSeconds();
+    rval = Compare(*aFirst, *aSecond);
 
-    if (firstSeconds != secondSeconds)
-    {
-        ExitNow(rval = (firstSeconds > secondSeconds) ? 1 : -1);
-    }
+exit:
+    return rval;
+}
 
-    firstTicks  = aFirst->GetTicks();
-    secondTicks = aSecond->GetTicks();
+int Timestamp::Compare(const Timestamp &aFirst, const Timestamp &aSecond)
+{
+    int rval;
 
-    if (firstTicks != secondTicks)
-    {
-        ExitNow(rval = (firstTicks > secondTicks) ? 1 : -1);
-    }
+    rval = ThreeWayCompare(aFirst.GetSeconds(), aSecond.GetSeconds());
+    VerifyOrExit(rval == 0);
 
-    rval = 0;
+    rval = ThreeWayCompare(aFirst.GetTicks(), aSecond.GetTicks());
+    VerifyOrExit(rval == 0);
+
+    rval = ThreeWayCompare(aFirst.GetAuthoritative(), aSecond.GetAuthoritative());
 
 exit:
     return rval;

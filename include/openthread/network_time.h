@@ -78,8 +78,8 @@ typedef void (*otNetworkTimeSyncCallbackFn)(void *aCallbackContext);
 /**
  * Get the Thread network time.
  *
- * @param[in]    aInstance     The OpenThread instance structure.
- * @param[inout] aNetworkTime  The Thread network time in microseconds.
+ * @param[in]     aInstance     The OpenThread instance structure.
+ * @param[in,out] aNetworkTime  The Thread network time in microseconds.
  *
  * @returns The time synchronization status.
  *
@@ -145,9 +145,9 @@ uint16_t otNetworkTimeGetXtalThreshold(otInstance *aInstance);
  * @param[in] aCallbackContext The context to be passed to the callback function upon invocation
  *
  */
-void otNetworkTimeSyncSetCallback(otInstance *                aInstance,
+void otNetworkTimeSyncSetCallback(otInstance                 *aInstance,
                                   otNetworkTimeSyncCallbackFn aCallbackFn,
-                                  void *                      aCallbackContext);
+                                  void                       *aCallbackContext);
 
 /**
  * @}

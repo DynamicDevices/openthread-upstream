@@ -33,6 +33,7 @@
 #include "test_platform.h"
 #include "test_util.hpp"
 
+#include "common/array.hpp"
 #include "common/instance.hpp"
 #include "net/dns_types.hpp"
 
@@ -48,24 +49,24 @@ void TestDnsName(void)
 
     struct TestName
     {
-        const char *   mName;
+        const char    *mName;
         uint16_t       mEncodedLength;
         const uint8_t *mEncodedData;
-        const char **  mLabels;
-        const char *   mExpectedReadName;
+        const char   **mLabels;
+        const char    *mExpectedReadName;
     };
 
-    Instance *   instance;
+    Instance    *instance;
     MessagePool *messagePool;
-    Message *    message;
+    Message     *message;
     uint8_t      buffer[kMaxSize];
     uint16_t     len;
     uint16_t     offset;
     char         label[Dns::Name::kMaxLabelSize];
     uint8_t      labelLength;
     char         name[Dns::Name::kMaxNameSize];
-    const char * subDomain;
-    const char * domain;
+    const char  *subDomain;
+    const char  *domain;
 
     static const uint8_t kEncodedName1[] = {7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 3, 'c', 'o', 'm', 0};
     static const uint8_t kEncodedName2[] = {3, 'f', 'o', 'o', 1, 'a', 2, 'b', 'b', 3, 'e', 'd', 'u', 0};
@@ -443,10 +444,10 @@ void TestDnsCompressedName(void)
 
     static const char kBadName[] = "bad.name";
 
-    Instance *   instance;
+    Instance    *instance;
     MessagePool *messagePool;
-    Message *    message;
-    Message *    message2;
+    Message     *message;
+    Message     *message2;
     uint16_t     offset;
     uint16_t     name1Offset;
     uint16_t     name2Offset;
@@ -798,9 +799,9 @@ void TestHeaderAndResourceRecords(void)
     const char *kInstanceLabels[] = {kInstance1Label, kInstance2Label};
     const char *kInstanceNames[]  = {kInstance1Name, kInstance2Name};
 
-    Instance *          instance;
-    MessagePool *       messagePool;
-    Message *           message;
+    Instance           *instance;
+    MessagePool        *messagePool;
+    Message            *message;
     Dns::Header         header;
     uint16_t            messageId;
     uint16_t            headerOffset;
@@ -1020,6 +1021,8 @@ void TestHeaderAndResourceRecords(void)
 
     for (const char *instanceName : kInstanceNames)
     {
+        uint16_t savedOffset;
+
         // SRV record
         SuccessOrQuit(Dns::Name::CompareName(*message, offset, instanceName));
         SuccessOrQuit(Dns::ResourceRecord::ReadRecord(*message, offset, srvRecord));
@@ -1036,12 +1039,21 @@ void TestHeaderAndResourceRecords(void)
         SuccessOrQuit(Dns::Name::CompareName(*message, offset, instanceName));
         SuccessOrQuit(Dns::ResourceRecord::ReadRecord(*message, offset, txtRecord));
         VerifyOrQuit(txtRecord.GetTtl() == kTxtTtl);
-        len = sizeof(buffer);
+        savedOffset = offset;
+        len         = sizeof(buffer);
         SuccessOrQuit(txtRecord.ReadTxtData(*message, offset, buffer, len));
         VerifyOrQuit(len == sizeof(kTxtData));
         VerifyOrQuit(memcmp(buffer, kTxtData, len) == 0);
         printf("    \"%s\" TXT %u %d \"%s\"\n", instanceName, txtRecord.GetTtl(), txtRecord.GetLength(),
                reinterpret_cast<const char *>(buffer));
+
+        // Partial read of TXT data
+        len = sizeof(kTxtData) - 1;
+        memset(buffer, 0, sizeof(buffer));
+        VerifyOrQuit(txtRecord.ReadTxtData(*message, savedOffset, buffer, len) == kErrorNoBufs);
+        VerifyOrQuit(len == sizeof(kTxtData) - 1);
+        VerifyOrQuit(memcmp(buffer, kTxtData, len) == 0);
+        VerifyOrQuit(savedOffset == offset);
     }
 
     SuccessOrQuit(Dns::Name::CompareName(*message, offset, kHostName));
@@ -1095,7 +1107,7 @@ void TestHeaderAndResourceRecords(void)
     printf("Use FindRecord() to search for specific records:\n");
     printf(" Answer Section\n");
 
-    for (index = 0; index < OT_ARRAY_LENGTH(kInstanceNames); index++)
+    for (index = 0; index < GetArrayLength(kInstanceNames); index++)
     {
         offset = answerSectionOffset;
         SuccessOrQuit(
@@ -1228,9 +1240,9 @@ void TestDnsTxtEntry(void)
         {kEncodedTxt5, sizeof(kEncodedTxt5)}, {kEncodedTxt6, sizeof(kEncodedTxt6)},
         {kEncodedTxt7, sizeof(kEncodedTxt7)}};
 
-    Instance *                     instance;
-    MessagePool *                  messagePool;
-    Message *                      message;
+    Instance                      *instance;
+    MessagePool                   *messagePool;
+    Message                       *message;
     uint8_t                        txtData[kMaxTxtDataSize];
     uint16_t                       txtDataLength;
     uint8_t                        index;
@@ -1248,13 +1260,13 @@ void TestDnsTxtEntry(void)
     VerifyOrQuit((message = messagePool->Allocate(Message::kTypeIp6)) != nullptr);
 
     data.Init(txtData, sizeof(txtData));
-    SuccessOrQuit(Dns::TxtEntry::AppendEntries(kTxtEntries, OT_ARRAY_LENGTH(kTxtEntries), data));
+    SuccessOrQuit(Dns::TxtEntry::AppendEntries(kTxtEntries, GetArrayLength(kTxtEntries), data));
     VerifyOrQuit(data.GetBytes() == txtData);
     txtDataLength = data.GetLength();
     VerifyOrQuit(txtDataLength < kMaxTxtDataSize, "TXT data is too long");
     DumpBuffer("txt data", txtData, txtDataLength);
 
-    SuccessOrQuit(Dns::TxtEntry::AppendEntries(kTxtEntries, OT_ARRAY_LENGTH(kTxtEntries), *message));
+    SuccessOrQuit(Dns::TxtEntry::AppendEntries(kTxtEntries, GetArrayLength(kTxtEntries), *message));
     VerifyOrQuit(txtDataLength == message->GetLength());
     VerifyOrQuit(message->CompareBytes(0, txtData, txtDataLength));
 

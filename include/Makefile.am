@@ -39,6 +39,7 @@ openthread_headers                      = \
     openthread/backbone_router_ftd.h      \
     openthread/border_agent.h             \
     openthread/border_router.h            \
+    openthread/border_routing.h           \
     openthread/channel_manager.h          \
     openthread/channel_monitor.h          \
     openthread/child_supervision.h        \
@@ -70,6 +71,7 @@ openthread_headers                      = \
     openthread/message.h                  \
     openthread/mqttsn.h                   \
     openthread/multi_radio.h              \
+    openthread/nat64.h                    \
     openthread/ncp.h                      \
     openthread/netdata.h                  \
     openthread/netdata_publisher.h        \
@@ -85,6 +87,7 @@ openthread_headers                      = \
     openthread/srp_server.h               \
     openthread/tasklet.h                  \
     openthread/tcp.h                      \
+    openthread/tcp_ext.h                  \
     openthread/thread.h                   \
     openthread/thread_ftd.h               \
     openthread/trel.h                     \

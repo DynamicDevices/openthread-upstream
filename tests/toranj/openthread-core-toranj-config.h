@@ -68,6 +68,14 @@
 #define OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE 1
 
 /**
+ * @def OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+ *
+ * Define to 1 to enable Border Routing support.
+ *
+ */
+#define OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE 1
+
+/**
  * @def OPENTHREAD_CONFIG_COMMISSIONER_ENABLE
  *
  * Define to 1 to enable Commissioner support.
@@ -317,14 +325,6 @@
 #define OPENTHREAD_CONFIG_LOG_PREPEND_LEVEL 1
 
 /**
- * @def OPENTHREAD_CONFIG_LOG_PREPEND_REGION
- *
- * Define to prepend the log region to all log messages
- *
- */
-#define OPENTHREAD_CONFIG_LOG_PREPEND_REGION 1
-
-/**
  * @def OPENTHREAD_CONFIG_LOG_SUFFIX
  *
  * Define suffix to append at the end of logs.
@@ -529,6 +529,22 @@
  *
  */
 #define OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_DELAY_AWARE_QUEUE_MANAGEMENT_ENABLE
+ *
+ * Define to 1 to enable delay-aware queue management for the send queue.
+ *
+ */
+#define OPENTHREAD_CONFIG_DELAY_AWARE_QUEUE_MANAGEMENT_ENABLE 1
+
+/**
+ * @def OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
+ *
+ * Define to 1 to enable Backbone Router support.
+ *
+ */
+#define OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE 1
 
 #if OPENTHREAD_RADIO
 /**

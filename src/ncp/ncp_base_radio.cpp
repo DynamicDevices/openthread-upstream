@@ -446,12 +446,12 @@ otError NcpBase::HandlePropertySet_SPINEL_PROP_STREAM_RAW(uint8_t aHeader)
 
     SuccessOrExit(error = DecodeStreamRawTxRequest(*frame));
 
-    // Cache the transaction ID for async response
-    mCurTransmitTID = SPINEL_HEADER_GET_TID(aHeader);
-
     // Pass frame to the radio layer. Note, this fails if we
     // haven't enabled raw stream or are already transmitting.
-    error = otLinkRawTransmit(mInstance, &NcpBase::LinkRawTransmitDone);
+    SuccessOrExit(error = otLinkRawTransmit(mInstance, &NcpBase::LinkRawTransmitDone));
+
+    // Cache the transaction ID for async response
+    mCurTransmitTID = SPINEL_HEADER_GET_TID(aHeader);
 
 exit:
 
@@ -518,7 +518,7 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_RCP_ENH_ACK_PROBING>(
     otError             error = OT_ERROR_NONE;
     uint16_t            shortAddress;
     const otExtAddress *extAddress;
-    otLinkMetrics       linkMetrics = {};
+    otLinkMetrics       linkMetrics = {false, false, false, false, false};
 
     SuccessOrExit(error = mDecoder.ReadUint16(shortAddress));
     SuccessOrExit(error = mDecoder.ReadEui64(extAddress));

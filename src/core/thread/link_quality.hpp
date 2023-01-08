@@ -41,6 +41,7 @@
 #include "common/clearable.hpp"
 #include "common/locator.hpp"
 #include "common/string.hpp"
+#include "thread/mle_types.hpp"
 
 namespace ot {
 
@@ -125,13 +126,13 @@ public:
     /**
      * This method adds a received signal strength (RSS) value to the average.
      *
-     * If @p aRss is OT_RADIO_RSSI_INVALID, it is ignored and error status kErrorInvalidArgs is returned.
+     * If @p aRss is `Radio::kInvalidRssi`, it is ignored and error status kErrorInvalidArgs is returned.
      * The value of RSS is capped at 0dBm (i.e., for any given RSS value higher than 0dBm, 0dBm is used instead).
      *
      * @param[in] aRss                Received signal strength value (in dBm) to be added to the average.
      *
      * @retval kErrorNone         New RSS value added to average successfully.
-     * @retval kErrorInvalidArgs  Value of @p aRss is OT_RADIO_RSSI_INVALID.
+     * @retval kErrorInvalidArgs  Value of @p aRss is `Radio::kInvalidRssi`.
      *
      */
     Error Add(int8_t aRss);
@@ -139,7 +140,7 @@ public:
     /**
      * This method returns the current average signal strength value maintained by the averager.
      *
-     * @returns The current average value (in dBm) or OT_RADIO_RSSI_INVALID if no average is available.
+     * @returns The current average value (in dBm) or `Radio::kInvalidRssi` if no average is available.
      *
      */
     int8_t GetAverage(void) const;
@@ -227,12 +228,77 @@ private:
 };
 
 /**
+ * This enumeration represents the link quality constants.
+ *
+ * Link Quality is an integer in [0, 3]. A higher link quality indicates a more usable link, with 0 indicating that the
+ * link is non-existent or unusable.
+ *
+ */
+enum LinkQuality : uint8_t
+{
+    kLinkQuality0 = 0, ///< Link quality 0 (non-existent link)
+    kLinkQuality1 = 1, ///< Link quality 1
+    kLinkQuality2 = 2, ///< Link quality 2
+    kLinkQuality3 = 3, ///< Link quality 3
+};
+
+constexpr uint8_t kCostForLinkQuality0 = Mle::kMaxRouteCost; ///< Link Cost for Link Quality 0.
+constexpr uint8_t kCostForLinkQuality1 = 4;                  ///< Link Cost for Link Quality 1.
+constexpr uint8_t kCostForLinkQuality2 = 2;                  ///< Link Cost for Link Quality 2.
+constexpr uint8_t kCostForLinkQuality3 = 1;                  ///< Link Cost for Link Quality 3.
+
+/**
+ * This function converts link quality to route cost.
+ *
+ * @param[in]  aLinkQuality  The link quality to covert.
+ *
+ * @returns The route cost corresponding to @p aLinkQuality.
+ *
+ */
+uint8_t CostForLinkQuality(LinkQuality aLinkQuality);
+
+/**
+ * This function computes the link margin from a given noise floor and received signal strength.
+ *
+ * @param[in]  aNoiseFloor  The noise floor value (in dBm).
+ * @param[in]  aRss         The received signal strength value (in dBm).
+ *
+ * @returns The link margin value in dB.
+ *
+ */
+uint8_t ComputeLinkMargin(int8_t aNoiseFloor, int8_t aRss);
+
+/**
+ * This function converts a link margin value to a link quality value.
+ *
+ * @param[in]  aLinkMargin  The Link Margin in dB.
+ *
+ * @returns The link quality value (0-3).
+ *
+ */
+LinkQuality LinkQualityForLinkMargin(uint8_t aLinkMargin);
+
+/**
+ * This function gets the typical received signal strength value for a given link quality.
+ *
+ * @param[in]  aNoiseFloor   The noise floor value (in dBm).
+ * @param[in]  aLinkQuality  The link quality value in [0, 3].
+ *
+ * @returns The typical platform RSSI in dBm.
+ *
+ */
+int8_t GetTypicalRssForLinkQuality(int8_t aNoiseFloor, LinkQuality aLinkQuality);
+
+/**
  * This class encapsulates/stores all relevant information about quality of a link, including average received signal
  * strength (RSS), last RSS, link margin, and link quality.
  *
  */
 class LinkQualityInfo : public InstanceLocatorInit
 {
+    friend LinkQuality LinkQualityForLinkMargin(uint8_t aLinkMargin);
+    friend int8_t      GetTypicalRssForLinkQuality(int8_t aNoiseFloor, LinkQuality aLinkQuality);
+
 public:
     static constexpr uint16_t kInfoStringSize = 50; ///< `InfoString` size (@sa ToInfoString()).
 
@@ -267,7 +333,7 @@ public:
     /**
      * This method returns the current average received signal strength value.
      *
-     * @returns The current average value or @c OT_RADIO_RSSI_INVALID if no average is available.
+     * @returns The current average value or `Radio::kInvalidRssi` if no average is available.
      *
      */
     int8_t GetAverageRss(void) const { return mRssAverager.GetAverage(); }
@@ -312,7 +378,7 @@ public:
      * @returns The current link quality value (value 0-3 as per Thread specification).
      *
      */
-    uint8_t GetLinkQuality(void) const { return mLinkQuality; }
+    LinkQuality GetLinkQuality(void) const { return mLinkQuality; }
 
     /**
      * Returns the most recent RSS value.
@@ -372,51 +438,6 @@ public:
      */
     uint16_t GetMessageErrorRate(void) const { return mMessageErrorRate.GetFailureRate(); }
 
-    /**
-     * This method converts a received signal strength value to a link margin value.
-     *
-     * @param[in]  aNoiseFloor  The noise floor value (in dBm).
-     * @param[in]  aRss         The received signal strength value (in dBm).
-     *
-     * @returns The link margin value.
-     *
-     */
-    static uint8_t ConvertRssToLinkMargin(int8_t aNoiseFloor, int8_t aRss);
-
-    /**
-     * This method converts a link margin value to a link quality value.
-     *
-     * @param[in]  aLinkMargin  The Link Margin in dB.
-     *
-     * @returns The link quality value (0-3).
-     *
-     */
-    static uint8_t ConvertLinkMarginToLinkQuality(uint8_t aLinkMargin);
-
-    /**
-     * This method converts a received signal strength value to a link quality value.
-     *
-     * @param[in]  aNoiseFloor  The noise floor value (in dBm).
-     * @param[in]  aRss         The received signal strength value (in dBm).
-     *
-     * @returns The link quality value (0-3).
-     *
-     */
-    static uint8_t ConvertRssToLinkQuality(int8_t aNoiseFloor, int8_t aRss);
-
-    /**
-     * This method converts a link quality value to a typical received signal strength value.
-     *
-     * @note only for test.
-     *
-     * @param[in]  aNoiseFloor   The noise floor value (in dBm).
-     * @param[in]  aLinkQuality  The link quality value in [0, 3].
-     *
-     * @returns The typical platform RSSI.
-     *
-     */
-    static int8_t ConvertLinkQualityToRss(int8_t aNoiseFloor, uint8_t aLinkQuality);
-
 private:
     // Constants for obtaining link quality from link margin:
 
@@ -432,12 +453,12 @@ private:
 
     static constexpr uint8_t kNoLinkQuality = 0xff; // Indicate that there is no previous/last link quality.
 
-    void SetLinkQuality(uint8_t aLinkQuality) { mLinkQuality = aLinkQuality; }
+    void SetLinkQuality(LinkQuality aLinkQuality) { mLinkQuality = aLinkQuality; }
 
-    static uint8_t CalculateLinkQuality(uint8_t aLinkMargin, uint8_t aLastLinkQuality);
+    static LinkQuality CalculateLinkQuality(uint8_t aLinkMargin, uint8_t aLastLinkQuality);
 
     RssAverager mRssAverager;
-    uint8_t     mLinkQuality;
+    LinkQuality mLinkQuality;
     int8_t      mLastRss;
 
     SuccessRateTracker mFrameErrorRate;

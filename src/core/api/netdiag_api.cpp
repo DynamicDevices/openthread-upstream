@@ -42,25 +42,28 @@
 
 using namespace ot;
 
-otError otThreadGetNextDiagnosticTlv(const otMessage *      aMessage,
+otError otThreadGetNextDiagnosticTlv(const otMessage       *aMessage,
                                      otNetworkDiagIterator *aIterator,
-                                     otNetworkDiagTlv *     aNetworkDiagTlv)
+                                     otNetworkDiagTlv      *aNetworkDiagTlv)
 {
+    AssertPointerIsNotNull(aIterator);
+    AssertPointerIsNotNull(aNetworkDiagTlv);
+
     return NetworkDiagnostic::NetworkDiagnostic::GetNextDiagTlv(AsCoapMessage(aMessage), *aIterator, *aNetworkDiagTlv);
 }
 
-otError otThreadSendDiagnosticGet(otInstance *                   aInstance,
-                                  const otIp6Address *           aDestination,
+otError otThreadSendDiagnosticGet(otInstance                    *aInstance,
+                                  const otIp6Address            *aDestination,
                                   const uint8_t                  aTlvTypes[],
                                   uint8_t                        aCount,
                                   otReceiveDiagnosticGetCallback aCallback,
-                                  void *                         aCallbackContext)
+                                  void                          *aCallbackContext)
 {
     return AsCoreType(aInstance).Get<NetworkDiagnostic::NetworkDiagnostic>().SendDiagnosticGet(
         AsCoreType(aDestination), aTlvTypes, aCount, aCallback, aCallbackContext);
 }
 
-otError otThreadSendDiagnosticReset(otInstance *        aInstance,
+otError otThreadSendDiagnosticReset(otInstance         *aInstance,
                                     const otIp6Address *aDestination,
                                     const uint8_t       aTlvTypes[],
                                     uint8_t             aCount)

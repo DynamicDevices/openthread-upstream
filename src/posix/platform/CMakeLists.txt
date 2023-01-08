@@ -35,6 +35,14 @@ if(OT_DAEMON)
     target_compile_definitions(ot-posix-config
         INTERFACE "OPENTHREAD_POSIX_CONFIG_DAEMON_ENABLE=1"
     )
+
+    # We have to add this definition to `ot-config` because openthread core
+    # libraries will set config file to "openthrad-core-posix-config.h" which
+    # depends on `OPENTHREAD_POSIX_CONFIG_DAEMON_ENABLE` to correctly enable
+    # PLATFORM_NETIF and PLATFORM_UDP features. Otherwise, openthread core and
+    # posix libraries will use different feature definitions.
+    list(APPEND OT_PLATFORM_DEFINES "OPENTHREAD_POSIX_CONFIG_DAEMON_ENABLE=1")
+    set(OT_PLATFORM_DEFINES ${OT_PLATFORM_DEFINES} PARENT_SCOPE)
 endif()
 
 option(OT_POSIX_INSTALL_EXTERNAL_ROUTES "Install External Routes as IPv6 routes" ON)
@@ -62,6 +70,13 @@ if(OT_POSIX_MAX_POWER_TABLE)
     )
 endif()
 
+option(OT_POSIX_SECURE_SETTINGS "enable secure settings" OFF)
+if (OT_POSIX_SECURE_SETTINGS)
+    target_compile_definitions(ot-posix-config
+        INTERFACE "OPENTHREAD_POSIX_CONFIG_SECURE_SETTINGS_ENABLE=1"
+    )
+endif()
+
 set(OT_POSIX_CONFIG_RCP_BUS "" CACHE STRING "RCP bus type")
 if(OT_POSIX_CONFIG_RCP_BUS)
     target_compile_definitions(ot-posix-config
@@ -69,13 +84,27 @@ if(OT_POSIX_CONFIG_RCP_BUS)
     )
 endif()
 
+set(OT_POSIX_NAT64_CIDR "192.168.255.0/24" CACHE STRING "NAT64 CIDR for OpenThread NAT64")
+if(OT_POSIX_NAT64_CIDR)
+    target_compile_definitions(ot-posix-config
+        INTERFACE "OPENTHREAD_POSIX_CONFIG_NAT64_CIDR=\"${OT_POSIX_NAT64_CIDR}\""
+    )
+endif()
+
 if(NOT OT_CONFIG)
     set(OT_CONFIG "openthread-core-posix-config.h" PARENT_SCOPE)
 endif()
 
+set(OT_POSIX_CONFIG_RCP_VENDOR_INTERFACE "vendor_interface_example.cpp"
+       CACHE STRING "vendor interface implementation")
+
+set(CMAKE_EXE_LINKER_FLAGS "-rdynamic ${CMAKE_EXE_LINKER_FLAGS}" PARENT_SCOPE)
+
 add_library(openthread-posix
     alarm.cpp
     backbone.cpp
+    backtrace.cpp
+    config_file.cpp
     daemon.cpp
     entropy.cpp
     firewall.cpp
@@ -87,6 +116,8 @@ add_library(openthread-posix
     misc.cpp
     multicast_routing.cpp
     netif.cpp
+    power.cpp
+    power_updater.cpp
     radio.cpp
     radio_url.cpp
     settings.cpp
@@ -96,6 +127,7 @@ add_library(openthread-posix
     udp.cpp
     utils.cpp
     virtual_time.cpp
+    ${OT_POSIX_CONFIG_RCP_VENDOR_INTERFACE}
 )
 
 target_link_libraries(openthread-posix
@@ -103,11 +135,20 @@ target_link_libraries(openthread-posix
         openthread-platform
     PRIVATE
         openthread-url
+        ot-config-ftd
         ot-config
         ot-posix-config
         util
         $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:rt>
 )
+
+option(OT_TARGET_OPENWRT "enable openthread posix for OpenWRT" OFF)
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux" AND NOT OT_TARGET_OPENWRT)
+    target_compile_definitions(ot-posix-config
+        INTERFACE "OPENTHREAD_POSIX_CONFIG_NAT64_AIL_PREFIX_ENABLE=1"
+    )
+    target_link_libraries(openthread-posix PRIVATE anl)
+endif()
 
 target_compile_definitions(openthread-posix
     PUBLIC

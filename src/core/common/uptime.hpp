@@ -92,8 +92,8 @@ public:
      * The string follows the format "<hh>:<mm>:<ss>.<mmmm>" for hours, minutes, seconds and millisecond (if uptime is
      * shorter than one day) or "<dd>d.<hh>:<mm>:<ss>.<mmmm>" (if longer than a day).
      *
-     * @param[in]    aUptime  The uptime to convert.
-     * @param[inout] aWriter  A `StringWriter` to append the converted string to.
+     * @param[in]     aUptime  The uptime to convert.
+     * @param[in,out] aWriter  A `StringWriter` to append the converted string to.
      *
      */
     static void UptimeToString(uint64_t aUptime, StringWriter &aWriter);
@@ -103,12 +103,13 @@ private:
 
     static_assert(static_cast<uint32_t>(4 * kTimerInterval) == 0, "kTimerInterval is not correct");
 
-    static void HandleTimer(Timer &aTimer);
-    void        HandleTimer(void);
+    void HandleTimer(void);
 
-    TimeMilli  mStartTime;
-    uint32_t   mOverflowCount;
-    TimerMilli mTimer;
+    using UptimeTimer = TimerMilliIn<Uptime, &Uptime::HandleTimer>;
+
+    TimeMilli   mStartTime;
+    uint32_t    mOverflowCount;
+    UptimeTimer mTimer;
 };
 
 } // namespace ot

@@ -37,6 +37,7 @@
 #include <openthread/platform/radio.h>
 
 #include "openthread-spinel-config.h"
+#include "radio_spinel_metrics.h"
 #include "spinel.h"
 #include "spinel_interface.hpp"
 #include "core/radio/max_power_table.hpp"
@@ -698,7 +699,29 @@ public:
      */
     otError ConfigureEnhAckProbing(otLinkMetrics        aLinkMetrics,
                                    const otShortAddress aShortAddress,
-                                   const otExtAddress & aExtAddress);
+                                   const otExtAddress  &aExtAddress);
+#endif
+
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE || OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+    /**
+     * Get the current accuracy, in units of ± ppm, of the clock used for scheduling CSL operations.
+     *
+     * @note Platforms may optimize this value based on operational conditions (i.e.: temperature).
+     *
+     * @retval   The current CSL rx/tx scheduling drift, in units of ± ppm.
+     *
+     */
+    uint8_t GetCslAccuracy(void);
+#endif
+
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+    /**
+     * Get the current uncertainty, in units of 10 us, of the clock used for scheduling CSL operations.
+     *
+     * @retval  The current CSL Clock Uncertainty in units of 10 us.
+     *
+     */
+    uint8_t GetCslUncertainty(void);
 #endif
 
     /**
@@ -797,9 +820,9 @@ public:
      *
      */
     otError GetWithParam(spinel_prop_key_t aKey,
-                         const uint8_t *   aParam,
+                         const uint8_t    *aParam,
                          spinel_size_t     aParamSize,
-                         const char *      aFormat,
+                         const char       *aFormat,
                          ...);
 
     /**
@@ -855,10 +878,67 @@ public:
      */
     otError SendReset(uint8_t aResetType);
 
+    /**
+     * This method returns the radio Spinel metrics.
+     *
+     * @returns The radio Spinel metrics.
+     *
+     */
+    const otRadioSpinelMetrics *GetRadioSpinelMetrics(void) const { return &mRadioSpinelMetrics; }
+
+#if OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
+    /**
+     * Add a calibrated power of the specificed channel to the power calibration table.
+     *
+     * @param[in] aChannel                The radio channel.
+     * @param[in] aActualPower            The actual power in 0.01dBm.
+     * @param[in] aRawPowerSetting        A pointer to the raw power setting byte array.
+     * @param[in] aRawPowerSettingLength  The length of the @p aRawPowerSetting.
+     *
+     * @retval  OT_ERROR_NONE              Successfully added the calibrated power to the power calibration table.
+     * @retval  OT_ERROR_NO_BUFS           No available entry in the power calibration table.
+     * @retval  OT_ERROR_INVALID_ARGS      The @p aChannel, @p aActualPower or @p aRawPowerSetting is invalid.
+     * @retval  OT_ERROR_NOT_IMPLEMENTED   This feature is not implemented.
+     * @retval  OT_ERROR_BUSY              Failed due to another operation is on going.
+     * @retval  OT_ERROR_RESPONSE_TIMEOUT  Failed due to no response received from the transceiver.
+     *
+     */
+    otError AddCalibratedPower(uint8_t        aChannel,
+                               int16_t        aActualPower,
+                               const uint8_t *aRawPowerSetting,
+                               uint16_t       aRawPowerSettingLength);
+
+    /**
+     * Clear all calibrated powers from the power calibration table.
+     *
+     * @retval  OT_ERROR_NONE              Successfully cleared all calibrated powers from the power calibration table.
+     * @retval  OT_ERROR_NOT_IMPLEMENTED   This feature is not implemented.
+     * @retval  OT_ERROR_BUSY              Failed due to another operation is on going.
+     * @retval  OT_ERROR_RESPONSE_TIMEOUT  Failed due to no response received from the transceiver.
+     *
+     */
+    otError ClearCalibratedPowers(void);
+
+    /**
+     * Set the target power for the given channel.
+     *
+     * @param[in]  aChannel      The radio channel.
+     * @param[in]  aTargetPower  The target power in 0.01dBm. Passing `INT16_MAX` will disable this channel.
+     *
+     * @retval  OT_ERROR_NONE              Successfully set the target power.
+     * @retval  OT_ERROR_INVALID_ARGS      The @p aChannel or @p aTargetPower is invalid..
+     * @retval  OT_ERROR_NOT_IMPLEMENTED   The feature is not implemented.
+     * @retval  OT_ERROR_BUSY              Failed due to another operation is on going.
+     * @retval  OT_ERROR_RESPONSE_TIMEOUT  Failed due to no response received from the transceiver.
+     *
+     */
+    otError SetChannelTargetPower(uint8_t aChannel, int16_t aTargetPower);
+#endif
+
 private:
     enum
     {
-        kMaxSpinelFrame        = SpinelInterface::kMaxFrameSize,
+        kMaxSpinelFrame        = SPINEL_FRAME_MAX_SIZE,
         kMaxWaitTime           = 2000, ///< Max time to wait for response in milliseconds.
         kVersionStringSize     = 128,  ///< Max size of version string.
         kCapsBufferSize        = 100,  ///< Max buffer size used to store `SPINEL_PROP_CAPS` value.
@@ -899,26 +979,26 @@ private:
 
     otError RequestV(uint32_t aCommand, spinel_prop_key_t aKey, const char *aFormat, va_list aArgs);
     otError Request(uint32_t aCommand, spinel_prop_key_t aKey, const char *aFormat, ...);
-    otError RequestWithPropertyFormat(const char *      aPropertyFormat,
+    otError RequestWithPropertyFormat(const char       *aPropertyFormat,
                                       uint32_t          aCommand,
                                       spinel_prop_key_t aKey,
-                                      const char *      aFormat,
+                                      const char       *aFormat,
                                       ...);
-    otError RequestWithPropertyFormatV(const char *      aPropertyFormat,
+    otError RequestWithPropertyFormatV(const char       *aPropertyFormat,
                                        uint32_t          aCommand,
                                        spinel_prop_key_t aKey,
-                                       const char *      aFormat,
+                                       const char       *aFormat,
                                        va_list           aArgs);
     otError RequestWithExpectedCommandV(uint32_t          aExpectedCommand,
                                         uint32_t          aCommand,
                                         spinel_prop_key_t aKey,
-                                        const char *      aFormat,
+                                        const char       *aFormat,
                                         va_list           aArgs);
     otError WaitResponse(void);
     otError SendCommand(uint32_t          aCommand,
                         spinel_prop_key_t aKey,
                         spinel_tid_t      aTid,
-                        const char *      aFormat,
+                        const char       *aFormat,
                         va_list           aArgs);
     otError ParseRadioFrame(otRadioFrame &aFrame, const uint8_t *aBuffer, uint16_t aLength, spinel_ssize_t &aUnpacked);
     otError ThreadDatasetHandler(const uint8_t *aBuffer, uint16_t aLength);
@@ -960,6 +1040,13 @@ private:
 #if OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT > 0
     void RestoreProperties(void);
 #endif
+    void UpdateParseErrorCount(otError aError)
+    {
+        mRadioSpinelMetrics.mSpinelParseErrorCount += (aError == OT_ERROR_PARSE) ? 1 : 0;
+    }
+
+    uint32_t Snprintf(char *aDest, uint32_t aSize, const char *aFormat, ...);
+    void     LogSpinelFrame(const uint8_t *aFrame, uint16_t aLength, bool aTx);
 
     otInstance *mInstance;
 
@@ -972,7 +1059,7 @@ private:
     spinel_tid_t      mTxRadioTid;      ///< The transaction id used to send a radio frame.
     spinel_tid_t      mWaitingTid;      ///< The transaction id of current transaction.
     spinel_prop_key_t mWaitingKey;      ///< The property key of current transaction.
-    const char *      mPropertyFormat;  ///< The spinel property format of current transaction.
+    const char       *mPropertyFormat;  ///< The spinel property format of current transaction.
     va_list           mPropertyArgs;    ///< The arguments pack or unpack spinel property of current transaction.
     uint32_t          mExpectedCommand; ///< Expected response command of current transaction.
     otError           mError;           ///< The result of current transaction.
@@ -1035,15 +1122,17 @@ private:
 
 #if OPENTHREAD_CONFIG_DIAG_ENABLE
     bool   mDiagMode;
-    char * mDiagOutput;
+    char  *mDiagOutput;
     size_t mDiagOutputMaxLen;
 #endif
 
     uint64_t mTxRadioEndUs;
     uint64_t mRadioTimeRecalcStart; ///< When to recalculate RCP time offset.
-    int64_t  mRadioTimeOffset;      ///< Time difference with estimated RCP time minus host time.
+    uint64_t mRadioTimeOffset;      ///< Time difference with estimated RCP time minus host time.
 
     MaxPowerTable mMaxPowerTable;
+
+    otRadioSpinelMetrics mRadioSpinelMetrics;
 };
 
 } // namespace Spinel

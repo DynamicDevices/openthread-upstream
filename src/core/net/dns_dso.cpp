@@ -30,12 +30,14 @@
 
 #if OPENTHREAD_CONFIG_DNS_DSO_ENABLE
 
+#include "common/array.hpp"
 #include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/instance.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
+#include "common/num_utils.hpp"
 #include "common/random.hpp"
 
 /**
@@ -45,6 +47,8 @@
 
 namespace ot {
 namespace Dns {
+
+RegisterLogModule("DnsDso");
 
 //---------------------------------------------------------------------------------------------------------------------
 // otPlatDso transport callbacks
@@ -77,9 +81,9 @@ extern "C" void otPlatDsoHandleDisconnected(otPlatDsoConnection *aConnection, ot
 //---------------------------------------------------------------------------------------------------------------------
 // Dso::Connection
 
-Dso::Connection::Connection(Instance &           aInstance,
+Dso::Connection::Connection(Instance            &aInstance,
                             const Ip6::SockAddr &aPeerSockAddr,
-                            Callbacks &          aCallbacks,
+                            Callbacks           &aCallbacks,
                             uint32_t             aInactivityTimeout,
                             uint32_t             aKeepAliveInterval)
     : InstanceLocator(aInstance)
@@ -110,8 +114,8 @@ void Dso::Connection::SetState(State aState)
 {
     VerifyOrExit(mState != aState);
 
-    otLogInfoDns("[dso] State: %s -> %s on connection with %s", StateToString(mState), StateToString(aState),
-                 mPeerSockAddr.ToString().AsCString());
+    LogInfo("State: %s -> %s on connection with %s", StateToString(mState), StateToString(aState),
+            mPeerSockAddr.ToString().AsCString());
 
     mState          = aState;
     mStateDidChange = true;
@@ -253,7 +257,7 @@ void Dso::Connection::MarkAsDisconnected(void)
     mPendingRequests.Clear();
     SetState(kStateDisconnected);
 
-    otLogInfoDns("[dso] Disconnect reason: %s", DisconnectReasonToString(mDisconnectReason));
+    LogInfo("Disconnect reason: %s", DisconnectReasonToString(mDisconnectReason));
 }
 
 void Dso::Connection::MarkSessionEstablished(void)
@@ -296,7 +300,7 @@ void Dso::Connection::SetLongLivedOperation(bool aLongLivedOperation)
 
     mLongLivedOperation = aLongLivedOperation;
 
-    otLogInfoDns("[dso] Long-lived operation %s", mLongLivedOperation ? "started" : "stopped");
+    LogInfo("Long-lived operation %s", mLongLivedOperation ? "started" : "stopped");
 
     if (!mLongLivedOperation)
     {
@@ -318,7 +322,7 @@ exit:
 Error Dso::Connection::SendRetryDelayMessage(uint32_t aDelay, Dns::Header::Response aResponseCode)
 {
     Error         error   = kErrorNone;
-    Message *     message = nullptr;
+    Message      *message = nullptr;
     RetryDelayTlv retryDelayTlv;
     MessageId     messageId;
 
@@ -408,7 +412,7 @@ Error Dso::Connection::SendKeepAliveMessage(MessageType aMessageType, MessageId 
     // `kResponseMessage`.
 
     Error        error   = kErrorNone;
-    Message *    message = nullptr;
+    Message     *message = nullptr;
     KeepAliveTlv keepAliveTlv;
 
     switch (mState)
@@ -476,9 +480,9 @@ exit:
     return error;
 }
 
-Error Dso::Connection::SendMessage(Message &             aMessage,
+Error Dso::Connection::SendMessage(Message              &aMessage,
                                    MessageType           aMessageType,
-                                   MessageId &           aMessageId,
+                                   MessageId            &aMessageId,
                                    Dns::Header::Response aResponseCode,
                                    uint32_t              aResponseTimeout)
 {
@@ -578,8 +582,8 @@ Error Dso::Connection::SendMessage(Message &             aMessage,
         }
     }
 
-    otLogInfoDns("[dso] Sending %s message with id %u to %s", MessageTypeToString(aMessageType), aMessageId,
-                 mPeerSockAddr.ToString().AsCString());
+    LogInfo("Sending %s message with id %u to %s", MessageTypeToString(aMessageType), aMessageId,
+            mPeerSockAddr.ToString().AsCString());
 
     switch (mState)
     {
@@ -640,7 +644,7 @@ Error Dso::Connection::AppendPadding(Message &aMessage)
     // that its padded length is a multiple of the chosen block
     // length.
 
-    blockLength = kBlockLengths[Random::NonCrypto::GetUint8InRange(0, OT_ARRAY_LENGTH(kBlockLengths))];
+    blockLength = kBlockLengths[Random::NonCrypto::GetUint8InRange(0, GetArrayLength(kBlockLengths))];
 
     paddingTlv.Init((blockLength - ((aMessage.GetLength() + sizeof(Tlv)) % blockLength)) % blockLength);
 
@@ -784,7 +788,7 @@ exit:
 }
 
 Error Dso::Connection::ProcessRequestOrUnidirectionalMessage(const Dns::Header &aHeader,
-                                                             const Message &    aMessage,
+                                                             const Message     &aMessage,
                                                              Tlv::Type          aPrimaryTlvType)
 {
     Error error = kErrorAbort;
@@ -816,7 +820,7 @@ Error Dso::Connection::ProcessRequestOrUnidirectionalMessage(const Dns::Header &
     default:
         if (aHeader.GetMessageId() == 0)
         {
-            otLogInfoDns("[dso] Received unidirectional message from %s", mPeerSockAddr.ToString().AsCString());
+            LogInfo("Received unidirectional message from %s", mPeerSockAddr.ToString().AsCString());
 
             error = mCallbacks.mProcessUnidirectionalMessage(*this, aMessage, aPrimaryTlvType);
         }
@@ -824,8 +828,7 @@ Error Dso::Connection::ProcessRequestOrUnidirectionalMessage(const Dns::Header &
         {
             MessageId messageId = aHeader.GetMessageId();
 
-            otLogInfoDns("[dso] Received request message with id %u from %s", messageId,
-                         mPeerSockAddr.ToString().AsCString());
+            LogInfo("Received request message with id %u from %s", messageId, mPeerSockAddr.ToString().AsCString());
 
             error = mCallbacks.mProcessRequestMessage(*this, messageId, aMessage, aPrimaryTlvType);
 
@@ -844,7 +847,7 @@ Error Dso::Connection::ProcessRequestOrUnidirectionalMessage(const Dns::Header &
 }
 
 Error Dso::Connection::ProcessResponseMessage(const Dns::Header &aHeader,
-                                              const Message &    aMessage,
+                                              const Message     &aMessage,
                                               Tlv::Type          aPrimaryTlvType)
 {
     Error     error = kErrorAbort;
@@ -955,8 +958,7 @@ Error Dso::Connection::ProcessKeepAliveMessage(const Dns::Header &aHeader, const
 
             VerifyOrExit(aHeader.GetMessageId() != 0);
 
-            otLogInfoDns("[dso] Received KeepAlive request message from client %s",
-                         mPeerSockAddr.ToString().AsCString());
+            LogInfo("Received KeepAlive request message from client %s", mPeerSockAddr.ToString().AsCString());
 
             IgnoreError(SendKeepAliveMessage(kResponseMessage, aHeader.GetMessageId()));
             error = kErrorNone;
@@ -970,8 +972,8 @@ Error Dso::Connection::ProcessKeepAliveMessage(const Dns::Header &aHeader, const
         VerifyOrExit(aHeader.GetMessageId() == 0);
     }
 
-    otLogInfoDns("[dso] Received Keep Alive %s message from server %s",
-                 (aHeader.GetMessageId() == 0) ? "unidirectional" : "response", mPeerSockAddr.ToString().AsCString());
+    LogInfo("Received Keep Alive %s message from server %s",
+            (aHeader.GetMessageId() == 0) ? "unidirectional" : "response", mPeerSockAddr.ToString().AsCString());
 
     // Receiving a Keep Alive interval value from server less than the
     // minimum (ten seconds) is a fatal error and client MUST then
@@ -989,7 +991,7 @@ Error Dso::Connection::ProcessKeepAliveMessage(const Dns::Header &aHeader, const
     AdjustInactivityTimeout(keepAliveTlv.GetInactivityTimeout());
     mKeepAlive.SetInterval(keepAliveTlv.GetKeepAliveInterval());
 
-    otLogInfoDns("[dso] Timeouts Inactivity:%u, KeepAlive:%u", mInactivity.GetInterval(), mKeepAlive.GetInterval());
+    LogInfo("Timeouts Inactivity:%u, KeepAlive:%u", mInactivity.GetInterval(), mKeepAlive.GetInterval());
 
     error = kErrorNone;
 
@@ -1017,8 +1019,8 @@ Error Dso::Connection::ProcessRetryDelayMessage(const Dns::Header &aHeader, cons
     mRetryDelayErrorCode = aHeader.GetResponseCode();
     mRetryDelay          = retryDelayTlv.GetRetryDelay();
 
-    otLogInfoDns("[dso] Received Retry Delay message from server %s", mPeerSockAddr.ToString().AsCString());
-    otLogInfoDns("[dso]    RetryDelay:%u ms, ResponseCode:%d", mRetryDelay, mRetryDelayErrorCode);
+    LogInfo("Received Retry Delay message from server %s", mPeerSockAddr.ToString().AsCString());
+    LogInfo("   RetryDelay:%u ms, ResponseCode:%d", mRetryDelay, mRetryDelayErrorCode);
 
     Disconnect(kGracefullyClose, kReasonServerRetryDelayRequest);
 
@@ -1028,7 +1030,7 @@ exit:
 
 void Dso::Connection::SendErrorResponse(const Dns::Header &aHeader, Dns::Header::Response aResponseCode)
 {
-    Message *   response = NewMessage();
+    Message    *response = NewMessage();
     Dns::Header header;
 
     VerifyOrExit(response != nullptr);
@@ -1124,7 +1126,7 @@ void Dso::Connection::AdjustInactivityTimeout(uint32_t aNewTimeout)
             // five seconds or one quarter of the new inactivity
             // timeout, whichever is greater [RFC 8490 - 7.1.1].
 
-            newExpiration = now + OT_MAX(kMinServerInactivityWaitTime, aNewTimeout / 4);
+            newExpiration = now + Max(kMinServerInactivityWaitTime, aNewTimeout / 4);
         }
     }
 
@@ -1142,7 +1144,7 @@ uint32_t Dso::Connection::CalculateServerInactivityWaitTime(void) const
 
     OT_ASSERT(mInactivity.IsUsed());
 
-    return OT_MAX(mInactivity.GetInterval() * 2, kMinServerInactivityWaitTime);
+    return Max(mInactivity.GetInterval() * 2, kMinServerInactivityWaitTime);
 }
 
 void Dso::Connection::ResetTimeouts(bool aIsKeepAliveMessage)
@@ -1218,12 +1220,12 @@ TimeMilli Dso::Connection::GetNextFireTime(TimeMilli aNow) const
     case kStateConnectedButSessionless:
     case kStateEstablishingSession:
     case kStateSessionEstablished:
-        nextTime = OT_MIN(nextTime, mPendingRequests.GetNextFireTime(aNow));
+        nextTime = Min(nextTime, mPendingRequests.GetNextFireTime(aNow));
 
         if (mKeepAlive.IsUsed())
         {
             VerifyOrExit(mKeepAlive.GetExpirationTime() > aNow, nextTime = aNow);
-            nextTime = OT_MIN(nextTime, mKeepAlive.GetExpirationTime());
+            nextTime = Min(nextTime, mKeepAlive.GetExpirationTime());
         }
 
         if (mInactivity.IsUsed() && mPendingRequests.IsEmpty() && !mLongLivedOperation)
@@ -1233,7 +1235,7 @@ TimeMilli Dso::Connection::GetNextFireTime(TimeMilli aNow) const
             // active long-lived operation.
 
             VerifyOrExit(mInactivity.GetExpirationTime() > aNow, nextTime = aNow);
-            nextTime = OT_MIN(nextTime, mInactivity.GetExpirationTime());
+            nextTime = Min(nextTime, mInactivity.GetExpirationTime());
         }
 
         break;
@@ -1310,7 +1312,7 @@ void Dso::Connection::HandleTimer(TimeMilli aNow, TimeMilli &aNextTime)
     }
 
 exit:
-    aNextTime = OT_MIN(aNextTime, GetNextFireTime(aNow));
+    aNextTime = Min(aNextTime, GetNextFireTime(aNow));
     SignalAnyStateChange();
 }
 
@@ -1406,23 +1408,7 @@ exit:
     return error;
 }
 
-void Dso::Connection::PendingRequests::Remove(MessageId aMessageId)
-{
-    Entry *entry = mRequests.FindMatching(aMessageId);
-    Entry *lastEntry;
-
-    VerifyOrExit(entry != nullptr);
-
-    // Remove last entry from the `mRequests` array, if it is not the
-    // `entry` we want to remove, replace `entry` with `lastEntry.
-
-    lastEntry = mRequests.PopBack();
-    VerifyOrExit(lastEntry != entry);
-    *entry = *lastEntry;
-
-exit:
-    return;
-}
+void Dso::Connection::PendingRequests::Remove(MessageId aMessageId) { mRequests.RemoveMatching(aMessageId); }
 
 bool Dso::Connection::PendingRequests::HasAnyTimedOut(TimeMilli aNow) const
 {
@@ -1447,7 +1433,7 @@ TimeMilli Dso::Connection::PendingRequests::GetNextFireTime(TimeMilli aNow) cons
     for (const Entry &entry : mRequests)
     {
         VerifyOrExit(entry.mTimeout > aNow, nextTime = aNow);
-        nextTime = OT_MIN(entry.mTimeout, nextTime);
+        nextTime = Min(entry.mTimeout, nextTime);
     }
 
 exit:
@@ -1460,7 +1446,7 @@ exit:
 Dso::Dso(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mAcceptHandler(nullptr)
-    , mTimer(aInstance, HandleTimer)
+    , mTimer(aInstance)
 {
 }
 
@@ -1470,10 +1456,7 @@ void Dso::StartListening(AcceptHandler aAcceptHandler)
     otPlatDsoEnableListening(&GetInstance(), true);
 }
 
-void Dso::StopListening(void)
-{
-    otPlatDsoEnableListening(&GetInstance(), false);
-}
+void Dso::StopListening(void) { otPlatDsoEnableListening(&GetInstance(), false); }
 
 Dso::Connection *Dso::FindClientConnection(const Ip6::SockAddr &aPeerSockAddr)
 {
@@ -1497,11 +1480,6 @@ Dso::Connection *Dso::AcceptConnection(const Ip6::SockAddr &aPeerSockAddr)
 
 exit:
     return connection;
-}
-
-void Dso::HandleTimer(Timer &aTimer)
-{
-    aTimer.Get<Dso>().HandleTimer();
 }
 
 void Dso::HandleTimer(void)

@@ -35,12 +35,16 @@
 
 #if OPENTHREAD_FTD && OPENTHREAD_CONFIG_BACKBONE_ROUTER_DUA_NDPROXYING_ENABLE
 
+#include "common/array.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
+#include "common/num_utils.hpp"
 
 namespace ot {
 
 namespace BackboneRouter {
+
+RegisterLogModule("BbrNdProxy");
 
 void NdProxyTable::NdProxy::Init(const Ip6::InterfaceIdentifier &aAddressIid,
                                  const Ip6::InterfaceIdentifier &aMeshLocalIid,
@@ -63,10 +67,9 @@ void NdProxyTable::NdProxy::Update(uint16_t aRloc16, uint32_t aTimeSinceLastTran
 {
     OT_ASSERT(mValid);
 
-    mRloc16 = aRloc16;
-    aTimeSinceLastTransaction =
-        OT_MIN(aTimeSinceLastTransaction, static_cast<uint32_t>(Mle::kTimeSinceLastTransactionMax));
-    mLastRegistrationTime = TimerMilli::GetNow() - TimeMilli::SecToMsec(aTimeSinceLastTransaction);
+    mRloc16                   = aRloc16;
+    aTimeSinceLastTransaction = Min(aTimeSinceLastTransaction, Mle::kTimeSinceLastTransactionMax);
+    mLastRegistrationTime     = TimerMilli::GetNow() - TimeMilli::SecToMsec(aTimeSinceLastTransaction);
 }
 
 bool NdProxyTable::MatchesFilter(const NdProxy &aProxy, Filter aFilter)
@@ -107,7 +110,7 @@ NdProxyTable::Iterator::Iterator(Instance &aInstance, NdProxyTable::Iterator::It
     : InstanceLocator(aInstance)
 {
     NdProxyTable &table = GetInstance().Get<BackboneRouter::NdProxyTable>();
-    mItem               = OT_ARRAY_END(table.mProxies);
+    mItem               = GetArrayEnd(table.mProxies);
 }
 
 void NdProxyTable::Iterator::Advance(void)
@@ -117,13 +120,10 @@ void NdProxyTable::Iterator::Advance(void)
     do
     {
         mItem++;
-    } while (mItem < OT_ARRAY_END(table.mProxies) && !MatchesFilter(*mItem, mFilter));
+    } while (mItem < GetArrayEnd(table.mProxies) && !MatchesFilter(*mItem, mFilter));
 }
 
-void NdProxyTable::Erase(NdProxy &aNdProxy)
-{
-    aNdProxy.mValid = false;
-}
+void NdProxyTable::Erase(NdProxy &aNdProxy) { aNdProxy.mValid = false; }
 
 void NdProxyTable::HandleDomainPrefixUpdate(Leader::DomainPrefixState aState)
 {
@@ -141,18 +141,15 @@ void NdProxyTable::Clear(void)
         proxy.Clear();
     }
 
-    if (mCallback != nullptr)
-    {
-        mCallback(mCallbackContext, OT_BACKBONE_ROUTER_NDPROXY_CLEARED, nullptr);
-    }
+    mCallback.InvokeIfSet(OT_BACKBONE_ROUTER_NDPROXY_CLEARED, nullptr);
 
-    otLogNoteBbr("NdProxyTable::Clear!");
+    LogInfo("NdProxyTable::Clear!");
 }
 
 Error NdProxyTable::Register(const Ip6::InterfaceIdentifier &aAddressIid,
                              const Ip6::InterfaceIdentifier &aMeshLocalIid,
                              uint16_t                        aRloc16,
-                             const uint32_t *                aTimeSinceLastTransaction)
+                             const uint32_t                 *aTimeSinceLastTransaction)
 {
     Error    error                    = kErrorNone;
     NdProxy *proxy                    = FindByAddressIid(aAddressIid);
@@ -185,8 +182,8 @@ Error NdProxyTable::Register(const Ip6::InterfaceIdentifier &aAddressIid,
     mIsAnyDadInProcess = true;
 
 exit:
-    otLogInfoBbr("NdProxyTable::Register %s MLIID %s RLOC16 %04x LTT %u => %s", aAddressIid.ToString().AsCString(),
-                 aMeshLocalIid.ToString().AsCString(), aRloc16, timeSinceLastTransaction, ErrorToString(error));
+    LogInfo("NdProxyTable::Register %s MLIID %s RLOC16 %04x LTT %lu => %s", aAddressIid.ToString().AsCString(),
+            aMeshLocalIid.ToString().AsCString(), aRloc16, ToUlong(timeSinceLastTransaction), ErrorToString(error));
     return error;
 }
 
@@ -203,8 +200,8 @@ NdProxyTable::NdProxy *NdProxyTable::FindByAddressIid(const Ip6::InterfaceIdenti
     }
 
 exit:
-    otLogDebgBbr("NdProxyTable::FindByAddressIid(%s) => %s", aAddressIid.ToString().AsCString(),
-                 found ? found->mMeshLocalIid.ToString().AsCString() : "NOT_FOUND");
+    LogDebg("NdProxyTable::FindByAddressIid(%s) => %s", aAddressIid.ToString().AsCString(),
+            found ? found->mMeshLocalIid.ToString().AsCString() : "NOT_FOUND");
     return found;
 }
 
@@ -221,8 +218,8 @@ NdProxyTable::NdProxy *NdProxyTable::FindByMeshLocalIid(const Ip6::InterfaceIden
     }
 
 exit:
-    otLogDebgBbr("NdProxyTable::FindByMeshLocalIid(%s) => %s", aMeshLocalIid.ToString().AsCString(),
-                 found ? found->mAddressIid.ToString().AsCString() : "NOT_FOUND");
+    LogDebg("NdProxyTable::FindByMeshLocalIid(%s) => %s", aMeshLocalIid.ToString().AsCString(),
+            found ? found->mAddressIid.ToString().AsCString() : "NOT_FOUND");
     return found;
 }
 
@@ -236,7 +233,7 @@ NdProxyTable::NdProxy *NdProxyTable::FindInvalid(void)
     }
 
 exit:
-    otLogDebgBbr("NdProxyTable::FindInvalid() => %s", found ? "OK" : "NOT_FOUND");
+    LogDebg("NdProxyTable::FindInvalid() => %s", found ? "OK" : "NOT_FOUND");
     return found;
 }
 
@@ -248,7 +245,7 @@ void NdProxyTable::HandleTimer(void)
 
     for (NdProxy &proxy : Iterate(kFilterDadInProcess))
     {
-        if (proxy.IsDadAttamptsComplete())
+        if (proxy.IsDadAttemptsComplete())
         {
             proxy.mDadFlag = false;
             NotifyDuaRegistrationOnBackboneLink(proxy, /* aIsRenew */ false);
@@ -259,7 +256,7 @@ void NdProxyTable::HandleTimer(void)
 
             if (Get<BackboneRouter::Manager>().SendBackboneQuery(GetDua(proxy)) == kErrorNone)
             {
-                proxy.IncreaseDadAttampts();
+                proxy.IncreaseDadAttempts();
             }
         }
     }
@@ -268,26 +265,20 @@ exit:
     return;
 }
 
-void NdProxyTable::SetCallback(otBackboneRouterNdProxyCallback aCallback, void *aContext)
-{
-    mCallback        = aCallback;
-    mCallbackContext = aContext;
-}
-
 void NdProxyTable::TriggerCallback(otBackboneRouterNdProxyEvent    aEvent,
                                    const Ip6::InterfaceIdentifier &aAddressIid) const
 {
     Ip6::Address       dua;
     const Ip6::Prefix *prefix = Get<BackboneRouter::Leader>().GetDomainPrefix();
 
-    VerifyOrExit(mCallback != nullptr);
+    VerifyOrExit(mCallback.IsSet());
 
     OT_ASSERT(prefix != nullptr);
 
     dua.SetPrefix(*prefix);
     dua.SetIid(aAddressIid);
 
-    mCallback(mCallbackContext, aEvent, &dua);
+    mCallback.Invoke(aEvent, &dua);
 
 exit:
     return;

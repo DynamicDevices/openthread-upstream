@@ -35,7 +35,10 @@
 
 #include <openthread/config.h>
 #include <openthread/platform/alarm-milli.h>
+#include <openthread/platform/diag.h>
 #include <openthread/platform/radio.h>
+
+#include "utils/code_utils.h"
 
 #if OPENTHREAD_CONFIG_DIAG_ENABLE
 
@@ -45,25 +48,21 @@
  */
 static bool sDiagMode = false;
 
-void otPlatDiagModeSet(bool aMode)
+enum
 {
-    sDiagMode = aMode;
-}
+    SIM_GPIO = 0,
+};
 
-bool otPlatDiagModeGet()
-{
-    return sDiagMode;
-}
+static otGpioMode sGpioMode  = OT_GPIO_MODE_INPUT;
+static bool       sGpioValue = false;
 
-void otPlatDiagChannelSet(uint8_t aChannel)
-{
-    OT_UNUSED_VARIABLE(aChannel);
-}
+void otPlatDiagModeSet(bool aMode) { sDiagMode = aMode; }
 
-void otPlatDiagTxPowerSet(int8_t aTxPower)
-{
-    OT_UNUSED_VARIABLE(aTxPower);
-}
+bool otPlatDiagModeGet() { return sDiagMode; }
+
+void otPlatDiagChannelSet(uint8_t aChannel) { OT_UNUSED_VARIABLE(aChannel); }
+
+void otPlatDiagTxPowerSet(int8_t aTxPower) { OT_UNUSED_VARIABLE(aTxPower); }
 
 void otPlatDiagRadioReceived(otInstance *aInstance, otRadioFrame *aFrame, otError aError)
 {
@@ -72,9 +71,49 @@ void otPlatDiagRadioReceived(otInstance *aInstance, otRadioFrame *aFrame, otErro
     OT_UNUSED_VARIABLE(aError);
 }
 
-void otPlatDiagAlarmCallback(otInstance *aInstance)
+void otPlatDiagAlarmCallback(otInstance *aInstance) { OT_UNUSED_VARIABLE(aInstance); }
+
+otError otPlatDiagGpioSet(uint32_t aGpio, bool aValue)
 {
-    OT_UNUSED_VARIABLE(aInstance);
+    otError error = OT_ERROR_NONE;
+
+    otEXPECT_ACTION(aGpio == SIM_GPIO, error = OT_ERROR_INVALID_ARGS);
+    sGpioValue = aValue;
+
+exit:
+    return error;
 }
 
+otError otPlatDiagGpioGet(uint32_t aGpio, bool *aValue)
+{
+    otError error = OT_ERROR_NONE;
+
+    otEXPECT_ACTION((aGpio == SIM_GPIO) && (aValue != NULL), error = OT_ERROR_INVALID_ARGS);
+    *aValue = sGpioValue;
+
+exit:
+    return error;
+}
+
+otError otPlatDiagGpioSetMode(uint32_t aGpio, otGpioMode aMode)
+{
+    otError error = OT_ERROR_NONE;
+
+    otEXPECT_ACTION(aGpio == SIM_GPIO, error = OT_ERROR_INVALID_ARGS);
+    sGpioMode = aMode;
+
+exit:
+    return error;
+}
+
+otError otPlatDiagGpioGetMode(uint32_t aGpio, otGpioMode *aMode)
+{
+    otError error = OT_ERROR_NONE;
+
+    otEXPECT_ACTION((aGpio == SIM_GPIO) && (aMode != NULL), error = OT_ERROR_INVALID_ARGS);
+    *aMode = sGpioMode;
+
+exit:
+    return error;
+}
 #endif // OPENTHREAD_CONFIG_DIAG_ENABLE

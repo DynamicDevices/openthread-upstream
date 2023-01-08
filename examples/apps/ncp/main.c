@@ -36,6 +36,7 @@
 
 #include "openthread-system.h"
 
+#include "lib/platform/reset_util.h"
 /**
  * This function initializes the NCP app.
  *
@@ -44,50 +45,19 @@
  */
 extern void otAppNcpInit(otInstance *aInstance);
 
-#if OPENTHREAD_EXAMPLES_SIMULATION
-#include <setjmp.h>
-#include <unistd.h>
-
-jmp_buf gResetJump;
-
-void __gcov_flush();
-#endif
-
-#ifndef OPENTHREAD_ENABLE_COVERAGE
-#define OPENTHREAD_ENABLE_COVERAGE 0
-#endif
-
 #if OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
-void *otPlatCAlloc(size_t aNum, size_t aSize)
-{
-    return calloc(aNum, aSize);
-}
+OT_TOOL_WEAK void *otPlatCAlloc(size_t aNum, size_t aSize) { return calloc(aNum, aSize); }
 
-void otPlatFree(void *aPtr)
-{
-    free(aPtr);
-}
+OT_TOOL_WEAK void otPlatFree(void *aPtr) { free(aPtr); }
 #endif
 
-void otTaskletsSignalPending(otInstance *aInstance)
-{
-    OT_UNUSED_VARIABLE(aInstance);
-}
+void otTaskletsSignalPending(otInstance *aInstance) { OT_UNUSED_VARIABLE(aInstance); }
 
 int main(int argc, char *argv[])
 {
     otInstance *instance;
 
-#if OPENTHREAD_EXAMPLES_SIMULATION
-    if (setjmp(gResetJump))
-    {
-        alarm(0);
-#if OPENTHREAD_ENABLE_COVERAGE
-        __gcov_flush();
-#endif
-        execvp(argv[0], argv);
-    }
-#endif
+    OT_SETUP_RESET_JUMP(argv);
 
 #if OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
     size_t   otInstanceBufferLength = 0;

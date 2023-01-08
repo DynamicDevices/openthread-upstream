@@ -41,18 +41,18 @@
 #include "common/debug.hpp"
 #include "common/instance.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
 #include "meshcop/meshcop_tlvs.hpp"
 #include "thread/thread_netif.hpp"
 #include "thread/uri_paths.hpp"
 
 namespace ot {
 
+RegisterLogModule("MeshCoP");
+
 AnnounceBeginServer::AnnounceBeginServer(Instance &aInstance)
     : AnnounceSenderBase(aInstance, AnnounceBeginServer::HandleTimer)
-    , mAnnounceBegin(UriPath::kAnnounceBegin, &AnnounceBeginServer::HandleRequest, this)
 {
-    Get<Tmf::Agent>().AddResource(mAnnounceBegin);
 }
 
 void AnnounceBeginServer::SendAnnounce(uint32_t aChannelMask, uint8_t aCount, uint16_t aPeriod)
@@ -63,12 +63,8 @@ void AnnounceBeginServer::SendAnnounce(uint32_t aChannelMask, uint8_t aCount, ui
     AnnounceSenderBase::SendAnnounce(aCount);
 }
 
-void AnnounceBeginServer::HandleRequest(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo)
-{
-    static_cast<AnnounceBeginServer *>(aContext)->HandleRequest(AsCoapMessage(aMessage), AsCoreType(aMessageInfo));
-}
-
-void AnnounceBeginServer::HandleRequest(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
+template <>
+void AnnounceBeginServer::HandleTmf<kUriAnnounceBegin>(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
 {
     uint32_t         mask;
     uint8_t          count;
@@ -86,7 +82,7 @@ void AnnounceBeginServer::HandleRequest(Coap::Message &aMessage, const Ip6::Mess
     if (aMessage.IsConfirmable() && !aMessageInfo.GetSockAddr().IsMulticast())
     {
         SuccessOrExit(Get<Tmf::Agent>().SendEmptyAck(aMessage, responseInfo));
-        otLogInfoMeshCoP("sent announce begin response");
+        LogInfo("Sent announce begin response");
     }
 
 exit:

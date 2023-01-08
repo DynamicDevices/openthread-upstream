@@ -94,7 +94,10 @@ public:
          * @returns The Extended PAN Identifier of the TREL peer.
          *
          */
-        const Mac::ExtendedPanId &GetExtPanId(void) const { return static_cast<const Mac::ExtendedPanId &>(mExtPanId); }
+        const MeshCoP::ExtendedPanId &GetExtPanId(void) const
+        {
+            return static_cast<const MeshCoP::ExtendedPanId &>(mExtPanId);
+        }
 
         /**
          * This method returns the IPv6 socket address of the discovered TREL peer.
@@ -131,13 +134,13 @@ public:
         {
         public:
             bool                 IsRemoved(void) const { return mRemoved; }
-            const uint8_t *      GetTxtData(void) const { return mTxtData; }
+            const uint8_t       *GetTxtData(void) const { return mTxtData; }
             uint16_t             GetTxtLength(void) const { return mTxtLength; }
             const Ip6::SockAddr &GetSockAddr(void) const { return static_cast<const Ip6::SockAddr &>(mSockAddr); }
         };
 
         void SetExtAddress(const Mac::ExtAddress &aExtAddress) { mExtAddress = aExtAddress; }
-        void SetExtPanId(const Mac::ExtendedPanId &aExtPanId) { mExtPanId = aExtPanId; }
+        void SetExtPanId(const MeshCoP::ExtendedPanId &aExtPanId) { mExtPanId = aExtPanId; }
         void SetSockAddr(const Ip6::SockAddr &aSockAddr) { mSockAddr = aSockAddr; }
         void Log(const char *aAction) const;
     };
@@ -239,21 +242,22 @@ private:
     void HandleReceived(uint8_t *aBuffer, uint16_t aLength);
     void HandleDiscoveredPeerInfo(const Peer::Info &aInfo);
 
-    static void HandleRegisterServiceTask(Tasklet &aTasklet);
-    void        RegisterService(void);
-    Error       ParsePeerInfoTxtData(const Peer::Info &  aInfo,
-                                     Mac::ExtAddress &   aExtAddress,
-                                     Mac::ExtendedPanId &aExtPanId) const;
-    Peer *      GetNewPeerEntry(void);
-    void        RemovePeerEntry(Peer &aEntry);
+    void  RegisterService(void);
+    Error ParsePeerInfoTxtData(const Peer::Info       &aInfo,
+                               Mac::ExtAddress        &aExtAddress,
+                               MeshCoP::ExtendedPanId &aExtPanId) const;
+    Peer *GetNewPeerEntry(void);
+    void  RemovePeerEntry(Peer &aEntry);
 
-    bool      mInitialized : 1;
-    bool      mEnabled : 1;
-    bool      mFiltered : 1;
-    Tasklet   mRegisterServiceTask;
-    uint16_t  mUdpPort;
-    Packet    mRxPacket;
-    PeerTable mPeerTable;
+    using RegsiterServiceTask = TaskletIn<Interface, &Interface::RegisterService>;
+
+    bool                mInitialized : 1;
+    bool                mEnabled : 1;
+    bool                mFiltered : 1;
+    RegsiterServiceTask mRegisterServiceTask;
+    uint16_t            mUdpPort;
+    Packet              mRxPacket;
+    PeerTable           mPeerTable;
 };
 
 } // namespace Trel

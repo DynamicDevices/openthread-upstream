@@ -52,9 +52,9 @@ extern "C" {
 typedef struct otCliCommand
 {
     const char *mName; ///< A pointer to the command string.
-    void (*mCommand)(void *  aContext,
-                     uint8_t aArgsLength,
-                     char *  aArgs[]); ///< A function pointer to process the command.
+    otError (*mCommand)(void   *aContext,
+                        uint8_t aArgsLength,
+                        char   *aArgs[]); ///< A function pointer to process the command.
 } otCliCommand;
 
 /**
@@ -70,9 +70,9 @@ typedef struct otCliCommand
 /**
  * This function pointer is called to notify about Console output.
  *
- * @param[in]  aBuf        A pointer to a buffer with an output.
- * @param[in]  aBufLength  A length of the output data stored in the buffer.
  * @param[out] aContext    A user context pointer.
+ * @param[in]  aFormat     The format string.
+ * @param[in]  aArguments  The format string arguments.
  *
  * @returns                Number of bytes written by the callback.
  *
@@ -145,16 +145,6 @@ void otCliAppendResult(otError aError);
  *
  */
 void otCliPlatLogv(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aFormat, va_list aArgs);
-
-/**
- * Function to write the OpenThread Log to the CLI console.
- *
- * @param[in]  aLogLevel   The log level.
- * @param[in]  aLogRegion  The log region.
- * @param[in]  aLogLine    A pointer to the log line string.
- *
- */
-void otCliPlatLogLine(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aLogLine);
 
 /**
  * @}

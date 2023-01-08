@@ -74,9 +74,10 @@ typedef enum
  */
 typedef struct otSrpClientHostInfo
 {
-    const char *         mName;         ///< Host name (label) string (NULL if not yet set).
-    const otIp6Address * mAddresses;    ///< Pointer to an array of host IPv6 addresses (NULL if not yet set).
+    const char          *mName;         ///< Host name (label) string (NULL if not yet set).
+    const otIp6Address  *mAddresses;    ///< Array of host IPv6 addresses (NULL if not set or auto address is enabled).
     uint8_t              mNumAddresses; ///< Number of IPv6 addresses in `mAddresses` array.
+    bool                 mAutoAddress;  ///< Indicates whether auto address mode is enabled or not.
     otSrpClientItemState mState;        ///< Host info state.
 } otSrpClientHostInfo;
 
@@ -87,28 +88,34 @@ typedef struct otSrpClientHostInfo
  * and stay constant after an instance of this structure is passed to OpenThread from `otSrpClientAddService()` or
  * `otSrpClientRemoveService()`.
  *
+ * The `mState`, `mData`, `mNext` fields are used/managed by OT core only. Their value is ignored when an instance of
+ * `otSrpClientService` is passed in `otSrpClientAddService()` or `otSrpClientRemoveService()` or other functions. The
+ * caller does not need to set these fields.
+ *
+ * The `mLease` and `mKeyLease` fields specify the desired lease and key lease intervals for this service. Zero value
+ * indicates that the interval is unspecified and then the default lease or key lease intervals from
+ * `otSrpClientGetLeaseInterval()` and `otSrpClientGetKeyLeaseInterval()` are used for this service. If the key lease
+ * interval (whether set explicitly or determined from the default) is shorter than the lease interval for a service,
+ * SRP client will re-use the lease interval value for key lease interval as well. For example, if in service `mLease`
+ * is explicitly set to 2 days and `mKeyLease` is set to zero and default key lease is set to 1 day, then when
+ * registering this service, the requested key lease for this service is also set to 2 days.
+ *
  */
 typedef struct otSrpClientService
 {
-    const char *         mName;          ///< The service name labels (e.g., "_chip._udp", not the full domain name).
-    const char *         mInstanceName;  ///< The service instance name label (not the full name).
-    const char *const *  mSubTypeLabels; ///< Array of service sub-type labels (must end with `NULL` or can be `NULL`).
-    const otDnsTxtEntry *mTxtEntries;    ///< Array of TXT entries (number of entries is given by `mNumTxtEntries`).
-    uint16_t             mPort;          ///< The service port number.
-    uint16_t             mPriority;      ///< The service priority.
-    uint16_t             mWeight;        ///< The service weight.
-    uint8_t              mNumTxtEntries; ///< Number of entries in the `mTxtEntries` array.
-
-    /**
-     * @note The following fields are used/managed by OT core only. Their values do not matter and are ignored when an
-     * instance of `otSrpClientService` is passed in `otSrpClientAddService()` or `otSrpClientRemoveService()`. The
-     * user should not modify these fields.
-     *
-     */
-
-    otSrpClientItemState       mState; ///< Service state (managed by OT core).
-    uint32_t                   mData;  ///< Internal data (used by OT core).
-    struct otSrpClientService *mNext;  ///< Pointer to next entry in a linked-list (managed by OT core).
+    const char                *mName;          ///< The service labels (e.g., "_mt._udp", not the full domain name).
+    const char                *mInstanceName;  ///< The service instance name label (not the full name).
+    const char *const         *mSubTypeLabels; ///< Array of sub-type labels (must end with `NULL` or can be `NULL`).
+    const otDnsTxtEntry       *mTxtEntries;    ///< Array of TXT entries (`mNumTxtEntries` gives num of entries).
+    uint16_t                   mPort;          ///< The service port number.
+    uint16_t                   mPriority;      ///< The service priority.
+    uint16_t                   mWeight;        ///< The service weight.
+    uint8_t                    mNumTxtEntries; ///< Number of entries in the `mTxtEntries` array.
+    otSrpClientItemState       mState;         ///< Service state (managed by OT core).
+    uint32_t                   mData;          ///< Internal data (used by OT core).
+    struct otSrpClientService *mNext;          ///< Pointer to next entry in a linked-list (managed by OT core).
+    uint32_t                   mLease;         ///< Desired lease interval in sec - zero to use default.
+    uint32_t                   mKeyLease;      ///< Desired key lease interval in sec - zero to use default.
 } otSrpClientService;
 
 /**
@@ -160,7 +167,7 @@ typedef struct otSrpClientService
  *
  * @param[in] aError            The error (see above).
  * @param[in] aHostInfo         A pointer to host info.
- * @param[in] aService          The head of linked-list containing all services (excluding the ones removed). NULL if
+ * @param[in] aServices         The head of linked-list containing all services (excluding the ones removed). NULL if
  *                              the list is empty.
  * @param[in] aRemovedServices  The head of linked-list containing all removed services. NULL if the list is empty.
  * @param[in] aContext          A pointer to an arbitrary context (provided when callback was registered).
@@ -168,9 +175,9 @@ typedef struct otSrpClientService
  */
 typedef void (*otSrpClientCallback)(otError                    aError,
                                     const otSrpClientHostInfo *aHostInfo,
-                                    const otSrpClientService * aServices,
-                                    const otSrpClientService * aRemovedServices,
-                                    void *                     aContext);
+                                    const otSrpClientService  *aServices,
+                                    const otSrpClientService  *aRemovedServices,
+                                    void                      *aContext);
 
 /**
  * This function pointer type defines the callback used by SRP client to notify user when it is auto-started or stopped.
@@ -180,9 +187,9 @@ typedef void (*otSrpClientCallback)(otError                    aError,
  * This callback is invoked when auto-start mode is enabled and the SRP client is either automatically started or
  * stopped.
  *
- * @param[in] aServerSockAddress   A non-NULL pointer indicates SRP server was started and pointer will give the
- *                                 selected server socket address. A NULL pointer indicates SRP server was stopped.
- * @param[in] aContext             A pointer to an arbitrary context (provided when callback was registered).
+ * @param[in] aServerSockAddr   A non-NULL pointer indicates SRP server was started and pointer will give the
+ *                              selected server socket address. A NULL pointer indicates SRP server was stopped.
+ * @param[in] aContext          A pointer to an arbitrary context (provided when callback was registered).
  *
  */
 typedef void (*otSrpClientAutoStartCallback)(const otSockAddr *aServerSockAddr, void *aContext);
@@ -269,12 +276,26 @@ void otSrpClientSetCallback(otInstance *aInstance, otSrpClientCallback aCallback
  * Config option `OPENTHREAD_CONFIG_SRP_CLIENT_AUTO_START_DEFAULT_MODE` specifies the default auto-start mode (whether
  * it is enabled or disabled at the start of OT stack).
  *
- * When auto-start is enabled, the SRP client will monitor the Thread Network Data for SRP Server Service entries
- * and automatically start and stop the client when an SRP server is detected.
+ * When auto-start is enabled, the SRP client will monitor the Thread Network Data to discover SRP servers and select
+ * the preferred server and automatically start and stop the client when an SRP server is detected.
  *
- * If multiple SRP servers are found, a random one will be selected. If the selected SRP server is no longer
- * detected (not longer present in the Thread Network Data), the SRP client will be stopped and then it may switch
- * to another SRP server (if available).
+ * There are three categories of Network Data entries indicating presence of SRP sever. They are preferred in the
+ * following order:
+ *
+ *   1) Preferred unicast entries where server address is included in the service data. If there are multiple options,
+ *      the one with numerically lowest IPv6 address is preferred.
+ *
+ *   2) Anycast entries each having a seq number. A larger sequence number in the sense specified by Serial Number
+ *      Arithmetic logic in RFC-1982 is considered more recent and therefore preferred. The largest seq number using
+ *      serial number arithmetic is preferred if it is well-defined (i.e., the seq number is larger than all other
+ *      seq numbers). If it is not well-defined, then the numerically largest seq number is preferred.
+ *
+ *   3) Unicast entries where the server address info is included in server data. If there are multiple options, the
+ *      one with numerically lowest IPv6 address is preferred.
+ *
+ * When there is a change in the Network Data entries, client will check that the currently selected server is still
+ * present in the Network Data and is still the preferred one. Otherwise the client will switch to the new preferred
+ * server or stop if there is none.
  *
  * When the SRP client is explicitly started through a successful call to `otSrpClientStart()`, the given SRP server
  * address in `otSrpClientStart()` will continue to be used regardless of the state of auto-start mode and whether the
@@ -316,7 +337,37 @@ void otSrpClientDisableAutoStartMode(otInstance *aInstance);
 bool otSrpClientIsAutoStartModeEnabled(otInstance *aInstance);
 
 /**
- * This function gets the lease interval used in SRP update requests.
+ * This function gets the TTL value in every record included in SRP update requests.
+ *
+ * Note that this is the TTL requested by the SRP client. The server may choose to accept a different TTL.
+ *
+ * By default, the TTL will equal the lease interval. Passing 0 or a value larger than the lease interval via
+ * `otSrpClientSetTtl()` will also cause the TTL to equal the lease interval.
+ *
+ * @param[in] aInstance  A pointer to the OpenThread instance.
+ *
+ * @returns The TTL (in seconds).
+ *
+ */
+uint32_t otSrpClientGetTtl(otInstance *aInstance);
+
+/**
+ * This function sets the TTL value in every record included in SRP update requests.
+ *
+ * Changing the TTL does not impact the TTL of already registered services/host-info.
+ * It only affects future SRP update messages (i.e., adding new services and/or refreshes of the existing services).
+ *
+ * @param[in] aInstance   A pointer to the OpenThread instance.
+ * @param[in] aTtl        The TTL (in seconds). If value is zero or greater than lease interval, the TTL is set to the
+ *                        lease interval.
+ *
+ */
+void otSrpClientSetTtl(otInstance *aInstance, uint32_t aTtl);
+
+/**
+ * This function gets the default lease interval used in SRP update requests.
+ *
+ * The default interval is used only for `otSrpClientService` instances with `mLease` set to zero.
  *
  * Note that this is the lease duration requested by the SRP client. The server may choose to accept a different lease
  * interval.
@@ -329,7 +380,9 @@ bool otSrpClientIsAutoStartModeEnabled(otInstance *aInstance);
 uint32_t otSrpClientGetLeaseInterval(otInstance *aInstance);
 
 /**
- * This function sets the lease interval used in SRP update requests.
+ * This function sets the default lease interval used in SRP update requests.
+ *
+ * The default interval is used only for `otSrpClientService` instances with `mLease` set to zero.
  *
  * Changing the lease interval does not impact the accepted lease interval of already registered services/host-info.
  * It only affects any future SRP update messages (i.e., adding new services and/or refreshes of the existing services).
@@ -342,7 +395,9 @@ uint32_t otSrpClientGetLeaseInterval(otInstance *aInstance);
 void otSrpClientSetLeaseInterval(otInstance *aInstance, uint32_t aInterval);
 
 /**
- * This function gets the key lease interval used in SRP update requests.
+ * This function gets the default key lease interval used in SRP update requests.
+ *
+ * The default interval is used only for `otSrpClientService` instances with `mKeyLease` set to zero.
  *
  * Note that this is the lease duration requested by the SRP client. The server may choose to accept a different lease
  * interval.
@@ -355,7 +410,9 @@ void otSrpClientSetLeaseInterval(otInstance *aInstance, uint32_t aInterval);
 uint32_t otSrpClientGetKeyLeaseInterval(otInstance *aInstance);
 
 /**
- * This function sets the key lease interval used in SRP update requests.
+ * This function sets the default key lease interval used in SRP update requests.
+ *
+ * The default interval is used only for `otSrpClientService` instances with `mKeyLease` set to zero.
  *
  * Changing the lease interval does not impact the accepted lease interval of already registered services/host-info.
  * It only affects any future SRP update messages (i.e., adding new services and/or refreshes of existing services).
@@ -401,6 +458,27 @@ const otSrpClientHostInfo *otSrpClientGetHostInfo(otInstance *aInstance);
 otError otSrpClientSetHostName(otInstance *aInstance, const char *aName);
 
 /**
+ * This function enables auto host address mode.
+ *
+ * When enabled host IPv6 addresses are automatically set by SRP client using all the unicast addresses on Thread netif
+ * excluding all link-local and mesh-local addresses. If there is no valid address, then Mesh Local EID address is
+ * added. The SRP client will automatically re-register when/if addresses on Thread netif are updated (new addresses
+ * are added or existing addresses are removed).
+ *
+ * The auto host address mode can be enabled before start or during operation of SRP client except when the host info
+ * is being removed (client is busy handling a remove request from an call to `otSrpClientRemoveHostAndServices()` and
+ * host info still being in  either `STATE_TO_REMOVE` or `STATE_REMOVING` states).
+ *
+ * After auto host address mode is enabled, it can be disabled by a call to `otSrpClientSetHostAddresses()` which
+ * then explicitly sets the host addresses.
+ *
+ * @retval OT_ERROR_NONE            Successfully enabled auto host address mode.
+ * @retval OT_ERROR_INVALID_STATE   Host is being removed and therefore cannot enable auto host address mode.
+ *
+ */
+otError otSrpClientEnableAutoHostAddress(otInstance *aInstance);
+
+/**
  * This function sets/updates the list of host IPv6 address.
  *
  * Host IPv6 addresses can be set/changed before start or during operation of SRP client (e.g. to add/remove or change
@@ -408,15 +486,18 @@ otError otSrpClientSetHostName(otInstance *aInstance, const char *aName);
  * request from an earlier call to `otSrpClientRemoveHostAndServices()` and host info still being in  either
  * `STATE_TO_REMOVE` or `STATE_REMOVING` states).
  *
- * The host IPv6 address array pointed to by @p aAddresses MUST persist and remain unchanged after returning from this
- * function (with `OT_ERROR_NONE`). OpenThread will save the pointer to the array.
+ * The host IPv6 address array pointed to by @p aIp6Addresses MUST persist and remain unchanged after returning from
+ * this function (with `OT_ERROR_NONE`). OpenThread will save the pointer to the array.
  *
  * After a successful call to this function, `otSrpClientCallback` will be called to report the status of the address
  * registration with SRP server.
  *
+ * Calling this function disables auto host address mode if it was previously enabled from a successful call to
+ * `otSrpClientEnableAutoHostAddress()`.
+ *
  * @param[in] aInstance           A pointer to the OpenThread instance.
- * @param[in] aAddresses          A pointer to the an array containing the host IPv6 addresses.
- * @param[in] aNumAddresses       The number of addresses in the @p aAddresses array.
+ * @param[in] aIp6Addresses       A pointer to the an array containing the host IPv6 addresses.
+ * @param[in] aNumAddresses       The number of addresses in the @p aIp6Addresses array.
  *
  * @retval OT_ERROR_NONE            The host IPv6 address list change started successfully. The `otSrpClientCallback`
  *                                  will be called to report the status of registering addresses with server.

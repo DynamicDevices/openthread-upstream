@@ -90,6 +90,18 @@ enum RoutePreference : int8_t
 };
 
 /**
+ * This enumeration represents the border router RLOC role filter used when searching for border routers in the Network
+ * Data.
+ *
+ */
+enum RoleFilter : uint8_t
+{
+    kAnyRole,        ///< Include devices in any role.
+    kRouterRoleOnly, ///< Include devices that act as Thread router.
+    kChildRoleOnly,  ///< Include devices that act as Thread child (end-device).
+};
+
+/**
  * This function indicates whether a given `int8_t` preference value is a valid route preference (i.e., one of the
  * values from `RoutePreference` enumeration).
  *
@@ -149,6 +161,16 @@ inline RoutePreference RoutePreferenceFromValue(uint8_t aValue)
 }
 
 /**
+ * This function converts a router preference to a human-readable string.
+ *
+ * @param[in] aPreference  The preference to convert
+ *
+ * @returns The string representation of @p aPreference.
+ *
+ */
+const char *RoutePreferenceToString(RoutePreference aPreference);
+
+/**
  * This class represents an On-mesh Prefix (Border Router) configuration.
  *
  */
@@ -157,6 +179,7 @@ class OnMeshPrefixConfig : public otBorderRouterConfig,
                            public Equatable<OnMeshPrefixConfig>
 {
     friend class NetworkData;
+    friend class Leader;
     friend class Local;
     friend class Publisher;
 
@@ -177,6 +200,14 @@ public:
      */
     Ip6::Prefix &GetPrefix(void) { return AsCoreType(&mPrefix); }
 
+    /**
+     * This method gets the preference.
+     *
+     * @return The preference.
+     *
+     */
+    RoutePreference GetPreference(void) const { return RoutePreferenceFromValue(RoutePreferenceToValue(mPreference)); }
+
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
     /**
      * This method indicates whether or not the prefix configuration is valid.
@@ -194,8 +225,8 @@ private:
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
     uint16_t ConvertToTlvFlags(void) const;
 #endif
-    void SetFrom(const PrefixTlv &        aPrefixTlv,
-                 const BorderRouterTlv &  aBorderRouterTlv,
+    void SetFrom(const PrefixTlv         &aPrefixTlv,
+                 const BorderRouterTlv   &aBorderRouterTlv,
                  const BorderRouterEntry &aBorderRouterEntry);
     void SetFromTlvFlags(uint16_t aFlags);
 };
@@ -254,9 +285,9 @@ private:
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
     uint8_t ConvertToTlvFlags(void) const;
 #endif
-    void SetFrom(Instance &           aInstance,
-                 const PrefixTlv &    aPrefixTlv,
-                 const HasRouteTlv &  aHasRouteTlv,
+    void SetFrom(Instance            &aInstance,
+                 const PrefixTlv     &aPrefixTlv,
+                 const HasRouteTlv   &aHasRouteTlv,
                  const HasRouteEntry &aHasRouteEntry);
     void SetFromTlvFlags(uint8_t aFlags);
 };

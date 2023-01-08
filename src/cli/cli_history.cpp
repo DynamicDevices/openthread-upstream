@@ -42,24 +42,10 @@
 namespace ot {
 namespace Cli {
 
-constexpr History::Command History::sCommands[];
-
 static const char *const kSimpleEventStrings[] = {
     "Added",  // (0) OT_HISTORY_TRACKER_{NET_DATA_ENTRY/ADDRESSS_EVENT}_ADDED
     "Removed" // (1) OT_HISTORY_TRACKER_{NET_DATA_ENTRY/ADDRESS_EVENT}_REMOVED
 };
-
-otError History::ProcessHelp(Arg aArgs[])
-{
-    OT_UNUSED_VARIABLE(aArgs);
-
-    for (const Command &command : sCommands)
-    {
-        OutputLine(command.mName);
-    }
-
-    return OT_ERROR_NONE;
-}
 
 otError History::ParseArgs(Arg aArgs[], bool &aIsList, uint16_t &aNumEntries) const
 {
@@ -85,7 +71,7 @@ otError History::ParseArgs(Arg aArgs[], bool &aIsList, uint16_t &aNumEntries) co
     return aArgs[0].IsEmpty() ? OT_ERROR_NONE : OT_ERROR_INVALID_ARGS;
 }
 
-otError History::ProcessIpAddr(Arg aArgs[])
+template <> otError History::Process<Cmd("ipaddr")>(Arg aArgs[])
 {
     otError                                   error;
     bool                                      isList;
@@ -126,7 +112,9 @@ otError History::ProcessIpAddr(Arg aArgs[])
 
         if (!isList)
         {
-            sprintf(&addressString[strlen(addressString)], "/%d", info->mPrefixLength);
+            size_t len = strlen(addressString);
+
+            snprintf(&addressString[len], sizeof(addressString) - len, "/%d", info->mPrefixLength);
 
             OutputLine("| %20s | %-7s | %-43s | %-6s | %3d | %c | %c | %c |", ageString,
                        Stringify(info->mEvent, kSimpleEventStrings), addressString,
@@ -146,7 +134,7 @@ exit:
     return error;
 }
 
-otError History::ProcessIpMulticastAddr(Arg aArgs[])
+template <> otError History::Process<Cmd("ipmaddr")>(Arg aArgs[])
 {
     static const char *const kEventStrings[] = {
         "Subscribed",  // (0) OT_HISTORY_TRACKER_ADDRESS_EVENT_ADDED
@@ -203,7 +191,7 @@ exit:
     return error;
 }
 
-otError History::ProcessNeighbor(Arg aArgs[])
+template <> otError History::Process<Cmd("neighbor")>(Arg aArgs[])
 {
     static const char *const kEventString[] = {
         /* (0) OT_HISTORY_TRACKER_NEIGHBOR_EVENT_ADDED     -> */ "Added",
@@ -268,7 +256,7 @@ exit:
     return error;
 }
 
-otError History::ProcessNetInfo(Arg aArgs[])
+template <> otError History::Process<Cmd("netinfo")>(Arg aArgs[])
 {
     otError                            error;
     bool                               isList;
@@ -311,20 +299,11 @@ exit:
     return error;
 }
 
-otError History::ProcessRx(Arg aArgs[])
-{
-    return ProcessRxTxHistory(kRx, aArgs);
-}
+template <> otError History::Process<Cmd("rx")>(Arg aArgs[]) { return ProcessRxTxHistory(kRx, aArgs); }
 
-otError History::ProcessRxTx(Arg aArgs[])
-{
-    return ProcessRxTxHistory(kRxTx, aArgs);
-}
+template <> otError History::Process<Cmd("rxtx")>(Arg aArgs[]) { return ProcessRxTxHistory(kRxTx, aArgs); }
 
-otError History::ProcessTx(Arg aArgs[])
-{
-    return ProcessRxTxHistory(kTx, aArgs);
-}
+template <> otError History::Process<Cmd("tx")>(Arg aArgs[]) { return ProcessRxTxHistory(kTx, aArgs); }
 
 const char *History::MessagePriorityToString(uint8_t aPriority)
 {
@@ -571,7 +550,7 @@ void History::OutputRxTxEntryTableFormat(const otHistoryTrackerMessageInfo &aInf
     OutputLine("| %20s | dst: %-70s |", "", addrString);
 }
 
-otError History::ProcessPrefix(Arg aArgs[])
+template <> otError History::Process<Cmd("prefix")>(Arg aArgs[])
 {
     otError                                 error;
     bool                                    isList;
@@ -614,14 +593,14 @@ otError History::ProcessPrefix(Arg aArgs[])
         OutputLine(isList ? "%s -> event:%s prefix:%s flags:%s pref:%s rloc16:0x%04x"
                           : "| %20s | %-7s | %-43s | %-9s | %-4s | 0x%04x |",
                    ageString, Stringify(info->mEvent, kSimpleEventStrings), prefixString, flagsString,
-                   NetworkData::PreferenceToString(info->mPrefix.mPreference), info->mPrefix.mRloc16);
+                   Interpreter::PreferenceToString(info->mPrefix.mPreference), info->mPrefix.mRloc16);
     }
 
 exit:
     return error;
 }
 
-otError History::ProcessRoute(Arg aArgs[])
+template <> otError History::Process<Cmd("route")>(Arg aArgs[])
 {
     otError                                  error;
     bool                                     isList;
@@ -664,7 +643,7 @@ otError History::ProcessRoute(Arg aArgs[])
         OutputLine(isList ? "%s -> event:%s route:%s flags:%s pref:%s rloc16:0x%04x"
                           : "| %20s | %-7s | %-43s | %-9s | %-4s | 0x%04x |",
                    ageString, Stringify(info->mEvent, kSimpleEventStrings), prefixString, flagsString,
-                   NetworkData::PreferenceToString(info->mRoute.mPreference), info->mRoute.mRloc16);
+                   Interpreter::PreferenceToString(info->mRoute.mPreference), info->mRoute.mRloc16);
     }
 
 exit:
@@ -673,16 +652,30 @@ exit:
 
 otError History::Process(Arg aArgs[])
 {
+#define CmdEntry(aCommandString)                               \
+    {                                                          \
+        aCommandString, &History::Process<Cmd(aCommandString)> \
+    }
+
+    static constexpr Command kCommands[] = {
+        CmdEntry("ipaddr"), CmdEntry("ipmaddr"), CmdEntry("neighbor"), CmdEntry("netinfo"), CmdEntry("prefix"),
+        CmdEntry("route"),  CmdEntry("rx"),      CmdEntry("rxtx"),     CmdEntry("tx"),
+    };
+
+#undef CmdEntry
+
+    static_assert(BinarySearch::IsSorted(kCommands), "kCommands is not sorted");
+
     otError        error = OT_ERROR_INVALID_COMMAND;
     const Command *command;
 
-    if (aArgs[0].IsEmpty())
+    if (aArgs[0].IsEmpty() || (aArgs[0] == "help"))
     {
-        IgnoreError(ProcessHelp(aArgs));
-        ExitNow();
+        OutputCommandTable(kCommands);
+        ExitNow(error = aArgs[0].IsEmpty() ? error : OT_ERROR_NONE);
     }
 
-    command = BinarySearch::Find(aArgs[0].GetCString(), sCommands);
+    command = BinarySearch::Find(aArgs[0].GetCString(), kCommands);
     VerifyOrExit(command != nullptr);
 
     error = (this->*command->mHandler)(aArgs + 1);
@@ -694,4 +687,4 @@ exit:
 } // namespace Cli
 } // namespace ot
 
-#endif // OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE
+#endif // OPENTHREAD_CONFIG_HISTORY_TRACKER_ENABLE

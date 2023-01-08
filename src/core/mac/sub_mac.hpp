@@ -40,6 +40,7 @@
 
 #include <openthread/platform/crypto.h>
 
+#include "common/callback.hpp"
 #include "common/locator.hpp"
 #include "common/non_copyable.hpp"
 #include "common/timer.hpp"
@@ -108,8 +109,6 @@ class SubMac : public InstanceLocator, private NonCopyable
     friend class LinkRaw;
 
 public:
-    static constexpr int8_t kInvalidRssiValue = 127; ///< Invalid Received Signal Strength Indicator (RSSI) value.
-
     /**
      * This class defines the callbacks notifying `SubMac` user of changes and events.
      *
@@ -189,7 +188,7 @@ public:
         /**
          * This method notifies user of `SubMac` that energy scan is complete.
          *
-         * @param[in]  aMaxRssi  Maximum RSSI seen on the channel, or `SubMac::kInvalidRssiValue` if failed.
+         * @param[in]  aMaxRssi  Maximum RSSI seen on the channel, or `Radio::kInvalidRssi` if failed.
          *
          */
         void EnergyScanDone(int8_t aMaxRssi);
@@ -278,7 +277,10 @@ public:
      * @param[in]  aCallbackContext  A pointer to application-specific context.
      *
      */
-    void SetPcapCallback(otLinkPcapCallback aPcapCallback, void *aCallbackContext);
+    void SetPcapCallback(otLinkPcapCallback aPcapCallback, void *aCallbackContext)
+    {
+        mPcapCallback.Set(aPcapCallback, aCallbackContext);
+    }
 
     /**
      * This method indicates whether radio should stay in Receive or Sleep during CSMA backoff.
@@ -367,7 +369,7 @@ public:
     /**
      * This method gets the most recent RSSI measurement.
      *
-     * @returns The RSSI in dBm when it is valid. `kInvalidRssiValue` when RSSI is invalid.
+     * @returns The RSSI in dBm when it is valid. `Radio::kInvalidRssi` when RSSI is invalid.
      *
      */
     int8_t GetRssi(void) const;
@@ -379,6 +381,7 @@ public:
      * @param[in] aScanDuration  The duration, in milliseconds, for the channel to be scanned.
      *
      * @retval kErrorNone            Successfully started scanning the channel.
+     * @retval kErrorBusy            The radio is performing energy scanning.
      * @retval kErrorInvalidState    The radio was disabled or transmitting.
      * @retval kErrorNotImplemented  Energy scan is not supported (applicable in link-raw/radio mode only).
      *
@@ -391,104 +394,46 @@ public:
      * @returns The noise floor value in dBm.
      *
      */
-    int8_t GetNoiseFloor(void);
+    int8_t GetNoiseFloor(void) const;
 
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
-
     /**
-     * This method lets `SubMac` start CSL sample.
+     * This method configures CSL parameters in 'SubMac'.
      *
-     * `SubMac` would switch the radio state between `Receive` and `Sleep` according the CSL timer. When CslSample is
-     * started, `mState` will become `kStateCslSample`. But it could be doing `Sleep` or `Receive` at this moment
-     * (depending on `mCslState`).
+     * @param[in]  aPeriod    The CSL period.
+     * @param[in]  aChannel   The CSL channel.
+     * @param[in]  aShortAddr The short source address of CSL receiver's peer.
+     * @param[in]  aExtAddr   The extended source address of CSL receiver's peer.
      *
-     * @param[in]  aPanChannel  The current phy channel used by the device. This param will only take effect when CSL
-     *                          channel hasn't been explicitly specified.
-     *
-     * @retval kErrorNone          Successfully entered CSL operation (sleep or receive according to CSL timer).
-     * @retval kErrorBusy          The radio was transmitting.
-     * @retval kErrorInvalidState  The radio was disabled.
+     * @retval  TRUE if CSL Period or CSL Channel changed.
+     * @retval  FALSE if CSL Period and CSL Channel did not change.
      *
      */
-    Error CslSample(uint8_t aPanChannel);
+    bool UpdateCsl(uint16_t aPeriod, uint8_t aChannel, otShortAddress aShortAddr, const otExtAddress *aExtAddr);
 
     /**
-     * This method gets the CSL channel.
+     * This method lets `SubMac` start CSL sample mode given a configured non-zero CSL period.
      *
-     * @returns CSL channel.
+     * `SubMac` would switch the radio state between `Receive` and `Sleep` according the CSL timer.
      *
      */
-    uint8_t GetCslChannel(void) const { return mCslChannel; }
+    void CslSample(void);
 
     /**
-     * This method sets the CSL channel.
+     * This method returns parent CSL accuracy (clock accuracy and uncertainty).
      *
-     * @param[in]  aChannel  The CSL channel. `0` to set CSL Channel unspecified.
+     * @returns The parent CSL accuracy.
      *
      */
-    void SetCslChannel(uint8_t aChannel);
+    const CslAccuracy &GetCslParentAccuracy(void) const { return mCslParentAccuracy; }
 
     /**
-     * This method indicates if CSL channel has been explicitly specified by the upper layer.
+     * This method sets parent CSL accuracy.
      *
-     * @returns If CSL channel has been specified.
-     *
-     */
-    bool IsCslChannelSpecified(void) const { return mIsCslChannelSpecified; }
-
-    /**
-     * This method sets the flag representing if CSL channel has been specified.
+     * @param[in] aCslAccuracy  The parent CSL accuracy.
      *
      */
-    void SetCslChannelSpecified(bool aIsSpecified) { mIsCslChannelSpecified = aIsSpecified; }
-
-    /**
-     * This method gets the CSL period.
-     *
-     * @returns CSL period.
-     *
-     */
-    uint16_t GetCslPeriod(void) const { return mCslPeriod; }
-
-    /**
-     * This method sets the CSL period.
-     *
-     * @param[in]  aPeriod  The CSL period in 10 symbols.
-     *
-     */
-    void SetCslPeriod(uint16_t aPeriod);
-
-    /**
-     * This method returns CSL parent clock accuracy, in ± ppm.
-     *
-     * @retval CSL parent clock accuracy.
-     *
-     */
-    uint8_t GetCslParentClockAccuracy(void) const { return mCslParentAccuracy; }
-
-    /**
-     * This method sets CSL parent clock accuracy, in ± ppm.
-     *
-     * @param[in] aCslParentAccuracy CSL parent clock accuracy, in ± ppm.
-     *
-     */
-    void SetCslParentClockAccuracy(uint8_t aCslParentAccuracy) { mCslParentAccuracy = aCslParentAccuracy; }
-
-    /**
-     * This method sets CSL parent uncertainty, in ±10 us units.
-     *
-     * @retval CSL parent uncertainty, in ±10 us units.
-     *
-     */
-    uint8_t GetCslParentUncertainty(void) const { return mCslParentUncert; }
-
-    /**
-     * This method returns CSL parent uncertainty, in ±10 us units.
-     *
-     * @param[in] aCslParentUncert  CSL parent uncertainty, in ±10 us units.
-     *
-     */
-    void SetCslParentUncertainty(uint8_t aCslParentUncert) { mCslParentUncert = aCslParentUncert; }
+    void SetCslParentAccuracy(const CslAccuracy &aCslAccuracy) { mCslParentAccuracy = aCslAccuracy; }
 
 #endif // OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
 
@@ -584,6 +529,11 @@ private:
     static constexpr uint32_t kAckTimeout        = 16;  // Timeout for waiting on an ACK (in msec).
     static constexpr uint32_t kCcaSampleInterval = 128; // CCA sample interval, 128 usec.
 
+#if OPENTHREAD_CONFIG_MAC_ADD_DELAY_ON_NO_ACK_ERROR_BEFORE_RETRY
+    static constexpr uint8_t kRetxDelayMinBackoffExponent = OPENTHREAD_CONFIG_MAC_RETX_DELAY_MIN_BACKOFF_EXPONENT;
+    static constexpr uint8_t kRetxDelayMaxBackoffExponent = OPENTHREAD_CONFIG_MAC_RETX_DELAY_MAX_BACKOFF_EXPONENT;
+#endif
+
 #if OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE
     static constexpr uint32_t kEnergyScanRssiSampleInterval = 128; // RSSI sample interval for energy scan, 128 usec
 #else
@@ -598,6 +548,9 @@ private:
         kStateCsmaBackoff, // CSMA backoff before transmission.
         kStateTransmit,    // Radio is transmitting.
         kStateEnergyScan,  // Energy scan.
+#if OPENTHREAD_CONFIG_MAC_ADD_DELAY_ON_NO_ACK_ERROR_BEFORE_RETRY
+        kStateDelayBeforeRetx, // Delay before retx
+#endif
 #if !OPENTHREAD_MTD && OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
         kStateCslTransmit, // CSL transmission.
 #endif
@@ -614,12 +567,6 @@ private:
     // CSL receivers would wake up `kCslReceiveTimeAhead` earlier
     // than expected sample window. The value is in usec.
     static constexpr uint32_t kCslReceiveTimeAhead = OPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD;
-
-    enum CslState : uint8_t{
-        kCslIdle,   // CSL receiver is not started.
-        kCslSample, // Sampling CSL channel.
-        kCslSleep,  // Radio in sleep.
-    };
 #endif
 
     /**
@@ -650,6 +597,7 @@ private:
     void ProcessTransmitSecurity(void);
     void SignalFrameCounterUsed(uint32_t aFrameCounter);
     void StartCsmaBackoff(void);
+    void StartTimerForBackoff(uint8_t aBackoffExponent);
     void BeginTransmit(void);
     void SampleRssi(void);
 
@@ -658,14 +606,16 @@ private:
     void HandleTransmitDone(TxFrame &aFrame, RxFrame *aAckFrame, Error aError);
     void SignalFrameCounterUsedOnTxDone(const TxFrame &aFrame);
     void HandleEnergyScanDone(int8_t aMaxRssi);
-
-    static void HandleTimer(Timer &aTimer);
-    void        HandleTimer(void);
+    void HandleTimer(void);
 
     void               SetState(State aState);
     static const char *StateToString(State aState);
-#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
-    static const char *CslStateToString(CslState aCslState);
+
+    using SubMacTimer =
+#if OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE
+        TimerMicroIn<SubMac, &SubMac::HandleTimer>;
+#else
+        TimerMilliIn<SubMac, &SubMac::HandleTimer>;
 #endif
 
     otRadioCaps  mRadioCaps;
@@ -678,33 +628,31 @@ private:
 #if OPENTHREAD_CONFIG_MAC_FILTER_ENABLE
     bool mRadioFilterEnabled : 1;
 #endif
-    int8_t             mEnergyScanMaxRssi;
-    TimeMilli          mEnergyScanEndTime;
-    TxFrame &          mTransmitFrame;
-    Callbacks          mCallbacks;
-    otLinkPcapCallback mPcapCallback;
-    void *             mPcapCallbackContext;
-    KeyMaterial        mPrevKey;
-    KeyMaterial        mCurrKey;
-    KeyMaterial        mNextKey;
-    uint32_t           mFrameCounter;
-    uint8_t            mKeyId;
-#if OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE
-    TimerMicro mTimer;
-#else
-    TimerMilli                mTimer;
+    int8_t                       mEnergyScanMaxRssi;
+    TimeMilli                    mEnergyScanEndTime;
+    TxFrame                     &mTransmitFrame;
+    Callbacks                    mCallbacks;
+    Callback<otLinkPcapCallback> mPcapCallback;
+    KeyMaterial                  mPrevKey;
+    KeyMaterial                  mCurrKey;
+    KeyMaterial                  mNextKey;
+    uint32_t                     mFrameCounter;
+    uint8_t                      mKeyId;
+#if OPENTHREAD_CONFIG_MAC_ADD_DELAY_ON_NO_ACK_ERROR_BEFORE_RETRY
+    uint8_t mRetxDelayBackOffExponent;
 #endif
+    SubMacTimer mTimer;
 
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
-    uint16_t   mCslPeriod;                 // The CSL sample period, in units of 10 symbols (160 microseconds).
-    uint8_t    mCslChannel : 7;            // The CSL sample channel (only when `mIsCslChannelSpecified` is `true`).
-    uint8_t    mIsCslChannelSpecified : 1; // Whether the CSL channel was explicitly set
-    TimeMicro  mCslSampleTime;             // The CSL sample time of the current period.
-    TimeMicro  mCslLastSync;               // The timestamp of the last successful CSL synchronization.
-    uint8_t    mCslParentAccuracy;         // Drift of timer used for scheduling CSL tx by the parent, in ± ppm.
-    uint8_t    mCslParentUncert;           // Uncertainty of the scheduling CSL of tx by the parent, in ±10 us units.
-    CslState   mCslState;
-    TimerMicro mCslTimer;
+    uint16_t mCslPeriod;      // The CSL sample period, in units of 10 symbols (160 microseconds).
+    uint8_t  mCslChannel : 7; // The CSL sample channel.
+    bool mIsCslSampling : 1;  // Indicates that the radio is receiving in CSL state for platforms not supporting delayed
+                              // reception.
+    uint16_t    mCslPeerShort;      // The CSL peer short address.
+    TimeMicro   mCslSampleTime;     // The CSL sample time of the current period.
+    TimeMicro   mCslLastSync;       // The timestamp of the last successful CSL synchronization.
+    CslAccuracy mCslParentAccuracy; // The parent's CSL accuracy (clock accuracy and uncertainty).
+    TimerMicro  mCslTimer;
 #endif
 };
 

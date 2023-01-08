@@ -221,14 +221,14 @@ void otMacFrameGenerateImmAck(const otRadioFrame *aFrame, bool aIsFramePending, 
  */
 otError otMacFrameGenerateEnhAck(const otRadioFrame *aFrame,
                                  bool                aIsFramePending,
-                                 const uint8_t *     aIeData,
+                                 const uint8_t      *aIeData,
                                  uint8_t             aIeLength,
-                                 otRadioFrame *      aAckFrame);
+                                 otRadioFrame       *aAckFrame);
 
 /**
  * Set CSL IE content into the frame.
  *
- * @param[inout]    aFrame         A pointer to the frame to be modified.
+ * @param[in,out]   aFrame         A pointer to the frame to be modified.
  * @param[in]       aCslPeriod     CSL Period in CSL IE.
  * @param[in]       aCslPhase      CSL Phase in CSL IE.
  *
@@ -270,7 +270,7 @@ uint8_t otMacFrameGetKeyId(otRadioFrame *aFrame);
 /**
  * Set key ID to @p aFrame with key ID mode 1.
  *
- * @param[inout]    aFrame     A pointer to the frame to be modified.
+ * @param[in,out]   aFrame     A pointer to the frame to be modified.
  * @param[in]       aKeyId     Key ID to be set to the frame.
  *
  */
@@ -289,7 +289,7 @@ uint32_t otMacFrameGetFrameCounter(otRadioFrame *aFrame);
 /**
  * Set frame counter to @p aFrame.
  *
- * @param[inout]    aFrame         A pointer to the frame to be modified.
+ * @param[in,out]   aFrame         A pointer to the frame to be modified.
  * @param[in]       aFrameCounter  Frame counter to be set to the frame.
  *
  */

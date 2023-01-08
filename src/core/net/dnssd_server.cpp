@@ -35,12 +35,13 @@
 
 #if OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE
 
+#include "common/array.hpp"
 #include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/instance.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
 #include "common/string.hpp"
 #include "net/srp_server.hpp"
 #include "net/udp6.hpp"
@@ -48,6 +49,8 @@
 namespace ot {
 namespace Dns {
 namespace ServiceDiscovery {
+
+RegisterLogModule("DnssdServer");
 
 const char Server::kDnssdProtocolUdp[]  = "_udp";
 const char Server::kDnssdProtocolTcp[]  = "_tcp";
@@ -60,8 +63,9 @@ Server::Server(Instance &aInstance)
     , mQueryCallbackContext(nullptr)
     , mQuerySubscribe(nullptr)
     , mQueryUnsubscribe(nullptr)
-    , mTimer(aInstance, Server::HandleTimer)
+    , mTimer(aInstance)
 {
+    mCounters.Clear();
 }
 
 Error Server::Start(void)
@@ -71,14 +75,14 @@ Error Server::Start(void)
     VerifyOrExit(!IsRunning());
 
     SuccessOrExit(error = mSocket.Open(&Server::HandleUdpReceive, this));
-    SuccessOrExit(error = mSocket.Bind(kPort, kBindUnspecifiedNetif ? OT_NETIF_UNSPECIFIED : OT_NETIF_THREAD));
+    SuccessOrExit(error = mSocket.Bind(kPort, kBindUnspecifiedNetif ? Ip6::kNetifUnspecified : Ip6::kNetifThread));
 
 #if OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
     Get<Srp::Server>().HandleDnssdServerStateChange();
 #endif
 
 exit:
-    otLogInfoDns("[server] started: %s", ErrorToString(error));
+    LogInfo("started: %s", ErrorToString(error));
 
     if (error != kErrorNone)
     {
@@ -102,7 +106,7 @@ void Server::Stop(void)
     mTimer.Stop();
 
     IgnoreError(mSocket.Close());
-    otLogInfoDns("[server] stopped");
+    LogInfo("stopped");
 
 #if OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
     Get<Srp::Server>().HandleDnssdServerStateChange();
@@ -138,7 +142,7 @@ exit:
 void Server::ProcessQuery(const Header &aRequestHeader, Message &aRequestMessage, const Ip6::MessageInfo &aMessageInfo)
 {
     Error            error           = kErrorNone;
-    Message *        responseMessage = nullptr;
+    Message         *responseMessage = nullptr;
     Header           responseHeader;
     NameCompressInfo compressInfo(kDefaultDomainName);
     Header::Response response                = Header::kResponseSuccess;
@@ -170,11 +174,19 @@ void Server::ProcessQuery(const Header &aRequestHeader, Message &aRequestMessage
 #endif
 
     // Resolve the question using query callbacks if SRP server failed to resolve the questions.
-    if (responseHeader.GetAnswerCount() == 0 &&
-        kErrorNone == ResolveByQueryCallbacks(responseHeader, *responseMessage, compressInfo, aMessageInfo))
+    if (responseHeader.GetAnswerCount() == 0)
     {
-        resolveByQueryCallbacks = true;
+        if (kErrorNone == ResolveByQueryCallbacks(responseHeader, *responseMessage, compressInfo, aMessageInfo))
+        {
+            resolveByQueryCallbacks = true;
+        }
     }
+#if OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
+    else
+    {
+        ++mCounters.mResolvedBySrp;
+    }
+#endif
 
 exit:
     if (error == kErrorNone && !resolveByQueryCallbacks)
@@ -187,15 +199,15 @@ exit:
 
 void Server::SendResponse(Header                  aHeader,
                           Header::Response        aResponseCode,
-                          Message &               aMessage,
+                          Message                &aMessage,
                           const Ip6::MessageInfo &aMessageInfo,
-                          Ip6::Udp::Socket &      aSocket)
+                          Ip6::Udp::Socket       &aSocket)
 {
     Error error;
 
     if (aResponseCode == Header::kResponseServerFailure)
     {
-        otLogWarnDns("[server] failed to handle DNS query due to server failure");
+        LogWarn("failed to handle DNS query due to server failure");
         aHeader.SetQuestionCount(0);
         aHeader.SetAnswerCount(0);
         aHeader.SetAdditionalRecordCount(0);
@@ -207,22 +219,24 @@ void Server::SendResponse(Header                  aHeader,
 
     error = aSocket.SendTo(aMessage, aMessageInfo);
 
-    FreeMessageOnError(&aMessage, error);
-
     if (error != kErrorNone)
     {
-        otLogWarnDns("[server] failed to send DNS-SD reply: %s", ErrorToString(error));
+        // do not use `FreeMessageOnError()` to avoid null check on nonnull pointer
+        aMessage.Free();
+        LogWarn("failed to send DNS-SD reply: %s", ErrorToString(error));
     }
     else
     {
-        otLogInfoDns("[server] send DNS-SD reply: %s, RCODE=%d", ErrorToString(error), aResponseCode);
+        LogInfo("send DNS-SD reply: %s, RCODE=%d", ErrorToString(error), aResponseCode);
     }
+
+    UpdateResponseCounters(aResponseCode);
 }
 
-Header::Response Server::AddQuestions(const Header &    aRequestHeader,
-                                      const Message &   aRequestMessage,
-                                      Header &          aResponseHeader,
-                                      Message &         aResponseMessage,
+Header::Response Server::AddQuestions(const Header     &aRequestHeader,
+                                      const Message    &aRequestMessage,
+                                      Header           &aResponseHeader,
+                                      Message          &aResponseMessage,
                                       NameCompressInfo &aCompressInfo)
 {
     Question         question;
@@ -280,9 +294,9 @@ exit:
     return response;
 }
 
-Error Server::AppendQuestion(const char *      aName,
-                             const Question &  aQuestion,
-                             Message &         aMessage,
+Error Server::AppendQuestion(const char       *aName,
+                             const Question   &aQuestion,
+                             Message          &aMessage,
                              NameCompressInfo &aCompressInfo)
 {
     Error error = kErrorNone;
@@ -309,9 +323,9 @@ exit:
     return error;
 }
 
-Error Server::AppendPtrRecord(Message &         aMessage,
-                              const char *      aServiceName,
-                              const char *      aInstanceName,
+Error Server::AppendPtrRecord(Message          &aMessage,
+                              const char       *aServiceName,
+                              const char       *aInstanceName,
                               uint32_t          aTtl,
                               NameCompressInfo &aCompressInfo)
 {
@@ -336,9 +350,9 @@ exit:
     return error;
 }
 
-Error Server::AppendSrvRecord(Message &         aMessage,
-                              const char *      aInstanceName,
-                              const char *      aHostName,
+Error Server::AppendSrvRecord(Message          &aMessage,
+                              const char       *aInstanceName,
+                              const char       *aHostName,
                               uint32_t          aTtl,
                               uint16_t          aPriority,
                               uint16_t          aWeight,
@@ -369,11 +383,11 @@ exit:
     return error;
 }
 
-Error Server::AppendAaaaRecord(Message &           aMessage,
-                               const char *        aHostName,
+Error Server::AppendAaaaRecord(Message            &aMessage,
+                               const char         *aHostName,
                                const Ip6::Address &aAddress,
                                uint32_t            aTtl,
-                               NameCompressInfo &  aCompressInfo)
+                               NameCompressInfo   &aCompressInfo)
 {
     AaaaRecord aaaaRecord;
     Error      error;
@@ -482,9 +496,9 @@ exit:
     return error;
 }
 
-Error Server::AppendTxtRecord(Message &         aMessage,
-                              const char *      aInstanceName,
-                              const void *      aTxtData,
+Error Server::AppendTxtRecord(Message          &aMessage,
+                              const char       *aInstanceName,
+                              const void       *aTxtData,
                               uint16_t          aTxtLength,
                               uint32_t          aTtl,
                               NameCompressInfo &aCompressInfo)
@@ -644,8 +658,8 @@ exit:
 }
 
 #if OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
-Header::Response Server::ResolveBySrp(Header &                  aResponseHeader,
-                                      Message &                 aResponseMessage,
+Header::Response Server::ResolveBySrp(Header                   &aResponseHeader,
+                                      Message                  &aResponseMessage,
                                       Server::NameCompressInfo &aCompressInfo)
 {
     Question         question;
@@ -662,8 +676,8 @@ Header::Response Server::ResolveBySrp(Header &                  aResponseHeader,
         response = ResolveQuestionBySrp(name, question, aResponseHeader, aResponseMessage, aCompressInfo,
                                         /* aAdditional */ false);
 
-        otLogInfoDns("[server] ANSWER: TRANSACTION=0x%04x, QUESTION=[%s %d %d], RCODE=%d",
-                     aResponseHeader.GetMessageId(), name, question.GetClass(), question.GetType(), response);
+        LogInfo("ANSWER: TRANSACTION=0x%04x, QUESTION=[%s %d %d], RCODE=%d", aResponseHeader.GetMessageId(), name,
+                question.GetClass(), question.GetType(), response);
     }
 
     // Answer the questions with additional RRs if required
@@ -681,18 +695,18 @@ Header::Response Server::ResolveBySrp(Header &                  aResponseHeader,
                                                                                 /* aAdditional */ true),
                          response = Header::kResponseServerFailure);
 
-            otLogInfoDns("[server] ADDITIONAL: TRANSACTION=0x%04x, QUESTION=[%s %d %d], RCODE=%d",
-                         aResponseHeader.GetMessageId(), name, question.GetClass(), question.GetType(), response);
+            LogInfo("ADDITIONAL: TRANSACTION=0x%04x, QUESTION=[%s %d %d], RCODE=%d", aResponseHeader.GetMessageId(),
+                    name, question.GetClass(), question.GetType(), response);
         }
     }
 exit:
     return response;
 }
 
-Header::Response Server::ResolveQuestionBySrp(const char *      aName,
-                                              const Question &  aQuestion,
-                                              Header &          aResponseHeader,
-                                              Message &         aResponseMessage,
+Header::Response Server::ResolveQuestionBySrp(const char       *aName,
+                                              const Question   &aQuestion,
+                                              Header           &aResponseHeader,
+                                              Message          &aResponseMessage,
                                               NameCompressInfo &aCompressInfo,
                                               bool              aAdditional)
 {
@@ -793,16 +807,16 @@ const Srp::Server::Host *Server::GetNextSrpHost(const Srp::Server::Host *aHost)
     return host;
 }
 
-const Srp::Server::Service *Server::GetNextSrpService(const Srp::Server::Host &   aHost,
+const Srp::Server::Service *Server::GetNextSrpService(const Srp::Server::Host    &aHost,
                                                       const Srp::Server::Service *aService)
 {
     return aHost.FindNextService(aService, Srp::Server::kFlagsAnyTypeActiveService);
 }
 #endif // OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
 
-Error Server::ResolveByQueryCallbacks(Header &                aResponseHeader,
-                                      Message &               aResponseMessage,
-                                      NameCompressInfo &      aCompressInfo,
+Error Server::ResolveByQueryCallbacks(Header                 &aResponseHeader,
+                                      Message                &aResponseMessage,
+                                      NameCompressInfo       &aCompressInfo,
                                       const Ip6::MessageInfo &aMessageInfo)
 {
     QueryTransaction *query = nullptr;
@@ -825,8 +839,8 @@ exit:
     return error;
 }
 
-Server::QueryTransaction *Server::NewQuery(const Header &          aResponseHeader,
-                                           Message &               aResponseMessage,
+Server::QueryTransaction *Server::NewQuery(const Header           &aResponseHeader,
+                                           Message                &aResponseMessage,
                                            const NameCompressInfo &aCompressInfo,
                                            const Ip6::MessageInfo &aMessageInfo)
 {
@@ -839,7 +853,7 @@ Server::QueryTransaction *Server::NewQuery(const Header &          aResponseHead
             continue;
         }
 
-        query.Init(aResponseHeader, aResponseMessage, aCompressInfo, aMessageInfo);
+        query.Init(aResponseHeader, aResponseMessage, aCompressInfo, aMessageInfo, GetInstance());
         ExitNow(newQuery = &query);
     }
 
@@ -852,8 +866,8 @@ exit:
     return newQuery;
 }
 
-bool Server::CanAnswerQuery(const QueryTransaction &          aQuery,
-                            const char *                      aServiceFullName,
+bool Server::CanAnswerQuery(const QueryTransaction           &aQuery,
+                            const char                       *aServiceFullName,
                             const otDnssdServiceInstanceInfo &aInstanceInfo)
 {
     char         name[Name::kMaxNameSize];
@@ -886,12 +900,12 @@ bool Server::CanAnswerQuery(const Server::QueryTransaction &aQuery, const char *
     return (sdType == kDnsQueryResolveHost) && StringMatch(name, aHostFullName, kStringCaseInsensitiveMatch);
 }
 
-void Server::AnswerQuery(QueryTransaction &                aQuery,
-                         const char *                      aServiceFullName,
+void Server::AnswerQuery(QueryTransaction                 &aQuery,
+                         const char                       *aServiceFullName,
                          const otDnssdServiceInstanceInfo &aInstanceInfo)
 {
-    Header &          responseHeader  = aQuery.GetResponseHeader();
-    Message &         responseMessage = aQuery.GetResponseMessage();
+    Header           &responseHeader  = aQuery.GetResponseHeader();
+    Message          &responseMessage = aQuery.GetResponseMessage();
     Error             error           = kErrorNone;
     NameCompressInfo &compressInfo    = aQuery.GetNameCompressInfo();
 
@@ -946,8 +960,8 @@ exit:
 
 void Server::AnswerQuery(QueryTransaction &aQuery, const char *aHostFullName, const otDnssdHostInfo &aHostInfo)
 {
-    Header &          responseHeader  = aQuery.GetResponseHeader();
-    Message &         responseMessage = aQuery.GetResponseMessage();
+    Header           &responseHeader  = aQuery.GetResponseHeader();
+    Message          &responseMessage = aQuery.GetResponseMessage();
     Error             error           = kErrorNone;
     NameCompressInfo &compressInfo    = aQuery.GetNameCompressInfo();
 
@@ -973,7 +987,7 @@ exit:
 
 void Server::SetQueryCallbacks(otDnssdQuerySubscribeCallback   aSubscribe,
                                otDnssdQueryUnsubscribeCallback aUnsubscribe,
-                               void *                          aContext)
+                               void                           *aContext)
 {
     OT_ASSERT((aSubscribe == nullptr) == (aUnsubscribe == nullptr));
 
@@ -982,7 +996,7 @@ void Server::SetQueryCallbacks(otDnssdQuerySubscribeCallback   aSubscribe,
     mQueryCallbackContext = aContext;
 }
 
-void Server::HandleDiscoveredServiceInstance(const char *                      aServiceFullName,
+void Server::HandleDiscoveredServiceInstance(const char                       *aServiceFullName,
                                              const otDnssdServiceInstanceInfo &aInstanceInfo)
 {
     OT_ASSERT(StringEndsWith(aServiceFullName, Name::kLabelSeperatorChar));
@@ -1022,7 +1036,7 @@ const otDnssdQuery *Server::GetNextQuery(const otDnssdQuery *aQuery) const
         cur = query + 1;
     }
 
-    for (; cur < OT_ARRAY_END(mQueryTransactions); cur++)
+    for (; cur < GetArrayEnd(mQueryTransactions); cur++)
     {
         if (cur->IsValid())
         {
@@ -1042,7 +1056,7 @@ Server::DnsQueryType Server::GetQueryTypeAndName(const otDnssdQuery *aQuery, cha
     return GetQueryTypeAndName(query->GetResponseHeader(), query->GetResponseMessage(), aName);
 }
 
-Server::DnsQueryType Server::GetQueryTypeAndName(const Header & aHeader,
+Server::DnsQueryType Server::GetQueryTypeAndName(const Header  &aHeader,
                                                  const Message &aMessage,
                                                  char (&aName)[Name::kMaxNameSize])
 {
@@ -1107,11 +1121,6 @@ bool Server::HasQuestion(const Header &aHeader, const Message &aMessage, const c
 
 exit:
     return found;
-}
-
-void Server::HandleTimer(Timer &aTimer)
-{
-    aTimer.Get<Server>().HandleTimer();
 }
 
 void Server::HandleTimer(void)
@@ -1188,13 +1197,15 @@ void Server::FinalizeQuery(QueryTransaction &aQuery, Header::Response aResponseC
     aQuery.Finalize(aResponseCode, mSocket);
 }
 
-void Server::QueryTransaction::Init(const Header &          aResponseHeader,
-                                    Message &               aResponseMessage,
+void Server::QueryTransaction::Init(const Header           &aResponseHeader,
+                                    Message                &aResponseMessage,
                                     const NameCompressInfo &aCompressInfo,
-                                    const Ip6::MessageInfo &aMessageInfo)
+                                    const Ip6::MessageInfo &aMessageInfo,
+                                    Instance               &aInstance)
 {
     OT_ASSERT(mResponseMessage == nullptr);
 
+    InstanceLocatorInit::Init(aInstance);
     mResponseHeader  = aResponseHeader;
     mResponseMessage = &aResponseMessage;
     mCompressInfo    = aCompressInfo;
@@ -1206,8 +1217,33 @@ void Server::QueryTransaction::Finalize(Header::Response aResponseMessage, Ip6::
 {
     OT_ASSERT(mResponseMessage != nullptr);
 
-    SendResponse(mResponseHeader, aResponseMessage, *mResponseMessage, mMessageInfo, aSocket);
+    Get<Server>().SendResponse(mResponseHeader, aResponseMessage, *mResponseMessage, mMessageInfo, aSocket);
     mResponseMessage = nullptr;
+}
+
+void Server::UpdateResponseCounters(Header::Response aResponseCode)
+{
+    switch (aResponseCode)
+    {
+    case UpdateHeader::kResponseSuccess:
+        ++mCounters.mSuccessResponse;
+        break;
+    case UpdateHeader::kResponseServerFailure:
+        ++mCounters.mServerFailureResponse;
+        break;
+    case UpdateHeader::kResponseFormatError:
+        ++mCounters.mFormatErrorResponse;
+        break;
+    case UpdateHeader::kResponseNameError:
+        ++mCounters.mNameErrorResponse;
+        break;
+    case UpdateHeader::kResponseNotImplemented:
+        ++mCounters.mNotImplementedResponse;
+        break;
+    default:
+        ++mCounters.mOtherResponse;
+        break;
+    }
 }
 
 } // namespace ServiceDiscovery

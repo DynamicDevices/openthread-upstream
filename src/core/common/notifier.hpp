@@ -95,6 +95,7 @@ enum Event : uint32_t
     kEventJoinerStateChanged               = OT_CHANGED_JOINER_STATE,                 ///< Joiner state changed
     kEventActiveDatasetChanged             = OT_CHANGED_ACTIVE_DATASET,               ///< Active Dataset changed
     kEventPendingDatasetChanged            = OT_CHANGED_PENDING_DATASET,              ///< Pending Dataset changed
+    kEventNat64TranslatorStateChanged      = OT_CHANGED_NAT64_TRANSLATOR_STATE,       ///< Nat64Translator state changed
 };
 
 /**
@@ -222,7 +223,7 @@ public:
      * This method removes/unregisters a previously registered `otStateChangedCallback` handler.
      *
      * @param[in]  aCallback     A pointer to the callback function pointer.
-     * @param[in]  aContex       A pointer to arbitrary context information.
+     * @param[in]  aContext      A pointer to arbitrary context information.
      *
      */
     void RemoveCallback(otStateChangedCallback aCallback, void *aContext);
@@ -270,9 +271,9 @@ public:
      *
      * The template `Type` should support comparison operator `==` and assignment operator `=`.
      *
-     * @param[inout] aVariable    A reference to the variable to update.
-     * @param[in]    aNewValue    The new value.
-     * @param[in]    aEvent       The event to signal.
+     * @param[in,out] aVariable    A reference to the variable to update.
+     * @param[in]     aNewValue    The new value.
+     * @param[in]     aEvent       The event to signal.
      *
      * @retval kErrorNone      The variable was update successfully and @p aEvent was signaled.
      * @retval kErrorAlready   The variable was already set to the same value.
@@ -310,18 +311,19 @@ private:
     struct ExternalCallback
     {
         otStateChangedCallback mHandler;
-        void *                 mContext;
+        void                  *mContext;
     };
 
-    static void EmitEvents(Tasklet &aTasklet);
-    void        EmitEvents(void);
+    void EmitEvents(void);
 
     void        LogEvents(Events aEvents) const;
     const char *EventToString(Event aEvent) const;
 
+    using EmitEventsTask = TaskletIn<Notifier, &Notifier::EmitEvents>;
+
     Events           mEventsToSignal;
     Events           mSignaledEvents;
-    Tasklet          mTask;
+    EmitEventsTask   mTask;
     ExternalCallback mExternalCallbacks[kMaxExternalHandlers];
 };
 

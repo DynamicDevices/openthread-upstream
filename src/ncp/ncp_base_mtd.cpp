@@ -320,7 +320,7 @@ template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_THREAD_CSL_CHANNEL>(v
 template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_THREAD_MLR_REQUEST>(void)
 {
     otError      error = OT_ERROR_NONE;
-    otIp6Address addresses[kIp6AddressesNumMax];
+    otIp6Address addresses[OT_IP6_MAX_MLR_ADDRESSES];
     uint8_t      addressesCount = 0U;
     bool         timeoutPresent = false;
     uint32_t     timeout;
@@ -329,7 +329,7 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_THREAD_MLR_REQUEST>(v
 
     while (mDecoder.GetRemainingLengthInStruct())
     {
-        VerifyOrExit(addressesCount < kIp6AddressesNumMax, error = OT_ERROR_NO_BUFS);
+        VerifyOrExit(addressesCount < Ip6AddressesTlv::kMaxAddresses, error = OT_ERROR_NO_BUFS);
         SuccessOrExit(error = mDecoder.ReadIp6Address(addresses[addressesCount]));
         ++addressesCount;
     }
@@ -365,7 +365,7 @@ exit:
     return error;
 }
 
-void NcpBase::HandleMlrRegResult_Jump(void *              aContext,
+void NcpBase::HandleMlrRegResult_Jump(void               *aContext,
                                       otError             aError,
                                       uint8_t             aMlrStatus,
                                       const otIp6Address *aFailedAddresses,
@@ -806,6 +806,11 @@ template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_THREAD_PARENT>(void)
             SuccessOrExit(error = mEncoder.WriteInt8(lastRssi));
             SuccessOrExit(error = mEncoder.WriteUint8(parentInfo.mLinkQualityIn));
             SuccessOrExit(error = mEncoder.WriteUint8(parentInfo.mLinkQualityOut));
+            SuccessOrExit(error = mEncoder.WriteUint8(parentInfo.mVersion));
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+            SuccessOrExit(error = mEncoder.WriteUint8(parentInfo.mCslClockAccuracy));
+            SuccessOrExit(error = mEncoder.WriteUint8(parentInfo.mCslUncertainty));
+#endif
         }
         else
         {
@@ -1094,7 +1099,7 @@ template <> otError NcpBase::HandlePropertyInsert<SPINEL_PROP_SERVER_SERVICES>(v
     otError         error = OT_ERROR_NONE;
     otServiceConfig cfg;
     bool            stable;
-    const uint8_t * data;
+    const uint8_t  *data;
     uint16_t        dataLen;
 
     VerifyOrExit(mAllowLocalServerDataChange, error = OT_ERROR_INVALID_STATE);
@@ -1228,17 +1233,21 @@ otError NcpBase::EncodeOperationalDataset(const otOperationalDataset &aDataset)
 
     if (aDataset.mComponents.mIsActiveTimestampPresent)
     {
+        const otTimestamp &activeTimestamp = aDataset.mActiveTimestamp;
+
         SuccessOrExit(error = mEncoder.OpenStruct());
         SuccessOrExit(error = mEncoder.WriteUintPacked(SPINEL_PROP_DATASET_ACTIVE_TIMESTAMP));
-        SuccessOrExit(error = mEncoder.WriteUint64(aDataset.mActiveTimestamp));
+        SuccessOrExit(error = mEncoder.WriteUint64(activeTimestamp.mSeconds));
         SuccessOrExit(error = mEncoder.CloseStruct());
     }
 
     if (aDataset.mComponents.mIsPendingTimestampPresent)
     {
+        const otTimestamp &pendingTimestamp = aDataset.mPendingTimestamp;
+
         SuccessOrExit(error = mEncoder.OpenStruct());
         SuccessOrExit(error = mEncoder.WriteUintPacked(SPINEL_PROP_DATASET_PENDING_TIMESTAMP));
-        SuccessOrExit(error = mEncoder.WriteUint64(aDataset.mPendingTimestamp));
+        SuccessOrExit(error = mEncoder.WriteUint64(pendingTimestamp.mSeconds));
         SuccessOrExit(error = mEncoder.CloseStruct());
     }
 
@@ -1363,9 +1372,9 @@ template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_THREAD_PENDING_DATASE
 }
 
 otError NcpBase::DecodeOperationalDataset(otOperationalDataset &aDataset,
-                                          const uint8_t **      aTlvs,
-                                          uint8_t *             aTlvsLength,
-                                          const otIp6Address ** aDestIpAddress,
+                                          const uint8_t       **aTlvs,
+                                          uint8_t              *aTlvsLength,
+                                          const otIp6Address  **aDestIpAddress,
                                           bool                  aAllowEmptyValues)
 {
     otError error = OT_ERROR_NONE;
@@ -1400,7 +1409,9 @@ otError NcpBase::DecodeOperationalDataset(otOperationalDataset &aDataset,
 
             if (!aAllowEmptyValues || !mDecoder.IsAllReadInStruct())
             {
-                SuccessOrExit(error = mDecoder.ReadUint64(aDataset.mActiveTimestamp));
+                SuccessOrExit(error = mDecoder.ReadUint64(aDataset.mActiveTimestamp.mSeconds));
+                aDataset.mActiveTimestamp.mTicks         = 0;
+                aDataset.mActiveTimestamp.mAuthoritative = false;
             }
 
             aDataset.mComponents.mIsActiveTimestampPresent = true;
@@ -1410,7 +1421,9 @@ otError NcpBase::DecodeOperationalDataset(otOperationalDataset &aDataset,
 
             if (!aAllowEmptyValues || !mDecoder.IsAllReadInStruct())
             {
-                SuccessOrExit(error = mDecoder.ReadUint64(aDataset.mPendingTimestamp));
+                SuccessOrExit(error = mDecoder.ReadUint64(aDataset.mPendingTimestamp.mSeconds));
+                aDataset.mPendingTimestamp.mTicks         = 0;
+                aDataset.mPendingTimestamp.mAuthoritative = false;
             }
 
             aDataset.mComponents.mIsPendingTimestampPresent = true;
@@ -1643,7 +1656,7 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_THREAD_MGMT_SET_ACTIV
 {
     otError              error = OT_ERROR_NONE;
     otOperationalDataset dataset;
-    const uint8_t *      extraTlvs;
+    const uint8_t       *extraTlvs;
     uint8_t              extraTlvsLength;
 
     SuccessOrExit(error = DecodeOperationalDataset(dataset, &extraTlvs, &extraTlvsLength));
@@ -1658,7 +1671,7 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_THREAD_MGMT_SET_PENDI
 {
     otError              error = OT_ERROR_NONE;
     otOperationalDataset dataset;
-    const uint8_t *      extraTlvs;
+    const uint8_t       *extraTlvs;
     uint8_t              extraTlvsLength;
 
     SuccessOrExit(error = DecodeOperationalDataset(dataset, &extraTlvs, &extraTlvsLength));
@@ -1673,9 +1686,9 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_THREAD_MGMT_GET_ACTIV
 {
     otError              error = OT_ERROR_NONE;
     otOperationalDataset dataset;
-    const uint8_t *      extraTlvs;
+    const uint8_t       *extraTlvs;
     uint8_t              extraTlvsLength;
-    const otIp6Address * destIpAddress;
+    const otIp6Address  *destIpAddress;
 
     SuccessOrExit(error = DecodeOperationalDataset(dataset, &extraTlvs, &extraTlvsLength, &destIpAddress, true));
     error = otDatasetSendMgmtActiveGet(mInstance, &dataset.mComponents, extraTlvs, extraTlvsLength, destIpAddress);
@@ -1688,9 +1701,9 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_THREAD_MGMT_GET_PENDI
 {
     otError              error = OT_ERROR_NONE;
     otOperationalDataset dataset;
-    const uint8_t *      extraTlvs;
+    const uint8_t       *extraTlvs;
     uint8_t              extraTlvsLength;
-    const otIp6Address * destIpAddress;
+    const otIp6Address  *destIpAddress;
 
     SuccessOrExit(error = DecodeOperationalDataset(dataset, &extraTlvs, &extraTlvsLength, &destIpAddress, true));
     error = otDatasetSendMgmtPendingGet(mInstance, &dataset.mComponents, extraTlvs, extraTlvsLength, destIpAddress);
@@ -2245,7 +2258,7 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_STREAM_NET>(void)
     uint16_t       frameLen = 0;
     const uint8_t *metaPtr  = nullptr;
     uint16_t       metaLen  = 0;
-    otMessage *    message  = nullptr;
+    otMessage     *message  = nullptr;
     otError        error    = OT_ERROR_NONE;
 
     SuccessOrExit(error = mDecoder.ReadDataWithLen(framePtr, frameLen));
@@ -2682,27 +2695,28 @@ template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_CNTR_IP_RX_FAILURE>(v
 
 template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_MSG_BUFFER_COUNTERS>(void)
 {
-    otError      error;
+    otError      error = OT_ERROR_NONE;
     otBufferInfo bufferInfo;
 
     otMessageGetBufferInfo(mInstance, &bufferInfo);
 
     SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mTotalBuffers));
     SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mFreeBuffers));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.m6loSendMessages));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.m6loSendBuffers));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.m6loReassemblyMessages));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.m6loReassemblyBuffers));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mIp6Messages));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mIp6Buffers));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mMplMessages));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mMplBuffers));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mMleMessages));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mMleBuffers));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mArpMessages));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mArpBuffers));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mCoapMessages));
-    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mCoapBuffers));
+
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.m6loSendQueue.mNumMessages));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.m6loSendQueue.mNumBuffers));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.m6loReassemblyQueue.mNumMessages));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.m6loReassemblyQueue.mNumBuffers));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mIp6Queue.mNumMessages));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mIp6Queue.mNumBuffers));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mMplQueue.mNumMessages));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mMplQueue.mNumBuffers));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mMleQueue.mNumMessages));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mMleQueue.mNumBuffers));
+    SuccessOrExit(error = mEncoder.WriteUint16(0)); // Write zero for ARP for backward compatibility.
+    SuccessOrExit(error = mEncoder.WriteUint16(0));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mCoapQueue.mNumMessages));
+    SuccessOrExit(error = mEncoder.WriteUint16(bufferInfo.mCoapQueue.mNumBuffers));
 
 exit:
     return error;
@@ -3119,7 +3133,7 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_THREAD_LINK_METRICS_Q
     otError             error = OT_ERROR_NONE;
     struct otIp6Address address;
     uint8_t             seriesId;
-    otLinkMetrics       linkMetrics = {};
+    otLinkMetrics       linkMetrics = {false, false, false, false, false};
 
     SuccessOrExit(error = mDecoder.ReadIp6Address(address));
     SuccessOrExit(error = mDecoder.ReadUint8(seriesId));
@@ -3154,7 +3168,7 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_THREAD_LINK_METRICS_M
     otError             error = OT_ERROR_NONE;
     struct otIp6Address address;
     uint8_t             controlFlags;
-    otLinkMetrics       linkMetrics = {};
+    otLinkMetrics       linkMetrics = {false, false, false, false, false};
 
     SuccessOrExit(error = mDecoder.ReadIp6Address(address));
     SuccessOrExit(error = mDecoder.ReadUint8(controlFlags));
@@ -3175,8 +3189,8 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_THREAD_LINK_METRICS_M
     struct otIp6Address      address;
     uint8_t                  seriesId;
     uint8_t                  types;
-    otLinkMetrics            linkMetrics = {};
-    otLinkMetricsSeriesFlags seriesFlags = {};
+    otLinkMetrics            linkMetrics = {false, false, false, false, false};
+    otLinkMetricsSeriesFlags seriesFlags = {false, false, false, false};
 
     SuccessOrExit(error = mDecoder.ReadIp6Address(address));
     SuccessOrExit(error = mDecoder.ReadUint8(seriesId));
@@ -3277,11 +3291,11 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_NET_REQUIRE_JOIN_EXIS
 
 template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_STREAM_NET_INSECURE>(void)
 {
-    const uint8_t *   framePtr    = nullptr;
+    const uint8_t    *framePtr    = nullptr;
     uint16_t          frameLen    = 0;
-    const uint8_t *   metaPtr     = nullptr;
+    const uint8_t    *metaPtr     = nullptr;
     uint16_t          metaLen     = 0;
-    otMessage *       message     = nullptr;
+    otMessage        *message     = nullptr;
     otError           error       = OT_ERROR_NONE;
     otMessageSettings msgSettings = {false, OT_MESSAGE_PRIORITY_NORMAL};
 
@@ -3725,7 +3739,7 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_SRP_CLIENT_HOST_NAME>
     otError     error;
     const char *name;
     uint16_t    size;
-    char *      hostNameBuffer;
+    char       *hostNameBuffer;
 
     SuccessOrExit(error = mDecoder.ReadUtf8(name));
 
@@ -3826,9 +3840,9 @@ template <> otError NcpBase::HandlePropertyInsert<SPINEL_PROP_SRP_CLIENT_SERVICE
 {
     otError                         error = OT_ERROR_NONE;
     otSrpClientBuffersServiceEntry *entry = nullptr;
-    const char *                    serviceName;
-    const char *                    instanceName;
-    char *                          stringBuffer;
+    const char                     *serviceName;
+    const char                     *instanceName;
+    char                           *stringBuffer;
     uint16_t                        size;
 
     entry = otSrpClientBuffersAllocateService(mInstance);
@@ -3863,8 +3877,8 @@ exit:
 template <> otError NcpBase::HandlePropertyRemove<SPINEL_PROP_SRP_CLIENT_SERVICES>(void)
 {
     otError                   error = OT_ERROR_NONE;
-    const char *              serviceName;
-    const char *              instanceName;
+    const char               *serviceName;
+    const char               *instanceName;
     bool                      toClear = false;
     const otSrpClientService *service;
 
@@ -3967,17 +3981,17 @@ static spinel_srp_client_error_t SrpClientErrorToSpinelError(otError aError)
 
 void NcpBase::HandleSrpClientCallback(otError                    aError,
                                       const otSrpClientHostInfo *aHostInfo,
-                                      const otSrpClientService * aServices,
-                                      const otSrpClientService * aRemovedServices,
-                                      void *                     aContext)
+                                      const otSrpClientService  *aServices,
+                                      const otSrpClientService  *aRemovedServices,
+                                      void                      *aContext)
 {
     static_cast<NcpBase *>(aContext)->HandleSrpClientCallback(aError, aHostInfo, aServices, aRemovedServices);
 }
 
 void NcpBase::HandleSrpClientCallback(otError                    aError,
                                       const otSrpClientHostInfo *aHostInfo,
-                                      const otSrpClientService * aServices,
-                                      const otSrpClientService * aRemovedServices)
+                                      const otSrpClientService  *aServices,
+                                      const otSrpClientService  *aRemovedServices)
 {
     otError                   error = OT_ERROR_NONE;
     const otSrpClientService *service;
@@ -4192,10 +4206,7 @@ exit:
     return error;
 }
 
-void NcpBase::HandleTimeSyncUpdate(void *aContext)
-{
-    static_cast<NcpBase *>(aContext)->HandleTimeSyncUpdate();
-}
+void NcpBase::HandleTimeSyncUpdate(void *aContext) { static_cast<NcpBase *>(aContext)->HandleTimeSyncUpdate(); }
 
 void NcpBase::HandleTimeSyncUpdate(void)
 {
@@ -4220,11 +4231,6 @@ void NcpBase::HandleActiveScanResult(otActiveScanResult *aResult)
     if (aResult)
     {
         uint8_t flags = static_cast<uint8_t>(aResult->mVersion << SPINEL_BEACON_THREAD_FLAG_VERSION_SHIFT);
-
-        if (aResult->mIsJoinable)
-        {
-            flags |= SPINEL_BEACON_THREAD_FLAG_JOINABLE;
-        }
 
         if (aResult->mIsNative)
         {
@@ -4339,15 +4345,15 @@ void NcpBase::HandleJoinerCallback(otError aError)
 #endif
 
 #if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE
-void NcpBase::HandleLinkMetricsReport_Jump(const otIp6Address *       aSource,
+void NcpBase::HandleLinkMetricsReport_Jump(const otIp6Address        *aSource,
                                            const otLinkMetricsValues *aMetricsValues,
                                            uint8_t                    aStatus,
-                                           void *                     aContext)
+                                           void                      *aContext)
 {
     static_cast<NcpBase *>(aContext)->HandleLinkMetricsReport(aSource, aMetricsValues, aStatus);
 }
 
-void NcpBase::HandleLinkMetricsReport(const otIp6Address *       aSource,
+void NcpBase::HandleLinkMetricsReport(const otIp6Address        *aSource,
                                       const otLinkMetricsValues *aMetricsValues,
                                       uint8_t                    aStatus)
 {
@@ -4384,16 +4390,16 @@ exit:
 }
 
 void NcpBase::HandleLinkMetricsEnhAckProbingIeReport_Jump(otShortAddress             aShortAddress,
-                                                          const otExtAddress *       aExtAddress,
+                                                          const otExtAddress        *aExtAddress,
                                                           const otLinkMetricsValues *aMetricsValues,
-                                                          void *                     aContext)
+                                                          void                      *aContext)
 {
     static_cast<NcpBase *>(aContext)->HandleLinkMetricsEnhAckProbingIeReport(aShortAddress, aExtAddress,
                                                                              aMetricsValues);
 }
 
 void NcpBase::HandleLinkMetricsEnhAckProbingIeReport(otShortAddress             aShortAddress,
-                                                     const otExtAddress *       aExtAddress,
+                                                     const otExtAddress        *aExtAddress,
                                                      const otLinkMetricsValues *aMetricsValues)
 {
     SuccessOrExit(mEncoder.BeginFrame(SPINEL_HEADER_FLAG | SPINEL_HEADER_IID_0, SPINEL_CMD_PROP_VALUE_IS,
@@ -4504,12 +4510,12 @@ exit:
 #if OPENTHREAD_CONFIG_UDP_FORWARD_ENABLE
 template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_THREAD_UDP_FORWARD_STREAM>(void)
 {
-    const uint8_t *     framePtr = nullptr;
+    const uint8_t      *framePtr = nullptr;
     uint16_t            frameLen = 0;
     const otIp6Address *peerAddr;
     uint16_t            peerPort;
     uint16_t            sockPort;
-    otMessage *         message;
+    otMessage          *message;
     otError             error       = OT_ERROR_NONE;
     otMessageSettings   msgSettings = {false, OT_MESSAGE_PRIORITY_NORMAL};
 
@@ -4539,11 +4545,11 @@ exit:
     return error;
 }
 
-void NcpBase::HandleUdpForwardStream(otMessage *   aMessage,
+void NcpBase::HandleUdpForwardStream(otMessage    *aMessage,
                                      uint16_t      aPeerPort,
                                      otIp6Address *aPeerAddr,
                                      uint16_t      aSockPort,
-                                     void *        aContext)
+                                     void         *aContext)
 {
     static_cast<NcpBase *>(aContext)->HandleUdpForwardStream(aMessage, aPeerPort, *aPeerAddr, aSockPort);
 }

@@ -154,10 +154,8 @@ typedef struct otJoinerInfo
 /**
  * This function pointer is called whenever the commissioner state changes.
  *
- * @param[in]  aChannelMask       The channel mask value.
- * @param[in]  aEnergyList        A pointer to the energy measurement list.
- * @param[in]  aEnergyListLength  Number of entries in @p aEnergyListLength.
- * @param[in]  aContext           A pointer to application-specific context.
+ * @param[in]  aState    The Commissioner state.
+ * @param[in]  aContext  A pointer to application-specific context.
  *
  */
 typedef void (*otCommissionerStateCallback)(otCommissionerState aState, void *aContext);
@@ -172,9 +170,9 @@ typedef void (*otCommissionerStateCallback)(otCommissionerState aState, void *aC
  *
  */
 typedef void (*otCommissionerJoinerCallback)(otCommissionerJoinerEvent aEvent,
-                                             const otJoinerInfo *      aJoinerInfo,
-                                             const otExtAddress *      aJoinerId,
-                                             void *                    aContext);
+                                             const otJoinerInfo       *aJoinerInfo,
+                                             const otExtAddress       *aJoinerId,
+                                             void                     *aContext);
 
 /**
  * This function enables the Thread Commissioner role.
@@ -189,10 +187,10 @@ typedef void (*otCommissionerJoinerCallback)(otCommissionerJoinerEvent aEvent,
  * @retval OT_ERROR_INVALID_STATE  Device is not currently attached to a network.
  *
  */
-otError otCommissionerStart(otInstance *                 aInstance,
+otError otCommissionerStart(otInstance                  *aInstance,
                             otCommissionerStateCallback  aStateCallback,
                             otCommissionerJoinerCallback aJoinerCallback,
-                            void *                       aCallbackContext);
+                            void                        *aCallbackContext);
 
 /**
  * This function disables the Thread Commissioner role.
@@ -204,6 +202,29 @@ otError otCommissionerStart(otInstance *                 aInstance,
  *
  */
 otError otCommissionerStop(otInstance *aInstance);
+
+/**
+ * This function returns the Commissioner Id.
+ *
+ * @param[in]  aInstance         A pointer to an OpenThread instance.
+ *
+ * @returns The Commissioner Id.
+ *
+ */
+const char *otCommissionerGetId(otInstance *aInstance);
+
+/**
+ * This function sets the Commissioner Id.
+ *
+ * @param[in]  aInstance     A pointer to an OpenThread instance.
+ * @param[in]  aId           A pointer to a string character array. Must be null terminated.
+ *
+ * @retval OT_ERROR_NONE            Successfully set the Commissioner Id.
+ * @retval OT_ERROR_INVALID_ARGS    Given name is too long.
+ * @retval OT_ERROR_INVALID_STATE   The commissioner is active and id cannot be changed.
+ *
+ */
+otError otCommissionerSetId(otInstance *aInstance, const char *aId);
 
 /**
  * This function adds a Joiner entry.
@@ -221,9 +242,9 @@ otError otCommissionerStop(otInstance *aInstance);
  * @note Only use this after successfully starting the Commissioner role with otCommissionerStart().
  *
  */
-otError otCommissionerAddJoiner(otInstance *        aInstance,
+otError otCommissionerAddJoiner(otInstance         *aInstance,
                                 const otExtAddress *aEui64,
-                                const char *        aPskd,
+                                const char         *aPskd,
                                 uint32_t            aTimeout);
 
 /**
@@ -242,16 +263,16 @@ otError otCommissionerAddJoiner(otInstance *        aInstance,
  * @note Only use this after successfully starting the Commissioner role with otCommissionerStart().
  *
  */
-otError otCommissionerAddJoinerWithDiscerner(otInstance *             aInstance,
+otError otCommissionerAddJoinerWithDiscerner(otInstance              *aInstance,
                                              const otJoinerDiscerner *aDiscerner,
-                                             const char *             aPskd,
+                                             const char              *aPskd,
                                              uint32_t                 aTimeout);
 
 /**
  * This method get joiner info at aIterator position.
  *
  * @param[in]      aInstance   A pointer to instance.
- * @param[inout]   aIterator   A pointer to the Joiner Info iterator context.
+ * @param[in,out]  aIterator   A pointer to the Joiner Info iterator context.
  * @param[out]     aJoiner     A reference to Joiner info.
  *
  * @retval OT_ERROR_NONE       Successfully get the Joiner info.
@@ -280,7 +301,7 @@ otError otCommissionerRemoveJoiner(otInstance *aInstance, const otExtAddress *aE
  * This function removes a Joiner entry.
  *
  * @param[in]  aInstance          A pointer to an OpenThread instance.
- * @param[in]  aEui64             A pointer to the Joiner Discerner.
+ * @param[in]  aDiscerner         A pointer to the Joiner Discerner.
  *
  * @retval OT_ERROR_NONE          Successfully removed the Joiner.
  * @retval OT_ERROR_NOT_FOUND     The Joiner specified by @p aEui64 was not found.
@@ -330,7 +351,7 @@ otError otCommissionerSetProvisioningUrl(otInstance *aInstance, const char *aPro
  * @note Only use this after successfully starting the Commissioner role with otCommissionerStart().
  *
  */
-otError otCommissionerAnnounceBegin(otInstance *        aInstance,
+otError otCommissionerAnnounceBegin(otInstance         *aInstance,
                                     uint32_t            aChannelMask,
                                     uint8_t             aCount,
                                     uint16_t            aPeriod,
@@ -348,7 +369,7 @@ otError otCommissionerAnnounceBegin(otInstance *        aInstance,
 typedef void (*otCommissionerEnergyReportCallback)(uint32_t       aChannelMask,
                                                    const uint8_t *aEnergyList,
                                                    uint8_t        aEnergyListLength,
-                                                   void *         aContext);
+                                                   void          *aContext);
 
 /**
  * This function sends an Energy Scan Query message.
@@ -369,14 +390,14 @@ typedef void (*otCommissionerEnergyReportCallback)(uint32_t       aChannelMask,
  * @note Only use this after successfully starting the Commissioner role with otCommissionerStart().
  *
  */
-otError otCommissionerEnergyScan(otInstance *                       aInstance,
+otError otCommissionerEnergyScan(otInstance                        *aInstance,
                                  uint32_t                           aChannelMask,
                                  uint8_t                            aCount,
                                  uint16_t                           aPeriod,
                                  uint16_t                           aScanDuration,
-                                 const otIp6Address *               aAddress,
+                                 const otIp6Address                *aAddress,
                                  otCommissionerEnergyReportCallback aCallback,
-                                 void *                             aContext);
+                                 void                              *aContext);
 
 /**
  * This function pointer is called when the Commissioner receives a PAN ID Conflict message.
@@ -405,12 +426,12 @@ typedef void (*otCommissionerPanIdConflictCallback)(uint16_t aPanId, uint32_t aC
  * @note Only use this after successfully starting the Commissioner role with otCommissionerStart().
  *
  */
-otError otCommissionerPanIdQuery(otInstance *                        aInstance,
+otError otCommissionerPanIdQuery(otInstance                         *aInstance,
                                  uint16_t                            aPanId,
                                  uint32_t                            aChannelMask,
-                                 const otIp6Address *                aAddress,
+                                 const otIp6Address                 *aAddress,
                                  otCommissionerPanIdConflictCallback aCallback,
-                                 void *                              aContext);
+                                 void                               *aContext);
 
 /**
  * This function sends MGMT_COMMISSIONER_GET.
@@ -439,9 +460,9 @@ otError otCommissionerSendMgmtGet(otInstance *aInstance, const uint8_t *aTlvs, u
  * @retval OT_ERROR_INVALID_STATE The commissioner is not active.
  *
  */
-otError otCommissionerSendMgmtSet(otInstance *                  aInstance,
+otError otCommissionerSendMgmtSet(otInstance                   *aInstance,
                                   const otCommissioningDataset *aDataset,
-                                  const uint8_t *               aTlvs,
+                                  const uint8_t                *aTlvs,
                                   uint8_t                       aLength);
 
 /**

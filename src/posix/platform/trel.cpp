@@ -42,12 +42,12 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <openthread/logging.h>
 #include <openthread/platform/trel.h>
 
 #include "radio_url.hpp"
 #include "system.hpp"
 #include "common/code_utils.hpp"
-#include "common/logging.hpp"
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
 
@@ -73,8 +73,6 @@ static bool sInitialized = false;
 static bool sEnabled     = false;
 static int  sSocket      = -1;
 
-#if OPENTHREAD_CONFIG_LOG_PLATFORM && (OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_DEBG)
-
 static const char *Ip6AddrToString(const void *aAddress)
 {
     static char string[INET6_ADDRSTRLEN];
@@ -87,8 +85,8 @@ static const char *BufferToString(const uint8_t *aBuffer, uint16_t aLength)
     static char    string[1600];
 
     uint16_t num = 0;
-    char *   cur = &string[0];
-    char *   end = &string[sizeof(string) - 1];
+    char    *cur = &string[0];
+    char    *end = &string[sizeof(string) - 1];
 
     cur += snprintf(cur, (uint16_t)(end - cur), "[(len:%d) ", aLength);
     VerifyOrExit(cur < end);
@@ -117,8 +115,6 @@ exit:
     return string;
 }
 
-#endif // #if OPENTHREAD_CONFIG_LOG_PLATFORM && (OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_DEBG)
-
 static void PrepareSocket(uint16_t &aUdpPort)
 {
     int                 val;
@@ -141,7 +137,7 @@ static void PrepareSocket(uint16_t &aUdpPort)
     memset(&sockAddr, 0, sizeof(sockAddr));
     sockAddr.sin6_family = AF_INET6;
     sockAddr.sin6_addr   = in6addr_any;
-    sockAddr.sin6_port   = 0;
+    sockAddr.sin6_port   = OPENTHREAD_POSIX_CONFIG_TREL_UDP_PORT;
 
     if (bind(sSocket, (struct sockaddr *)&sockAddr, sizeof(sockAddr)) == -1)
     {
@@ -453,8 +449,8 @@ exit:
     return;
 }
 
-void otPlatTrelSend(otInstance *      aInstance,
-                    const uint8_t *   aUdpPayload,
+void otPlatTrelSend(otInstance       *aInstance,
+                    const uint8_t    *aUdpPayload,
                     uint16_t          aUdpPayloadLen,
                     const otSockAddr *aDestSockAddr)
 {

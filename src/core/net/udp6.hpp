@@ -40,6 +40,7 @@
 #include <openthread/platform/udp.h>
 
 #include "common/as_core_type.hpp"
+#include "common/callback.hpp"
 #include "common/clearable.hpp"
 #include "common/linked_list.hpp"
 #include "common/locator.hpp"
@@ -64,6 +65,17 @@ class Udp;
 #if OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE && OPENTHREAD_CONFIG_UDP_FORWARD_ENABLE
 #error "OPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE and OPENTHREAD_CONFIG_UDP_FORWARD_ENABLE must not both be set."
 #endif
+
+/**
+ * This enumeration defines the network interface identifiers.
+ *
+ */
+enum NetifIdentifier : uint8_t
+{
+    kNetifUnspecified = OT_NETIF_UNSPECIFIED, ///< Unspecified network interface.
+    kNetifThread      = OT_NETIF_THREAD,      ///< The Thread interface.
+    kNetifBackbone    = OT_NETIF_BACKBONE,    ///< The Backbone interface.
+};
 
 /**
  * This class implements core UDP message handling.
@@ -191,7 +203,7 @@ public:
          * @retval kErrorFailed          Failed to bind UDP Socket.
          *
          */
-        Error Bind(const SockAddr &aSockAddr, otNetifIdentifier aNetifIdentifier = OT_NETIF_THREAD);
+        Error Bind(const SockAddr &aSockAddr, NetifIdentifier aNetifIdentifier = kNetifThread);
 
         /**
          * This method binds the UDP socket.
@@ -203,7 +215,7 @@ public:
          * @retval kErrorFailed          Failed to bind UDP Socket.
          *
          */
-        Error Bind(uint16_t aPort, otNetifIdentifier aNetifIdentifier = OT_NETIF_THREAD);
+        Error Bind(uint16_t aPort, NetifIdentifier aNetifIdentifier = kNetifThread);
 
         /**
          * This method binds the UDP socket.
@@ -278,7 +290,7 @@ public:
          * @retval  kErrorFailed  Failed to join the multicast group.
          *
          */
-        Error JoinNetifMulticastGroup(otNetifIdentifier aNetifIdentifier, const Address &aAddress);
+        Error JoinNetifMulticastGroup(NetifIdentifier aNetifIdentifier, const Address &aAddress);
 
         /**
          * This method configures the UDP socket to leave a multicast group on a Host network interface.
@@ -290,7 +302,7 @@ public:
          * @retval  kErrorFailed Failed to leave the multicast group.
          *
          */
-        Error LeaveNetifMulticastGroup(otNetifIdentifier aNetifIdentifier, const Address &aAddress);
+        Error LeaveNetifMulticastGroup(NetifIdentifier aNetifIdentifier, const Address &aAddress);
 #endif
     };
 
@@ -306,8 +318,8 @@ public:
         /**
          * This constructor initializes the UDP receiver.
          *
-         * @param[in]   aUdpHandler     A pointer to the function to handle UDP message.
-         * @param[in]   aContext        A pointer to arbitrary context information.
+         * @param[in]   aHandler     A pointer to the function to handle UDP message.
+         * @param[in]   aContext     A pointer to arbitrary context information.
          *
          */
         Receiver(otUdpHandler aHandler, void *aContext)
@@ -329,7 +341,7 @@ public:
      *
      */
     OT_TOOL_PACKED_BEGIN
-    class Header
+    class Header : public Clearable<Header>
     {
     public:
         static constexpr uint16_t kSourcePortFieldOffset = 0; ///< Byte offset of Source Port field in UDP header.
@@ -474,7 +486,7 @@ public:
      * @retval kErrorFailed          Failed to bind UDP Socket.
      *
      */
-    Error Bind(SocketHandle &aSocket, const SockAddr &aSockAddr, otNetifIdentifier aNetifIdentifier);
+    Error Bind(SocketHandle &aSocket, const SockAddr &aSockAddr, NetifIdentifier aNetifIdentifier);
 
     /**
      * This method connects a UDP socket.
@@ -582,11 +594,7 @@ public:
      * @param[in]   aContext    A pointer to arbitrary context information.
      *
      */
-    void SetUdpForwarder(otUdpForwarder aForwarder, void *aContext)
-    {
-        mUdpForwarder        = aForwarder;
-        mUdpForwarderContext = aContext;
-    }
+    void SetUdpForwarder(otUdpForwarder aForwarder, void *aContext) { mUdpForwarder.Set(aForwarder, aContext); }
 #endif
 
     /**
@@ -641,8 +649,7 @@ private:
     SocketHandle *mPrevBackboneSockets;
 #endif
 #if OPENTHREAD_CONFIG_UDP_FORWARD_ENABLE
-    void *         mUdpForwarderContext;
-    otUdpForwarder mUdpForwarder;
+    Callback<otUdpForwarder> mUdpForwarder;
 #endif
 };
 
@@ -655,6 +662,7 @@ private:
 
 DefineCoreType(otUdpSocket, Ip6::Udp::SocketHandle);
 DefineCoreType(otUdpReceiver, Ip6::Udp::Receiver);
+DefineMapEnum(otNetifIdentifier, Ip6::NetifIdentifier);
 
 } // namespace ot
 

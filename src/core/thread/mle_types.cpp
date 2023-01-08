@@ -33,6 +33,7 @@
 
 #include "mle_types.hpp"
 
+#include "common/array.hpp"
 #include "common/code_utils.hpp"
 
 namespace ot {
@@ -63,12 +64,35 @@ DeviceMode::InfoString DeviceMode::ToString(void) const
     return string;
 }
 
-void MeshLocalPrefix::SetFromExtendedPanId(const Mac::ExtendedPanId &aExtendedPanId)
+uint8_t RouterIdSet::GetNumberOfAllocatedIds(void) const
 {
-    m8[0] = 0xfd;
-    memcpy(&m8[1], aExtendedPanId.m8, 5);
-    m8[6] = 0x00;
-    m8[7] = 0x00;
+    uint8_t count = 0;
+
+    for (uint8_t byte : mRouterIdSet)
+    {
+        count += CountBitsInMask(byte);
+    }
+
+    return count;
+}
+
+const char *RoleToString(DeviceRole aRole)
+{
+    static const char *const kRoleStrings[] = {
+        "disabled", // (0) kRoleDisabled
+        "detached", // (1) kRoleDetached
+        "child",    // (2) kRoleChild
+        "router",   // (3) kRoleRouter
+        "leader",   // (4) kRoleLeader
+    };
+
+    static_assert(kRoleDisabled == 0, "kRoleDisabled value is incorrect");
+    static_assert(kRoleDetached == 1, "kRoleDetached value is incorrect");
+    static_assert(kRoleChild == 2, "kRoleChild value is incorrect");
+    static_assert(kRoleRouter == 3, "kRoleRouter value is incorrect");
+    static_assert(kRoleLeader == 4, "kRoleLeader value is incorrect");
+
+    return (aRole < GetArrayLength(kRoleStrings)) ? kRoleStrings[aRole] : "invalid";
 }
 
 } // namespace Mle

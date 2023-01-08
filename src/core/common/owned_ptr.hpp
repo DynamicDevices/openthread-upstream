@@ -145,6 +145,14 @@ public:
     }
 
     /**
+     * This method allows passing of the ownership to another `OwnedPtr` using move semantics.
+     *
+     * @returns An rvalue reference of the pointer to move from.
+     *
+     */
+    OwnedPtr &&PassOwnership(void) { return static_cast<OwnedPtr &&>(*this); }
+
+    /**
      * This method overload the assignment operator `=` to replace the object owned by the `OwnedPtr` with another one
      * using move semantics.
      *
@@ -163,8 +171,8 @@ public:
         return *this;
     }
 
-    OwnedPtr(const OwnedPtr &) = delete;
-    OwnedPtr(OwnedPtr &)       = delete;
+    OwnedPtr(const OwnedPtr &)            = delete;
+    OwnedPtr(OwnedPtr &)                  = delete;
     OwnedPtr &operator=(const OwnedPtr &) = delete;
 
 private:

@@ -39,7 +39,7 @@
 #include "common/debug.hpp"
 #include "common/instance.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
 #include "meshcop/meshcop.hpp"
 #include "meshcop/meshcop_tlvs.hpp"
 #include "thread/thread_netif.hpp"
@@ -47,22 +47,18 @@
 
 namespace ot {
 
+RegisterLogModule("MeshCoP");
+
 PanIdQueryServer::PanIdQueryServer(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mChannelMask(0)
     , mPanId(Mac::kPanIdBroadcast)
-    , mTimer(aInstance, PanIdQueryServer::HandleTimer)
-    , mPanIdQuery(UriPath::kPanIdQuery, &PanIdQueryServer::HandleQuery, this)
+    , mTimer(aInstance)
 {
-    Get<Tmf::Agent>().AddResource(mPanIdQuery);
 }
 
-void PanIdQueryServer::HandleQuery(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo)
-{
-    static_cast<PanIdQueryServer *>(aContext)->HandleQuery(AsCoapMessage(aMessage), AsCoreType(aMessageInfo));
-}
-
-void PanIdQueryServer::HandleQuery(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
+template <>
+void PanIdQueryServer::HandleTmf<kUriPanIdQuery>(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
 {
     uint16_t         panId;
     Ip6::MessageInfo responseInfo(aMessageInfo);
@@ -81,7 +77,7 @@ void PanIdQueryServer::HandleQuery(Coap::Message &aMessage, const Ip6::MessageIn
     if (aMessage.IsConfirmable() && !aMessageInfo.GetSockAddr().IsMulticast())
     {
         SuccessOrExit(Get<Tmf::Agent>().SendEmptyAck(aMessage, responseInfo));
-        otLogInfoMeshCoP("sent panid query response");
+        LogInfo("sent panid query response");
     }
 
 exit:
@@ -112,13 +108,11 @@ void PanIdQueryServer::SendConflict(void)
 {
     Error                   error = kErrorNone;
     MeshCoP::ChannelMaskTlv channelMask;
-    Ip6::MessageInfo        messageInfo;
-    Coap::Message *         message;
+    Tmf::MessageInfo        messageInfo(GetInstance());
+    Coap::Message          *message;
 
-    VerifyOrExit((message = Get<Tmf::Agent>().NewPriorityMessage()) != nullptr, error = kErrorNoBufs);
-
-    SuccessOrExit(error = message->InitAsConfirmablePost(UriPath::kPanIdConflict));
-    SuccessOrExit(error = message->SetPayloadMarker());
+    message = Get<Tmf::Agent>().NewPriorityConfirmablePostMessage(kUriPanIdConflict);
+    VerifyOrExit(message != nullptr, error = kErrorNoBufs);
 
     channelMask.Init();
     channelMask.SetChannelMask(mChannelMask);
@@ -126,21 +120,15 @@ void PanIdQueryServer::SendConflict(void)
 
     SuccessOrExit(error = Tlv::Append<MeshCoP::PanIdTlv>(*message, mPanId));
 
-    messageInfo.SetSockAddr(Get<Mle::MleRouter>().GetMeshLocal16());
-    messageInfo.SetPeerAddr(mCommissioner);
-    messageInfo.SetPeerPort(Tmf::kUdpPort);
+    messageInfo.SetSockAddrToRlocPeerAddrTo(mCommissioner);
+
     SuccessOrExit(error = Get<Tmf::Agent>().SendMessage(*message, messageInfo));
 
-    otLogInfoMeshCoP("sent panid conflict");
+    LogInfo("sent panid conflict");
 
 exit:
     FreeMessageOnError(message, error);
     MeshCoP::LogError("send panid conflict", error);
-}
-
-void PanIdQueryServer::HandleTimer(Timer &aTimer)
-{
-    aTimer.Get<PanIdQueryServer>().HandleTimer();
 }
 
 void PanIdQueryServer::HandleTimer(void)

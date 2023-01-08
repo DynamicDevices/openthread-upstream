@@ -35,17 +35,20 @@
 
 #if OPENTHREAD_CONFIG_DHCP6_SERVER_ENABLE
 
+#include "common/array.hpp"
 #include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
 #include "common/encoding.hpp"
 #include "common/instance.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
 #include "thread/mle.hpp"
 #include "thread/thread_netif.hpp"
 
 namespace ot {
 namespace Dhcp6 {
+
+RegisterLogModule("Dhcp6Server");
 
 Server::Server(Instance &aInstance)
     : InstanceLocator(aInstance)
@@ -142,10 +145,7 @@ exit:
     return;
 }
 
-void Server::Stop(void)
-{
-    IgnoreError(mSocket.Close());
-}
+void Server::Stop(void) { IgnoreError(mSocket.Close()); }
 
 void Server::AddPrefixAgent(const Ip6::Prefix &aIp6Prefix, const Lowpan::Context &aContext)
 {
@@ -175,7 +175,7 @@ exit:
 
     if (error != kErrorNone)
     {
-        otLogNoteIp6("Failed to add DHCPv6 prefix agent: %s", ErrorToString(error));
+        LogNote("Failed to add DHCPv6 prefix agent: %s", ErrorToString(error));
     }
 }
 
@@ -317,7 +317,7 @@ Error Server::ProcessIaAddress(Message &aMessage, uint16_t aOffset)
     VerifyOrExit(option.GetLength() == sizeof(option) - sizeof(Option), error = kErrorParse);
 
     // mask matching prefix
-    for (uint16_t i = 0; i < OT_ARRAY_LENGTH(mPrefixAgents); i++)
+    for (uint16_t i = 0; i < GetArrayLength(mPrefixAgents); i++)
     {
         if (mPrefixAgents[i].IsValid() && mPrefixAgents[i].IsPrefixMatch(option.GetAddress()))
         {
@@ -330,14 +330,14 @@ exit:
     return error;
 }
 
-Error Server::SendReply(const Ip6::Address & aDst,
+Error Server::SendReply(const Ip6::Address  &aDst,
                         const TransactionId &aTransactionId,
-                        ClientIdentifier &   aClientId,
-                        IaNa &               aIaNa)
+                        ClientIdentifier    &aClientId,
+                        IaNa                &aIaNa)
 {
     Error            error = kErrorNone;
     Ip6::MessageInfo messageInfo;
-    Message *        message;
+    Message         *message;
 
     VerifyOrExit((message = mSocket.NewMessage(0)) != nullptr, error = kErrorNoBufs);
     SuccessOrExit(error = AppendHeader(*message, aTransactionId));
@@ -397,7 +397,7 @@ Error Server::AppendIaNa(Message &aMessage, IaNa &aIaNa)
 
     if (mPrefixAgentsMask)
     {
-        for (uint16_t i = 0; i < OT_ARRAY_LENGTH(mPrefixAgents); i++)
+        for (uint16_t i = 0; i < GetArrayLength(mPrefixAgents); i++)
         {
             if (mPrefixAgentsMask & (1 << i))
             {
@@ -437,7 +437,7 @@ Error Server::AppendIaAddress(Message &aMessage, ClientIdentifier &aClientId)
     if (mPrefixAgentsMask)
     {
         // if specified, only apply specified prefixes
-        for (uint16_t i = 0; i < OT_ARRAY_LENGTH(mPrefixAgents); i++)
+        for (uint16_t i = 0; i < GetArrayLength(mPrefixAgents); i++)
         {
             if (mPrefixAgentsMask & (1 << i))
             {

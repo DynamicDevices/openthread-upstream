@@ -56,10 +56,7 @@ namespace Ncp {
 // ----------------------------------------------------------------------------
 
 #if OPENTHREAD_RADIO || OPENTHREAD_CONFIG_LINK_RAW_ENABLE
-static bool HasOnly1BitSet(uint32_t aValue)
-{
-    return aValue != 0 && ((aValue & (aValue - 1)) == 0);
-}
+static bool HasOnly1BitSet(uint32_t aValue) { return aValue != 0 && ((aValue & (aValue - 1)) == 0); }
 
 static uint8_t IndexOfMSB(uint32_t aValue)
 {
@@ -308,10 +305,7 @@ NcpBase::NcpBase(Instance *aInstance)
 #endif
 }
 
-NcpBase *NcpBase::GetNcpInstance(void)
-{
-    return sNcpInstance;
-}
+NcpBase *NcpBase::GetNcpInstance(void) { return sNcpInstance; }
 
 void NcpBase::ResetCounters(void)
 {
@@ -334,10 +328,7 @@ void NcpBase::ResetCounters(void)
 // MARK: Serial Traffic Glue
 // ----------------------------------------------------------------------------
 
-Spinel::Buffer::FrameTag NcpBase::GetLastOutboundFrameTag(void)
-{
-    return mTxFrameBuffer.InFrameGetLastTag();
-}
+Spinel::Buffer::FrameTag NcpBase::GetLastOutboundFrameTag(void) { return mTxFrameBuffer.InFrameGetLastTag(); }
 
 void NcpBase::HandleReceive(const uint8_t *aBuf, uint16_t aBufLength)
 {
@@ -402,10 +393,10 @@ exit:
     mDisableStreamWrite = false;
 }
 
-void NcpBase::HandleFrameRemovedFromNcpBuffer(void *                   aContext,
+void NcpBase::HandleFrameRemovedFromNcpBuffer(void                    *aContext,
                                               Spinel::Buffer::FrameTag aFrameTag,
                                               Spinel::Buffer::Priority aPriority,
-                                              Spinel::Buffer *         aNcpBuffer)
+                                              Spinel::Buffer          *aNcpBuffer)
 {
     OT_UNUSED_VARIABLE(aNcpBuffer);
     OT_UNUSED_VARIABLE(aPriority);
@@ -477,10 +468,7 @@ bool NcpBase::ShouldDeferHostSend(void)
     return (mHostPowerState == SPINEL_HOST_POWER_STATE_DEEP_SLEEP && !mHostPowerStateInProgress);
 }
 
-void NcpBase::IncrementFrameErrorCounter(void)
-{
-    mFramingErrorCounter++;
-}
+void NcpBase::IncrementFrameErrorCounter(void) { mFramingErrorCounter++; }
 
 otError NcpBase::StreamWrite(int aStreamId, const uint8_t *aDataPtr, int aDataLen)
 {
@@ -1062,7 +1050,7 @@ otError NcpBase::HandleCommandPropertyInsertRemove(uint8_t aHeader, spinel_prop_
     otError         error           = OT_ERROR_NONE;
     PropertyHandler handler         = nullptr;
     unsigned int    responseCommand = 0;
-    const uint8_t * valuePtr;
+    const uint8_t  *valuePtr;
     uint16_t        valueLen;
 
     switch (aCommand)
@@ -1079,7 +1067,6 @@ otError NcpBase::HandleCommandPropertyInsertRemove(uint8_t aHeader, spinel_prop_
 
     default:
         OT_ASSERT(false);
-        OT_UNREACHABLE_CODE(break);
     }
 
     VerifyOrExit(handler != nullptr, error = PrepareLastStatusResponse(aHeader, SPINEL_STATUS_PROP_NOT_FOUND));
@@ -1186,7 +1173,7 @@ exit:
 otError NcpBase::WritePropertyValueInsertedRemovedFrame(uint8_t           aHeader,
                                                         unsigned int      aResponseCommand,
                                                         spinel_prop_key_t aPropKey,
-                                                        const uint8_t *   aValuePtr,
+                                                        const uint8_t    *aValuePtr,
                                                         uint16_t          aValueLen)
 {
     otError error = OT_ERROR_NONE;
@@ -1203,10 +1190,7 @@ exit:
 // MARK: Individual Command Handlers
 // ----------------------------------------------------------------------------
 
-otError NcpBase::CommandHandler_NOOP(uint8_t aHeader)
-{
-    return PrepareLastStatusResponse(aHeader, SPINEL_STATUS_OK);
-}
+otError NcpBase::CommandHandler_NOOP(uint8_t aHeader) { return PrepareLastStatusResponse(aHeader, SPINEL_STATUS_OK); }
 
 otError NcpBase::CommandHandler_RESET(uint8_t aHeader)
 {
@@ -1375,7 +1359,7 @@ otError NcpBase::HandlePropertySet_SPINEL_PROP_NEST_STREAM_MFG(uint8_t aHeader)
     }
 #endif
 
-    otDiagProcessCmdLine(mInstance, string, output, sizeof(output));
+    SuccessOrExit(error = otDiagProcessCmdLine(mInstance, string, output, sizeof(output)));
 
     // Prepare the response
     SuccessOrExit(error = mEncoder.BeginFrame(aHeader, SPINEL_CMD_PROP_VALUE_IS, SPINEL_PROP_NEST_STREAM_MFG));
@@ -1550,6 +1534,20 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_MAC_RAW_STREAM_ENABLE
 exit:
     return error;
 }
+
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE || OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_RCP_CSL_ACCURACY>(void)
+{
+    return mEncoder.WriteUint8(otPlatRadioGetCslAccuracy(mInstance));
+}
+#endif
+
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_RCP_CSL_UNCERTAINTY>(void)
+{
+    return mEncoder.WriteUint8(otPlatRadioGetCslUncertainty(mInstance));
+}
+#endif
 
 otError NcpBase::EncodeChannelMask(uint32_t aChannelMask)
 {
@@ -2081,10 +2079,7 @@ template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_POWER_STATE>(void)
     return mEncoder.WriteUint8(SPINEL_POWER_STATE_ONLINE);
 }
 
-template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_POWER_STATE>(void)
-{
-    return OT_ERROR_NOT_IMPLEMENTED;
-}
+template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_POWER_STATE>(void) { return OT_ERROR_NOT_IMPLEMENTED; }
 
 template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_HWADDR>(void)
 {
@@ -2435,7 +2430,6 @@ template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_DEBUG_NCP_LOG_LEVEL>(
 
     default:
         ExitNow(error = OT_ERROR_INVALID_ARGS);
-        OT_UNREACHABLE_CODE(break);
     }
 
     IgnoreError(otLoggingSetLevel(logLevel));
@@ -2576,6 +2570,44 @@ exit:
 }
 #endif
 
+#if OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
+template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_PHY_CHAN_TARGET_POWER>(void)
+{
+    otError error;
+    uint8_t channel;
+    int16_t targetPower;
+
+    SuccessOrExit(error = mDecoder.ReadUint8(channel));
+    SuccessOrExit(error = mDecoder.ReadInt16(targetPower));
+    error = otPlatRadioSetChannelTargetPower(mInstance, channel, targetPower);
+
+exit:
+    return error;
+}
+
+template <> otError NcpBase::HandlePropertyInsert<SPINEL_PROP_PHY_CALIBRATED_POWER>(void)
+{
+    otError        error;
+    uint8_t        channel;
+    int16_t        actualPower;
+    const uint8_t *dataPtr;
+    uint16_t       dataLen;
+
+    SuccessOrExit(error = mDecoder.ReadUint8(channel));
+    SuccessOrExit(error = mDecoder.ReadInt16(actualPower));
+    SuccessOrExit(error = mDecoder.ReadDataWithLen(dataPtr, dataLen));
+    error = otPlatRadioAddCalibratedPower(mInstance, channel, actualPower, dataPtr, dataLen);
+
+exit:
+    return error;
+}
+
+template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_PHY_CALIBRATED_POWER>(void)
+{
+    return otPlatRadioClearCalibratedPowers(mInstance);
+}
+#endif // OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
+
 } // namespace Ncp
 } // namespace ot
 
@@ -2632,16 +2664,6 @@ extern "C" void otPlatLog(otLogLevel aLogLevel, otLogRegion aLogRegion, const ch
     }
 
     va_end(args);
-}
-
-extern "C" void otPlatLogLine(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aLogLine)
-{
-    ot::Ncp::NcpBase *ncp = ot::Ncp::NcpBase::GetNcpInstance();
-
-    if (ncp != nullptr)
-    {
-        ncp->Log(aLogLevel, aLogRegion, aLogLine);
-    }
 }
 
 #endif // (OPENTHREAD_CONFIG_LOG_OUTPUT == OPENTHREAD_CONFIG_LOG_OUTPUT_APP)

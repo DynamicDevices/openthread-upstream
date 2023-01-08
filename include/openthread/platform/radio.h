@@ -264,7 +264,7 @@ typedef struct otRadioFrame
         struct
         {
             const otMacKeyMaterial *mAesKey;  ///< The key material used for AES-CCM frame security.
-            otRadioIeInfo *         mIeInfo;  ///< The pointer to the Header IE(s) related information.
+            otRadioIeInfo          *mIeInfo;  ///< The pointer to the Header IE(s) related information.
             uint32_t                mTxDelay; ///< The delay time for this transmission (based on `mTxDelayBaseTime`).
             uint32_t                mTxDelayBaseTime; ///< The base time for the transmission delay.
             uint8_t mMaxCsmaBackoffs; ///< Maximum number of backoffs attempts before declaring CCA failure.
@@ -442,7 +442,7 @@ const char *otPlatRadioGetVersionString(otInstance *aInstance);
 int8_t otPlatRadioGetReceiveSensitivity(otInstance *aInstance);
 
 /**
- * Get the factory-assigned IEEE EUI-64 for this interface.
+ * Gets the factory-assigned IEEE EUI-64 for this interface.
  *
  * @param[in]  aInstance   The OpenThread instance structure.
  * @param[out] aIeeeEui64  A pointer to the factory-assigned IEEE EUI-64.
@@ -536,7 +536,7 @@ otError otPlatRadioGetCcaEnergyDetectThreshold(otInstance *aInstance, int8_t *aT
 otError otPlatRadioSetCcaEnergyDetectThreshold(otInstance *aInstance, int8_t aThreshold);
 
 /**
- * Get the external FEM's Rx LNA gain in dBm.
+ * Gets the external FEM's Rx LNA gain in dBm.
  *
  * @param[in]  aInstance  The OpenThread instance structure.
  * @param[out] aGain     The external FEM's Rx LNA gain in dBm.
@@ -549,7 +549,7 @@ otError otPlatRadioSetCcaEnergyDetectThreshold(otInstance *aInstance, int8_t aTh
 otError otPlatRadioGetFemLnaGain(otInstance *aInstance, int8_t *aGain);
 
 /**
- * Set the external FEM's Rx LNA gain in dBm.
+ * Sets the external FEM's Rx LNA gain in dBm.
  *
  * @param[in] aInstance  The OpenThread instance structure.
  * @param[in] aGain      The external FEM's Rx LNA gain in dBm.
@@ -594,7 +594,7 @@ void otPlatRadioSetPromiscuous(otInstance *aInstance, bool aEnable);
  * @param[in]   aKeyType     Key Type used.
  *
  */
-void otPlatRadioSetMacKey(otInstance *            aInstance,
+void otPlatRadioSetMacKey(otInstance             *aInstance,
                           uint8_t                 aKeyIdMode,
                           uint8_t                 aKeyId,
                           const otMacKeyMaterial *aPrevKey,
@@ -857,6 +857,7 @@ int8_t otPlatRadioGetRssi(otInstance *aInstance);
  * @param[in] aScanDuration  The duration, in milliseconds, for the channel to be scanned.
  *
  * @retval OT_ERROR_NONE             Successfully started scanning the channel.
+ * @retval OT_ERROR_BUSY             The radio is performing enery scanning.
  * @retval OT_ERROR_NOT_IMPLEMENTED  The radio doesn't support energy scanning.
  *
  */
@@ -968,7 +969,7 @@ void otPlatRadioClearSrcMatchExtEntries(otInstance *aInstance);
 uint32_t otPlatRadioGetSupportedChannelMask(otInstance *aInstance);
 
 /**
- * Get the radio preferred channel mask that the device prefers to form on.
+ * Gets the radio preferred channel mask that the device prefers to form on.
  *
  * @param[in]  aInstance   The OpenThread instance structure.
  *
@@ -1031,7 +1032,7 @@ otError otPlatRadioGetCoexMetrics(otInstance *aInstance, otRadioCoexMetrics *aCo
  * @retval  kErrorNone           Successfully enabled or disabled CSL.
  *
  */
-otError otPlatRadioEnableCsl(otInstance *        aInstance,
+otError otPlatRadioEnableCsl(otInstance         *aInstance,
                              uint32_t            aCslPeriod,
                              otShortAddress      aShortAddr,
                              const otExtAddress *aExtAddr);
@@ -1060,14 +1061,14 @@ void otPlatRadioUpdateCslSampleTime(otInstance *aInstance, uint32_t aCslSampleTi
 uint8_t otPlatRadioGetCslAccuracy(otInstance *aInstance);
 
 /**
- * Get the current uncertainty, in units of 10 us, of the clock used for scheduling CSL operations.
+ * The fixed uncertainty of the Device for scheduling CSL Transmissions in units of 10 microseconds.
  *
  * @param[in]   aInstance    A pointer to an OpenThread instance.
  *
- * @returns The current CSL Clock Uncertainty in units of 10 us.
+ * @returns The CSL Uncertainty in units of 10 us.
  *
  */
-uint8_t otPlatRadioGetCslClockUncertainty(otInstance *aInstance);
+uint8_t otPlatRadioGetCslUncertainty(otInstance *aInstance);
 
 /**
  * Set the max transmit power for a specific channel.
@@ -1095,6 +1096,7 @@ otError otPlatRadioSetChannelMaxTransmitPower(otInstance *aInstance, uint8_t aCh
  *
  * @retval  OT_ERROR_FAILED           Other platform specific errors.
  * @retval  OT_ERROR_NONE             Successfully set region code.
+ * @retval  OT_ERROR_NOT_IMPLEMENTED  The feature is not implemented.
  *
  */
 otError otPlatRadioSetRegion(otInstance *aInstance, uint16_t aRegionCode);
@@ -1111,6 +1113,7 @@ otError otPlatRadioSetRegion(otInstance *aInstance, uint16_t aRegionCode);
  * @retval  OT_ERROR_INVALID_ARGS     @p aRegionCode is nullptr.
  * @retval  OT_ERROR_FAILED           Other platform specific errors.
  * @retval  OT_ERROR_NONE             Successfully got region code.
+ * @retval  OT_ERROR_NOT_IMPLEMENTED  The feature is not implemented.
  *
  */
 otError otPlatRadioGetRegion(otInstance *aInstance, uint16_t *aRegionCode);
@@ -1126,19 +1129,114 @@ otError otPlatRadioGetRegion(otInstance *aInstance, uint16_t *aRegionCode);
  * @param[in]  aInstance     The OpenThread instance structure.
  * @param[in]  aLinkMetrics  This parameter specifies what metrics to query. Per spec 4.11.3.4.4.6, at most 2 metrics
  *                           can be specified. The probing would be disabled if @p `aLinkMetrics` is bitwise 0.
- * @param[in]  aShortAddr    The short address of the Probing Initiator.
- * @param[in]  aExtAddr      The extended source address of the Probing Initiator. @p aExtAddr MUST NOT be `NULL`.
+ * @param[in]  aShortAddress The short address of the Probing Initiator.
+ * @param[in]  aExtAddress   The extended source address of the Probing Initiator. @p aExtAddr MUST NOT be `NULL`.
  *
  * @retval  OT_ERROR_NONE            Successfully configured the Enhanced-ACK Based Probing.
  * @retval  OT_ERROR_INVALID_ARGS    @p aExtAddress is `NULL`.
  * @retval  OT_ERROR_NOT_FOUND       The Initiator indicated by @p aShortAddress is not found when trying to clear.
  * @retval  OT_ERROR_NO_BUFS         No more Initiator can be supported.
+ * @retval  OT_ERROR_NOT_IMPLEMENTED The feature is not implemented.
  *
  */
-otError otPlatRadioConfigureEnhAckProbing(otInstance *        aInstance,
+otError otPlatRadioConfigureEnhAckProbing(otInstance         *aInstance,
                                           otLinkMetrics       aLinkMetrics,
                                           otShortAddress      aShortAddress,
                                           const otExtAddress *aExtAddress);
+
+/**
+ * Add a calibrated power of the specified channel to the power calibration table.
+ *
+ * @note This API is an optional radio platform API. It's up to the platform layer to implement it.
+ *
+ * The @p aActualPower is the actual measured output power when the parameters of the radio hardware modules
+ * are set to the @p aRawPowerSetting.
+ *
+ * The raw power setting is an opaque byte array. OpenThread doesn't define the format of the raw power setting.
+ * Its format is radio hardware related and it should be defined by the developers in the platform radio driver.
+ * For example, if the radio hardware contains both the radio chip and the FEM chip, the raw power setting can be
+ * a combination of the radio power register and the FEM gain value.
+ *
+ * @param[in] aInstance               The OpenThread instance structure.
+ * @param[in] aChannel                The radio channel.
+ * @param[in] aActualPower            The actual power in 0.01dBm.
+ * @param[in] aRawPowerSetting        A pointer to the raw power setting byte array.
+ * @param[in] aRawPowerSettingLength  The length of the @p aRawPowerSetting.
+ *
+ * @retval OT_ERROR_NONE             Successfully added the calibrated power to the power calibration table.
+ * @retval OT_ERROR_NO_BUFS          No available entry in the power calibration table.
+ * @retval OT_ERROR_INVALID_ARGS     The @p aChannel, @p aActualPower or @p aRawPowerSetting is invalid or the
+ *                                   @p aActualPower already exists in the power calibration table.
+ * @retval OT_ERROR_NOT_IMPLEMENTED  This feature is not implemented.
+ *
+ */
+otError otPlatRadioAddCalibratedPower(otInstance    *aInstance,
+                                      uint8_t        aChannel,
+                                      int16_t        aActualPower,
+                                      const uint8_t *aRawPowerSetting,
+                                      uint16_t       aRawPowerSettingLength);
+
+/**
+ * Clear all calibrated powers from the power calibration table.
+ *
+ * @note This API is an optional radio platform API. It's up to the platform layer to implement it.
+ *
+ * @param[in]  aInstance   The OpenThread instance structure.
+ *
+ * @retval OT_ERROR_NONE             Successfully cleared all calibrated powers from the power calibration table.
+ * @retval OT_ERROR_NOT_IMPLEMENTED  This feature is not implemented.
+ *
+ */
+otError otPlatRadioClearCalibratedPowers(otInstance *aInstance);
+
+/**
+ * Set the target power for the given channel.
+ *
+ * @note This API is an optional radio platform API. It's up to the platform layer to implement it.
+ *       If this API is implemented, the function `otPlatRadioSetTransmitPower()` should be disabled.
+ *
+ * The radio driver should set the actual output power to be less than or equal to the target power and as close
+ * as possible to the target power.
+ *
+ * @param[in]  aInstance     The OpenThread instance structure.
+ * @param[in]  aChannel      The radio channel.
+ * @param[in]  aTargetPower  The target power in 0.01dBm. Passing `INT16_MAX` will disable this channel to use the
+ *                           target power.
+ *
+ * @retval  OT_ERROR_NONE             Successfully set the target power.
+ * @retval  OT_ERROR_INVALID_ARGS     The @p aChannel or @p aTargetPower is invalid.
+ * @retval  OT_ERROR_NOT_IMPLEMENTED  The feature is not implemented.
+ *
+ */
+otError otPlatRadioSetChannelTargetPower(otInstance *aInstance, uint8_t aChannel, int16_t aTargetPower);
+
+/**
+ * Get the raw power setting for the given channel.
+ *
+ * @note OpenThread `src/core/utils` implements a default implementation of the API `otPlatRadioAddCalibratedPower()`,
+ *       `otPlatRadioClearCalibratedPowers()` and `otPlatRadioSetChannelTargetPower()`. This API is provided by
+ *       the default implementation to get the raw power setting for the given channel. If the platform doesn't
+ *       use the default implementation, it can ignore this API.
+ *
+ * Platform radio layer should parse the raw power setting based on the radio layer defined format and set the
+ * parameters of each radio hardware module.
+ *
+ * @param[in]      aInstance               The OpenThread instance structure.
+ * @param[in]      aChannel                The radio channel.
+ * @param[out]     aRawPowerSetting        A pointer to the raw power setting byte array.
+ * @param[in,out]  aRawPowerSettingLength  On input, a pointer to the size of @p aRawPowerSetting.
+ *                                         On output, a pointer to the length of the raw power setting data.
+ *
+ * @retval  OT_ERROR_NONE          Successfully got the target power.
+ * @retval  OT_ERROR_INVALID_ARGS  The @p aChannel is invalid, @p aRawPowerSetting or @p aRawPowerSettingLength is NULL
+ *                                 or @aRawPowerSettingLength is too short.
+ * @retval  OT_ERROR_NOT_FOUND     The raw power setting for the @p aChannel was not found.
+ *
+ */
+extern otError otPlatRadioGetRawPowerSetting(otInstance *aInstance,
+                                             uint8_t     aChannel,
+                                             uint8_t    *aRawPowerSetting,
+                                             uint16_t   *aRawPowerSettingLength);
 
 /**
  * @}

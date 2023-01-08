@@ -49,6 +49,7 @@
 #include "common/equatable.hpp"
 #include "common/string.hpp"
 #include "mac/mac_types.hpp"
+#include "meshcop/extended_panid.hpp"
 #include "net/ip6_address.hpp"
 #include "thread/network_data_types.hpp"
 
@@ -76,8 +77,7 @@ constexpr uint8_t kMaxServiceAlocs = OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_MAX_A
 constexpr uint8_t  kMaxServiceAlocs      = OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_MAX_ALOCS;
 #endif
 
-constexpr uint8_t  kThreadVersion = OPENTHREAD_CONFIG_THREAD_VERSION; ///< Thread Version
-constexpr uint16_t kUdpPort       = 19788;                            ///< MLE UDP Port
+constexpr uint16_t kUdpPort = 19788; ///< MLE UDP Port
 
 /*
  * MLE Protocol delays and timeouts.
@@ -86,6 +86,7 @@ constexpr uint16_t kUdpPort       = 19788;                            ///< MLE U
 constexpr uint32_t kParentRequestRouterTimeout     = 750;  ///< Router Parent Request timeout (in msec)
 constexpr uint32_t kParentRequestDuplicateMargin   = 50;   ///< Margin for duplicate parent request
 constexpr uint32_t kParentRequestReedTimeout       = 1250; ///< Router and REEDs Parent Request timeout (in msec)
+constexpr uint32_t kChildIdResponseTimeout         = 1250; ///< Wait time to receive Child ID Response (in msec)
 constexpr uint32_t kAttachStartJitter              = 50;   ///< Max jitter time added to start of attach (in msec)
 constexpr uint32_t kAnnounceProcessTimeout         = 250;  ///< Delay after Announce rx before channel/pan-id change
 constexpr uint32_t kAnnounceTimeout                = 1400; ///< Total timeout for sending Announce messages (in msec)
@@ -96,9 +97,9 @@ constexpr uint32_t kUnicastRetransmissionDelay     = 1000; ///< Base delay befor
 constexpr uint32_t kChildUpdateRequestPendingDelay = 100;  ///< Delay for aggregating Child Update Req (in msec)
 constexpr uint8_t  kMaxTransmissionCount           = 3;    ///< Max number of times an MLE message may be transmitted
 constexpr uint32_t kMaxResponseDelay               = 1000; ///< Max response delay for a multicast request (in msec)
-constexpr uint32_t kMaxChildIdRequestTimeout       = 5000; ///< Max delay to rx a Child ID Request (in msec)
-constexpr uint32_t kMaxChildUpdateResponseTimeout  = 2000; ///< Max delay to rx a Child Update Response (in msec)
-constexpr uint32_t kMaxLinkRequestTimeout          = 2000; ///< Max delay to rx a Link Accept
+constexpr uint32_t kChildIdRequestTimeout          = 5000; ///< Max delay to rx a Child ID Request (in msec)
+constexpr uint32_t kLinkRequestTimeout             = 2000; ///< Max delay to rx a Link Accept
+constexpr uint8_t  kMulticastLinkRequestDelay      = 5;    ///< Max delay for sending a mcast Link Request (in sec)
 
 constexpr uint32_t kMinTimeoutKeepAlive = (((kMaxChildKeepAliveAttempts + 1) * kUnicastRetransmissionDelay) / 1000);
 constexpr uint32_t kMinPollPeriod       = OPENTHREAD_CONFIG_MAC_MINIMUM_POLL_PERIOD;
@@ -160,6 +161,15 @@ constexpr uint8_t kRouterSelectionJitter      = 120; ///< (in sec)
 constexpr uint8_t kRouterDowngradeThreshold = 23;
 constexpr uint8_t kRouterUpgradeThreshold   = 16;
 
+constexpr uint16_t kInvalidRloc16 = Mac::kShortAddrInvalid; ///< Invalid RLOC16.
+
+/**
+ * Threshold to accept a router upgrade request with reason `kBorderRouterRequest` (number of BRs acting as router in
+ * Network Data).
+ *
+ */
+constexpr uint8_t kRouterUpgradeBorderRouterRequestThreshold = 2;
+
 constexpr uint32_t kMaxLeaderToRouterTimeout = 90;  ///< (in sec)
 constexpr uint32_t kReedAdvertiseInterval    = 570; ///< (in sec)
 constexpr uint32_t kReedAdvertiseJitter      = 60;  ///< (in sec)
@@ -173,14 +183,6 @@ constexpr int8_t kParentPriorityMedium      = 0;  ///< Parent Priority Medium (d
 constexpr int8_t kParentPriorityLow         = -1; ///< Parent Priority Low
 constexpr int8_t kParentPriorityUnspecified = -2; ///< Parent Priority Unspecified
 
-constexpr uint8_t kLinkQuality3LinkCost = 1;             ///< Link Cost for Link Quality 3
-constexpr uint8_t kLinkQuality2LinkCost = 2;             ///< Link Cost for Link Quality 2
-constexpr uint8_t kLinkQuality1LinkCost = 4;             ///< Link Cost for Link Quality 1
-constexpr uint8_t kLinkQuality0LinkCost = kMaxRouteCost; ///< Link Cost for Link Quality 0
-
-constexpr uint8_t kMplChildDataMessageTimerExpirations  = 0; ///< Number of MPL retransmissions for Children.
-constexpr uint8_t kMplRouterDataMessageTimerExpirations = 2; ///< Number of MPL retransmissions for Routers.
-
 /**
  * This type represents a Thread device role.
  *
@@ -192,19 +194,6 @@ enum DeviceRole : uint8_t
     kRoleChild    = OT_DEVICE_ROLE_CHILD,    ///< The Thread Child role.
     kRoleRouter   = OT_DEVICE_ROLE_ROUTER,   ///< The Thread Router role.
     kRoleLeader   = OT_DEVICE_ROLE_LEADER,   ///< The Thread Leader role.
-};
-
-/**
- * MLE Attach modes
- *
- */
-enum AttachMode : uint8_t
-{
-    kAttachAny           = 0, ///< Attach to any Thread partition.
-    kAttachSame1         = 1, ///< Attach to the same Thread partition (attempt 1 when losing connectivity).
-    kAttachSame2         = 2, ///< Attach to the same Thread partition (attempt 2 when losing connectivity).
-    kAttachBetter        = 3, ///< Attach to a better (i.e. higher weight/partition id) Thread partition.
-    kAttachSameDowngrade = 4, ///< Attach to the same Thread partition during downgrade process.
 };
 
 constexpr uint16_t kAloc16Leader                      = 0xfc00;
@@ -222,13 +211,25 @@ constexpr uint16_t kAloc16NeighborDiscoveryAgentEnd   = 0xfc4e;
 constexpr uint8_t kServiceMinId = 0x00; ///< Minimal Service ID.
 constexpr uint8_t kServiceMaxId = 0x0f; ///< Maximal Service ID.
 
+/**
+ * This enumeration specifies the leader role start mode.
+ *
+ * The start mode indicates whether device is starting normally as leader or restoring its role after reset.
+ *
+ */
+enum LeaderStartMode : uint8_t
+{
+    kStartingAsLeader,              ///< Starting as leader normally.
+    kRestoringLeaderRoleAfterReset, ///< Restoring leader role after reset.
+};
+
 #if OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2
 
 /*
  * Backbone Router / DUA / MLR constants
  *
  */
-constexpr uint16_t kRegistrationDelayDefault         = 1200;              ///< In seconds.
+constexpr uint16_t kRegistrationDelayDefault         = 5;                 ///< In seconds.
 constexpr uint32_t kMlrTimeoutDefault                = 3600;              ///< In seconds.
 constexpr uint32_t kMlrTimeoutMin                    = 300;               ///< In seconds.
 constexpr uint32_t kMlrTimeoutMax                    = 0x7fffffff / 1000; ///< In seconds (about 24 days).
@@ -428,24 +429,6 @@ private:
 };
 
 /**
- * This class represents a Mesh Local Prefix.
- *
- */
-OT_TOOL_PACKED_BEGIN
-class MeshLocalPrefix : public Ip6::NetworkPrefix
-{
-public:
-    /**
-     * This method derives and sets the Mesh Local Prefix from an Extended PAN ID.
-     *
-     * @param[in] aExtendedPanId   An Extended PAN ID.
-     *
-     */
-    void SetFromExtendedPanId(const Mac::ExtendedPanId &aExtendedPanId);
-
-} OT_TOOL_PACKED_END;
-
-/**
  * This class represents the Thread Leader Data.
  *
  */
@@ -549,7 +532,7 @@ public:
      * @retval FALSE  If the Router ID bit is not set.
      *
      */
-    bool Contains(uint8_t aRouterId) const { return (mRouterIdSet[aRouterId / 8] & (0x80 >> (aRouterId % 8))) != 0; }
+    bool Contains(uint8_t aRouterId) const { return (mRouterIdSet[aRouterId / 8] & MaskFor(aRouterId)) != 0; }
 
     /**
      * This method sets a given Router ID.
@@ -557,7 +540,7 @@ public:
      * @param[in]  aRouterId  The Router ID to set.
      *
      */
-    void Add(uint8_t aRouterId) { mRouterIdSet[aRouterId / 8] |= 0x80 >> (aRouterId % 8); }
+    void Add(uint8_t aRouterId) { mRouterIdSet[aRouterId / 8] |= MaskFor(aRouterId); }
 
     /**
      * This method removes a given Router ID.
@@ -565,9 +548,19 @@ public:
      * @param[in]  aRouterId  The Router ID to remove.
      *
      */
-    void Remove(uint8_t aRouterId) { mRouterIdSet[aRouterId / 8] &= ~(0x80 >> (aRouterId % 8)); }
+    void Remove(uint8_t aRouterId) { mRouterIdSet[aRouterId / 8] &= ~MaskFor(aRouterId); }
+
+    /**
+     * This method calculates the number of allocated Router IDs in the set.
+     *
+     * @returns The number of allocated Router IDs in the set.
+     *
+     */
+    uint8_t GetNumberOfAllocatedIds(void) const;
 
 private:
+    static uint8_t MaskFor(uint8_t aRouterId) { return (0x80 >> (aRouterId % 8)); }
+
     uint8_t mRouterIdSet[BitVectorBytes(Mle::kMaxRouterId + 1)];
 } OT_TOOL_PACKED_END;
 
@@ -584,13 +577,113 @@ typedef Mac::KeyMaterial KeyMaterial;
 typedef Mac::Key Key;
 
 /**
+ * This function derives the Child ID from a given RLOC16.
+ *
+ * @param[in]  aRloc16  The RLOC16 value.
+ *
+ * @returns The Child ID portion of an RLOC16.
+ *
+ */
+inline uint16_t ChildIdFromRloc16(uint16_t aRloc16) { return aRloc16 & kMaxChildId; }
+
+/**
+ * This function derives the Router ID portion from a given RLOC16.
+ *
+ * @param[in]  aRloc16  The RLOC16 value.
+ *
+ * @returns The Router ID portion of an RLOC16.
+ *
+ */
+inline uint8_t RouterIdFromRloc16(uint16_t aRloc16) { return aRloc16 >> kRouterIdOffset; }
+
+/**
+ * This function returns whether the two RLOC16 have the same Router ID.
+ *
+ * @param[in]  aRloc16A  The first RLOC16 value.
+ * @param[in]  aRloc16B  The second RLOC16 value.
+ *
+ * @returns true if the two RLOC16 have the same Router ID, false otherwise.
+ *
+ */
+inline bool RouterIdMatch(uint16_t aRloc16A, uint16_t aRloc16B)
+{
+    return RouterIdFromRloc16(aRloc16A) == RouterIdFromRloc16(aRloc16B);
+}
+
+/**
+ * This function returns the Service ID corresponding to a Service ALOC16.
+ *
+ * @param[in]  aAloc16  The Service ALOC16 value.
+ *
+ * @returns The Service ID corresponding to given ALOC16.
+ *
+ */
+inline uint8_t ServiceIdFromAloc(uint16_t aAloc16) { return static_cast<uint8_t>(aAloc16 - kAloc16ServiceStart); }
+
+/**
+ * This function returns the Service ALOC16 corresponding to a Service ID.
+ *
+ * @param[in]  aServiceId  The Service ID value.
+ *
+ * @returns The Service ALOC16 corresponding to given ID.
+ *
+ */
+inline uint16_t ServiceAlocFromId(uint8_t aServiceId)
+{
+    return static_cast<uint16_t>(aServiceId + kAloc16ServiceStart);
+}
+
+/**
+ * This function returns the Commissioner Aloc corresponding to a Commissioner Session ID.
+ *
+ * @param[in]  aSessionId   The Commissioner Session ID value.
+ *
+ * @returns The Commissioner ALOC16 corresponding to given ID.
+ *
+ */
+inline uint16_t CommissionerAloc16FromId(uint16_t aSessionId)
+{
+    return static_cast<uint16_t>((aSessionId & kAloc16CommissionerMask) + kAloc16CommissionerStart);
+}
+
+/**
+ * This function derives RLOC16 from a given Router ID.
+ *
+ * @param[in]  aRouterId  The Router ID value.
+ *
+ * @returns The RLOC16 corresponding to the given Router ID.
+ *
+ */
+inline uint16_t Rloc16FromRouterId(uint8_t aRouterId) { return static_cast<uint16_t>(aRouterId << kRouterIdOffset); }
+
+/**
+ * This function indicates whether or not @p aRloc16 refers to an active router.
+ *
+ * @param[in]  aRloc16  The RLOC16 value.
+ *
+ * @retval TRUE   If @p aRloc16 refers to an active router.
+ * @retval FALSE  If @p aRloc16 does not refer to an active router.
+ *
+ */
+inline bool IsActiveRouter(uint16_t aRloc16) { return ChildIdFromRloc16(aRloc16) == 0; }
+
+/**
+ * This function converts a device role into a human-readable string.
+ *
+ * @param[in] aRole  The device role to convert.
+ *
+ * @returns The string representation of @p aRole.
+ *
+ */
+const char *RoleToString(DeviceRole aRole);
+
+/**
  * @}
  *
  */
 
 } // namespace Mle
 
-DefineCoreType(otMeshLocalPrefix, Mle::MeshLocalPrefix);
 DefineCoreType(otLeaderData, Mle::LeaderData);
 DefineMapEnum(otDeviceRole, Mle::DeviceRole);
 

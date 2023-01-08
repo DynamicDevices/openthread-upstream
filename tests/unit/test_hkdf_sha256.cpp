@@ -28,12 +28,13 @@
 
 #include <openthread/config.h>
 
-#include "common/debug.hpp"
-#include "crypto/hkdf_sha256.hpp"
-
 #include "test_platform.h"
 #include "test_util.h"
 #include "test_util.hpp"
+
+#include "common/array.hpp"
+#include "common/debug.hpp"
+#include "crypto/hkdf_sha256.hpp"
 
 struct TestVector
 {
@@ -58,7 +59,7 @@ void TestHkdfSha256(void)
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     // Test Case #1: RFC-5869 Appendix A.1
     const uint8_t kInKey1[]  = {0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b,
-                               0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b};
+                                0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b};
     const uint8_t kSalt1[]   = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c};
     const uint8_t kInfo1[]   = {0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9};
     const uint8_t kOutKey1[] = {0x3c, 0xb2, 0x5f, 0x25, 0xfa, 0xac, 0xd5, 0x7a, 0x90, 0x43, 0x4f, 0x64, 0xd0, 0x36,
@@ -125,7 +126,7 @@ void TestHkdfSha256(void)
 
     VerifyOrQuit(instance != nullptr);
 
-    for (const TestVector *test = &kTestVectors[0]; test < OT_ARRAY_END(kTestVectors); test++)
+    for (const TestVector *test = &kTestVectors[0]; test < ot::GetArrayEnd(kTestVectors); test++)
     {
         ot::Crypto::HkdfSha256 hkdf;
         uint8_t                outKey[kMaxOuttKey];

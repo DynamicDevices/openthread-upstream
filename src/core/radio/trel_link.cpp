@@ -38,10 +38,12 @@
 #include "common/debug.hpp"
 #include "common/instance.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
 
 namespace ot {
 namespace Trel {
+
+RegisterLogModule("TrelLink");
 
 Link::Link(Instance &aInstance)
     : InstanceLocator(aInstance)
@@ -49,8 +51,8 @@ Link::Link(Instance &aInstance)
     , mRxChannel(0)
     , mPanId(Mac::kPanIdBroadcast)
     , mTxPacketNumber(0)
-    , mTxTasklet(aInstance, HandleTxTasklet)
-    , mTimer(aInstance, HandleTimer)
+    , mTxTasklet(aInstance)
+    , mTimer(aInstance)
     , mInterface(aInstance)
 {
     memset(&mTxFrame, 0, sizeof(mTxFrame));
@@ -68,10 +70,7 @@ Link::Link(Instance &aInstance)
     mTimer.Start(kAckWaitWindow);
 }
 
-void Link::AfterInit(void)
-{
-    mInterface.Init();
-}
+void Link::AfterInit(void) { mInterface.Init(); }
 
 void Link::Enable(void)
 {
@@ -114,15 +113,7 @@ void Link::Send(void)
     mTxTasklet.Post();
 }
 
-void Link::HandleTxTasklet(Tasklet &aTasklet)
-{
-    aTasklet.Get<Link>().HandleTxTasklet();
-}
-
-void Link::HandleTxTasklet(void)
-{
-    BeginTransmit();
-}
+void Link::HandleTxTasklet(void) { BeginTransmit(); }
 
 void Link::BeginTransmit(void)
 {
@@ -130,7 +121,7 @@ void Link::BeginTransmit(void)
     Mac::PanId    destPanId;
     Header::Type  type;
     Packet        txPacket;
-    Neighbor *    neighbor   = nullptr;
+    Neighbor     *neighbor   = nullptr;
     Mac::RxFrame *ackFrame   = nullptr;
     bool          isDisovery = false;
 
@@ -219,8 +210,7 @@ void Link::BeginTransmit(void)
         txPacket.GetHeader().SetDestination(destAddr.GetExtended());
     }
 
-    otLogDebgMac("Trel: BeginTransmit() [%s] plen:%d", txPacket.GetHeader().ToString().AsCString(),
-                 txPacket.GetPayloadLength());
+    LogDebg("BeginTransmit() [%s] plen:%d", txPacket.GetHeader().ToString().AsCString(), txPacket.GetPayloadLength());
 
     VerifyOrExit(mInterface.Send(txPacket, isDisovery) == kErrorNone, InvokeSendDone(kErrorAbort));
 
@@ -244,7 +234,7 @@ void Link::BeginTransmit(void)
         mRxFrame.mRadioType = Mac::kRadioTypeTrel;
 #endif
         mRxFrame.mInfo.mRxInfo.mTimestamp             = 0;
-        mRxFrame.mInfo.mRxInfo.mRssi                  = OT_RADIO_RSSI_INVALID;
+        mRxFrame.mInfo.mRxInfo.mRssi                  = Radio::kInvalidRssi;
         mRxFrame.mInfo.mRxInfo.mLqi                   = OT_RADIO_LQI_NONE;
         mRxFrame.mInfo.mRxInfo.mAckedWithFramePending = false;
 
@@ -265,11 +255,6 @@ void Link::InvokeSendDone(Error aError, Mac::RxFrame *aAckFrame)
     Get<Mac::Mac>().HandleTransmitDone(mTxFrame, aAckFrame, aError);
 }
 
-void Link::HandleTimer(Timer &aTimer)
-{
-    aTimer.Get<Link>().HandleTimer();
-}
-
 void Link::HandleTimer(void)
 {
     mTimer.Start(kAckWaitWindow);
@@ -280,7 +265,7 @@ void Link::HandleTimer(void)
         HandleTimer(child);
     }
 
-    for (Router &router : Get<RouterTable>().Iterate())
+    for (Router &router : Get<RouterTable>())
     {
         HandleTimer(router);
     }
@@ -372,8 +357,7 @@ void Link::ProcessReceivedPacket(Packet &aPacket)
         }
     }
 
-    otLogDebgMac("Trel: ReceivedPacket() [%s] plen:%d", aPacket.GetHeader().ToString().AsCString(),
-                 aPacket.GetPayloadLength());
+    LogDebg("ReceivedPacket() [%s] plen:%d", aPacket.GetHeader().ToString().AsCString(), aPacket.GetPayloadLength());
 
     if (aPacket.GetHeader().GetAckMode() == Header::kAckRequested)
     {
@@ -401,10 +385,10 @@ void Link::HandleAck(Packet &aAckPacket)
 {
     Error        ackError;
     Mac::Address srcAddress;
-    Neighbor *   neighbor;
+    Neighbor    *neighbor;
     uint32_t     ackNumber;
 
-    otLogDebgMac("Trel: HandleAck() [%s]", aAckPacket.GetHeader().ToString().AsCString());
+    LogDebg("HandleAck() [%s]", aAckPacket.GetHeader().ToString().AsCString());
 
     srcAddress.SetExtended(aAckPacket.GetHeader().GetSource());
     neighbor = Get<NeighborTable>().FindNeighbor(srcAddress, Neighbor::kInStateAnyExceptInvalid);
@@ -450,15 +434,15 @@ void Link::SendAck(Packet &aRxPacket)
     ackPacket.GetHeader().SetSource(Get<Mac::Mac>().GetExtAddress());
     ackPacket.GetHeader().SetDestination(aRxPacket.GetHeader().GetSource());
 
-    otLogDebgMac("Trel: SendAck [%s]", ackPacket.GetHeader().ToString().AsCString());
+    LogDebg("SendAck [%s]", ackPacket.GetHeader().ToString().AsCString());
 
     IgnoreError(mInterface.Send(ackPacket));
 }
 
 void Link::ReportDeferredAckStatus(Neighbor &aNeighbor, Error aError)
 {
-    otLogDebgMac("Trel: ReportDeferredAckStatus(): %s for %s", aNeighbor.GetExtAddress().ToString().AsCString(),
-                 ErrorToString(aError));
+    LogDebg("ReportDeferredAckStatus(): %s for %s", aNeighbor.GetExtAddress().ToString().AsCString(),
+            ErrorToString(aError));
 
     Get<MeshForwarder>().HandleDeferredAck(aNeighbor, aError);
 }
@@ -467,7 +451,7 @@ void Link::SetState(State aState)
 {
     if (mState != aState)
     {
-        otLogDebgMac("Trel: State: %s -> %s", StateToString(mState), StateToString(aState));
+        LogDebg("State: %s -> %s", StateToString(mState), StateToString(aState));
         mState = aState;
     }
 }

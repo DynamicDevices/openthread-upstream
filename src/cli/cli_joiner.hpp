@@ -49,7 +49,7 @@ namespace Cli {
  * This class implements the Joiner CLI interpreter.
  *
  */
-class Joiner : private OutputWrapper
+class Joiner : private Output
 {
 public:
     typedef Utils::CmdLineParser::Arg Arg;
@@ -57,11 +57,12 @@ public:
     /**
      * Constructor
      *
-     * @param[in]  aOutput The CLI console output context
+     * @param[in]  aInstance            The OpenThread Instance.
+     * @param[in]  aOutputImplementer   An `OutputImplementer`.
      *
      */
-    explicit Joiner(Output &aOutput)
-        : OutputWrapper(aOutput)
+    Joiner(otInstance *aInstance, OutputImplementer &aOutputImplementer)
+        : Output(aInstance, aOutputImplementer)
     {
     }
 
@@ -76,22 +77,10 @@ public:
 private:
     using Command = CommandEntry<Joiner>;
 
-    otError ProcessDiscerner(Arg aArgs[]);
-    otError ProcessHelp(Arg aArgs[]);
-    otError ProcessId(Arg aArgs[]);
-    otError ProcessStart(Arg aArgs[]);
-    otError ProcessStop(Arg aArgs[]);
-    otError ProcessState(Arg aArgs[]);
+    template <CommandId kCommandId> otError Process(Arg aArgs[]);
 
     static void HandleCallback(otError aError, void *aContext);
     void        HandleCallback(otError aError);
-
-    static constexpr Command sCommands[] = {
-        {"discerner", &Joiner::ProcessDiscerner}, {"help", &Joiner::ProcessHelp},   {"id", &Joiner::ProcessId},
-        {"start", &Joiner::ProcessStart},         {"state", &Joiner::ProcessState}, {"stop", &Joiner::ProcessStop},
-    };
-
-    static_assert(BinarySearch::IsSorted(sCommands), "Command Table is not sorted");
 };
 
 } // namespace Cli

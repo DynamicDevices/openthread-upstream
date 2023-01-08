@@ -38,7 +38,6 @@
 #include "common/code_utils.hpp"
 #include "common/instance.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
 #include "common/message.hpp"
 #include "thread/mesh_forwarder.hpp"
 #include "thread/mle_tlvs.hpp"
@@ -137,18 +136,13 @@ exit:
 
 void IndirectSender::ClearAllMessagesForSleepyChild(Child &aChild)
 {
-    Message *message;
-    Message *nextMessage;
-
     VerifyOrExit(aChild.GetIndirectMessageCount() > 0);
 
-    for (message = Get<MeshForwarder>().mSendQueue.GetHead(); message; message = nextMessage)
+    for (Message &message : Get<MeshForwarder>().mSendQueue)
     {
-        nextMessage = message->GetNext();
+        message.ClearChildMask(Get<ChildTable>().GetChildIndex(aChild));
 
-        message->ClearChildMask(Get<ChildTable>().GetChildIndex(aChild));
-
-        Get<MeshForwarder>().RemoveMessageIfNoPendingTx(*message);
+        Get<MeshForwarder>().RemoveMessageIfNoPendingTx(message);
     }
 
     aChild.SetIndirectMessage(nullptr);
@@ -187,12 +181,12 @@ void IndirectSender::HandleChildModeChange(Child &aChild, Mle::DeviceMode aOldMo
     {
         uint16_t childIndex = Get<ChildTable>().GetChildIndex(aChild);
 
-        for (Message *message = Get<MeshForwarder>().mSendQueue.GetHead(); message; message = message->GetNext())
+        for (Message &message : Get<MeshForwarder>().mSendQueue)
         {
-            if (message->GetChildMask(childIndex))
+            if (message.GetChildMask(childIndex))
             {
-                message->ClearChildMask(childIndex);
-                message->SetDirectTransmission();
+                message.ClearChildMask(childIndex);
+                message.SetDirectTransmission();
             }
         }
 
@@ -215,19 +209,20 @@ void IndirectSender::HandleChildModeChange(Child &aChild, Mle::DeviceMode aOldMo
 
 Message *IndirectSender::FindIndirectMessage(Child &aChild, bool aSupervisionTypeOnly)
 {
-    Message *message;
+    Message *msg        = nullptr;
     uint16_t childIndex = Get<ChildTable>().GetChildIndex(aChild);
 
-    for (message = Get<MeshForwarder>().mSendQueue.GetHead(); message; message = message->GetNext())
+    for (Message &message : Get<MeshForwarder>().mSendQueue)
     {
-        if (message->GetChildMask(childIndex) &&
-            (!aSupervisionTypeOnly || (message->GetType() == Message::kTypeSupervision)))
+        if (message.GetChildMask(childIndex) &&
+            (!aSupervisionTypeOnly || (message.GetType() == Message::kTypeSupervision)))
         {
+            msg = &message;
             break;
         }
     }
 
-    return message;
+    return msg;
 }
 
 void IndirectSender::RequestMessageUpdate(Child &aChild)
@@ -325,7 +320,7 @@ void IndirectSender::UpdateIndirectMessage(Child &aChild)
         mDataPollHandler.HandleNewFrame(aChild);
 
         aChild.GetMacAddress(childAddress);
-        Get<MeshForwarder>().LogMessage(MeshForwarder::kMessagePrepareIndirect, *message, &childAddress, kErrorNone);
+        Get<MeshForwarder>().LogMessage(MeshForwarder::kMessagePrepareIndirect, *message, kErrorNone, &childAddress);
     }
 }
 
@@ -356,7 +351,6 @@ Error IndirectSender::PrepareFrameForChild(Mac::TxFrame &aFrame, FrameContext &a
 
     default:
         OT_ASSERT(false);
-        OT_UNREACHABLE_CODE(break);
     }
 
 exit:
@@ -365,24 +359,24 @@ exit:
 
 uint16_t IndirectSender::PrepareDataFrame(Mac::TxFrame &aFrame, Child &aChild, Message &aMessage)
 {
-    Ip6::Header  ip6Header;
-    Mac::Address macSource, macDest;
-    uint16_t     directTxOffset;
-    uint16_t     nextOffset;
+    Ip6::Header    ip6Header;
+    Mac::Addresses macAddrs;
+    uint16_t       directTxOffset;
+    uint16_t       nextOffset;
 
     // Determine the MAC source and destination addresses.
 
     IgnoreError(aMessage.Read(0, ip6Header));
 
-    Get<MeshForwarder>().GetMacSourceAddress(ip6Header.GetSource(), macSource);
+    Get<MeshForwarder>().GetMacSourceAddress(ip6Header.GetSource(), macAddrs.mSource);
 
     if (ip6Header.GetDestination().IsLinkLocal())
     {
-        Get<MeshForwarder>().GetMacDestinationAddress(ip6Header.GetDestination(), macDest);
+        Get<MeshForwarder>().GetMacDestinationAddress(ip6Header.GetDestination(), macAddrs.mDestination);
     }
     else
     {
-        aChild.GetMacAddress(macDest);
+        aChild.GetMacAddress(macAddrs.mDestination);
     }
 
     // Prepare the data frame from previous child's indirect offset.
@@ -390,7 +384,7 @@ uint16_t IndirectSender::PrepareDataFrame(Mac::TxFrame &aFrame, Child &aChild, M
     directTxOffset = aMessage.GetOffset();
     aMessage.SetOffset(aChild.GetIndirectFragmentOffset());
 
-    nextOffset = Get<MeshForwarder>().PrepareDataFrame(aFrame, aMessage, macSource, macDest);
+    nextOffset = Get<MeshForwarder>().PrepareDataFrame(aFrame, aMessage, macAddrs);
 
     aMessage.SetOffset(directTxOffset);
 
@@ -417,7 +411,7 @@ void IndirectSender::PrepareEmptyFrame(Mac::TxFrame &aFrame, Child &aChild, bool
 void IndirectSender::HandleSentFrameToChild(const Mac::TxFrame &aFrame,
                                             const FrameContext &aContext,
                                             Error               aError,
-                                            Child &             aChild)
+                                            Child              &aChild)
 {
     Message *message    = aChild.GetIndirectMessage();
     uint16_t nextOffset = aContext.mMessageNextOffset;
@@ -470,7 +464,6 @@ void IndirectSender::HandleSentFrameToChild(const Mac::TxFrame &aFrame,
 
     default:
         OT_ASSERT(false);
-        OT_UNREACHABLE_CODE(break);
     }
 
     if ((message != nullptr) && (nextOffset < message->GetLength()))
@@ -524,7 +517,7 @@ void IndirectSender::HandleSentFrameToChild(const Mac::TxFrame &aFrame,
         if (!aFrame.IsEmpty())
         {
             IgnoreError(aFrame.GetDstAddr(macDest));
-            Get<MeshForwarder>().LogMessage(MeshForwarder::kMessageTransmit, *message, &macDest, txError);
+            Get<MeshForwarder>().LogMessage(MeshForwarder::kMessageTransmit, *message, txError, &macDest);
         }
 
         if (message->GetType() == Message::kTypeIp6)

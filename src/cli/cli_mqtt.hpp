@@ -42,7 +42,7 @@ namespace Cli {
  * This class implements the CLI CoAP server and client.
  *
  */
-class Mqtt : private OutputWrapper
+class Mqtt : private Output
 {
 public:
     typedef Utils::CmdLineParser::Arg Arg;
@@ -50,10 +50,11 @@ public:
     /**
      * Constructor
      *
-     * @param[in]  aOutput The CLI console output context
+     * @param[in]  aInstance            The OpenThread Instance.
+     * @param[in]  aOutputImplementer   An `OutputImplementer`.
      *
      */
-    explicit Mqtt(Output &aOutput);
+    Mqtt(otInstance *aInstance, OutputImplementer &aOutputImplementer);
 
     /**
      * This method interprets a list of CLI arguments.
@@ -66,22 +67,7 @@ public:
 private:
     using Command = CommandEntry<Mqtt>;
 
-    otError ProcessHelp(Arg aArgs[]);
-    otError ProcessStart(Arg aArgs[]);
-    otError ProcessStop(Arg aArgs[]);
-    otError ProcessConnect(Arg aArgs[]);
-    otError ProcessReconnect(Arg aArgs[]);
-    otError ProcessSubscribe(Arg aArgs[]);
-    otError ProcessState(Arg aArgs[]);
-    otError ProcessRegister(Arg aArgs[]);
-    otError ProcessPublish(Arg aArgs[]);
-    otError ProcessPublishm1(Arg aArgs[]);
-    otError ProcessUnsubscribe(Arg aArgs[]);
-    otError ProcessDisconnect(Arg aArgs[]);
-    otError ProcessSleep(Arg aArgs[]);
-    otError ProcessAwake(Arg aArgs[]);
-    otError ProcessSearchgw(Arg aArgs[]);
-    otError ProcessGateways(Arg aArgs[]);
+    template <CommandId kCommandId> otError Process(Arg aArgs[]);
 
     otError ParseTopic(const Arg &aArg, otMqttsnTopic *aTopic);
 
@@ -103,27 +89,6 @@ private:
     void        HandleSearchgwResponse(const otIp6Address* aAddress, uint8_t aGatewayId);
 
     void PrintFailedWithCode(const char *aCommandName, otMqttsnReturnCode aCode);
-
-    static constexpr Command sCommands[] = {
-        {"awake", &Mqtt::ProcessAwake},
-        {"connect", &Mqtt::ProcessConnect},
-        {"disconnect", &Mqtt::ProcessDisconnect},
-        {"gateways", &Mqtt::ProcessGateways},
-        {"help", &Mqtt::ProcessHelp},
-        {"publish", &Mqtt::ProcessPublish},
-        {"publishm1", &Mqtt::ProcessPublishm1},
-        {"reconnect", &Mqtt::ProcessReconnect},
-        {"register", &Mqtt::ProcessRegister},
-        {"searchgw", &Mqtt::ProcessSearchgw},
-        {"sleep", &Mqtt::ProcessSleep},
-        {"start", &Mqtt::ProcessStart},
-        {"state", &Mqtt::ProcessState},
-        {"stop", &Mqtt::ProcessStop},
-        {"subscribe", &Mqtt::ProcessSubscribe},
-        {"unsubscribe", &Mqtt::ProcessUnsubscribe},
-    };
-
-    static_assert(BinarySearch::IsSorted(sCommands), "Command Table is not sorted");
 };
 
 } // namespace Cli

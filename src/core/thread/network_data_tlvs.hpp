@@ -73,10 +73,7 @@ class NetworkDataTlv;
  * @returns A `TlvType` pointer to `aTlv`.
  *
  */
-template <class TlvType> TlvType *As(NetworkDataTlv *aTlv)
-{
-    return static_cast<TlvType *>(aTlv);
-}
+template <class TlvType> TlvType *As(NetworkDataTlv *aTlv) { return static_cast<TlvType *>(aTlv); }
 
 /**
  * This template method casts a `NetworkDataTlv` pointer to a given subclass `TlvType` pointer.
@@ -88,10 +85,7 @@ template <class TlvType> TlvType *As(NetworkDataTlv *aTlv)
  * @returns A `TlvType` pointer to `aTlv`.
  *
  */
-template <class TlvType> const TlvType *As(const NetworkDataTlv *aTlv)
-{
-    return static_cast<const TlvType *>(aTlv);
-}
+template <class TlvType> const TlvType *As(const NetworkDataTlv *aTlv) { return static_cast<const TlvType *>(aTlv); }
 
 /**
  * This template method casts a `NetworkDataTlv` reference to a given subclass `TlvType` reference.
@@ -103,10 +97,7 @@ template <class TlvType> const TlvType *As(const NetworkDataTlv *aTlv)
  * @returns A `TlvType` reference to `aTlv`.
  *
  */
-template <class TlvType> TlvType &As(NetworkDataTlv &aTlv)
-{
-    return static_cast<TlvType &>(aTlv);
-}
+template <class TlvType> TlvType &As(NetworkDataTlv &aTlv) { return static_cast<TlvType &>(aTlv); }
 
 /**
  * This template method casts a `NetworkDataTlv` reference to a given subclass `TlvType` reference.
@@ -118,10 +109,7 @@ template <class TlvType> TlvType &As(NetworkDataTlv &aTlv)
  * @returns A `TlvType` reference to `aTlv`.
  *
  */
-template <class TlvType> const TlvType &As(const NetworkDataTlv &aTlv)
-{
-    return static_cast<const TlvType &>(aTlv);
-}
+template <class TlvType> const TlvType &As(const NetworkDataTlv &aTlv) { return static_cast<const TlvType &>(aTlv); }
 
 /**
  * This class implements Thread Network Data TLV generation and parsing.
@@ -1214,17 +1202,17 @@ public:
     /**
      * This method initializes the Context TLV.
      *
-     * @param[in]  aConextId   The Context ID value.
-     * @param[in]  aLength     The Context Length value.
+     * @param[in]  aContextId      The Context ID value.
+     * @param[in]  aContextLength  The Context Length value.
      *
      */
-    void Init(uint8_t aContextId, uint8_t aConextLength)
+    void Init(uint8_t aContextId, uint8_t aContextLength)
     {
         NetworkDataTlv::Init();
         SetType(kTypeContext);
         SetLength(sizeof(ContextTlv) - sizeof(NetworkDataTlv));
         mFlags         = ((aContextId << kContextIdOffset) & kContextIdMask);
-        mContextLength = aConextLength;
+        mContextLength = aContextLength;
     }
 
     /**
@@ -1561,7 +1549,7 @@ public:
 
 private:
     const uint8_t *GetServerData(void) const { return reinterpret_cast<const uint8_t *>(this) + sizeof(*this); }
-    uint8_t *      GetServerData(void) { return AsNonConst(AsConst(this)->GetServerData()); }
+    uint8_t       *GetServerData(void) { return AsNonConst(AsConst(this)->GetServerData()); }
 
     uint16_t mServer16;
 } OT_TOOL_PACKED_END;

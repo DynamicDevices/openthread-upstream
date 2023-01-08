@@ -264,10 +264,10 @@ typedef struct otNetworkDiagTlv
 /**
  * This function gets the next Network Diagnostic TLV in the message.
  *
- * @param[in]     aMessage         A pointer to a message.
- * @param[inout]  aIterator        A pointer to the Network Diagnostic iterator context. To get the first
- *                                 Network Diagnostic TLV it should be set to OT_NETWORK_DIAGNOSTIC_ITERATOR_INIT.
- * @param[out]    aNetworkDiagTlv  A pointer to where the Network Diagnostic TLV information will be placed.
+ * @param[in]      aMessage         A pointer to a message.
+ * @param[in,out]  aIterator        A pointer to the Network Diagnostic iterator context. To get the first
+ *                                  Network Diagnostic TLV it should be set to OT_NETWORK_DIAGNOSTIC_ITERATOR_INIT.
+ * @param[out]     aNetworkDiagTlv  A pointer to where the Network Diagnostic TLV information will be placed.
  *
  * @retval OT_ERROR_NONE       Successfully found the next Network Diagnostic TLV.
  * @retval OT_ERROR_NOT_FOUND  No subsequent Network Diagnostic TLV exists in the message.
@@ -276,9 +276,9 @@ typedef struct otNetworkDiagTlv
  * @Note A subsequent call to this function is allowed only when current return value is OT_ERROR_NONE.
  *
  */
-otError otThreadGetNextDiagnosticTlv(const otMessage *      aMessage,
+otError otThreadGetNextDiagnosticTlv(const otMessage       *aMessage,
                                      otNetworkDiagIterator *aIterator,
-                                     otNetworkDiagTlv *     aNetworkDiagTlv);
+                                     otNetworkDiagTlv      *aNetworkDiagTlv);
 
 /**
  * This function pointer is called when Network Diagnostic Get response is received.
@@ -292,9 +292,9 @@ otError otThreadGetNextDiagnosticTlv(const otMessage *      aMessage,
  *
  */
 typedef void (*otReceiveDiagnosticGetCallback)(otError              aError,
-                                               otMessage *          aMessage,
+                                               otMessage           *aMessage,
                                                const otMessageInfo *aMessageInfo,
-                                               void *               aContext);
+                                               void                *aContext);
 
 /**
  * Send a Network Diagnostic Get request.
@@ -311,12 +311,12 @@ typedef void (*otReceiveDiagnosticGetCallback)(otError              aError,
  * @retval OT_ERROR_NO_BUFS Insufficient message buffers available to send DIAG_GET.req.
  *
  */
-otError otThreadSendDiagnosticGet(otInstance *                   aInstance,
-                                  const otIp6Address *           aDestination,
+otError otThreadSendDiagnosticGet(otInstance                    *aInstance,
+                                  const otIp6Address            *aDestination,
                                   const uint8_t                  aTlvTypes[],
                                   uint8_t                        aCount,
                                   otReceiveDiagnosticGetCallback aCallback,
-                                  void *                         aCallbackContext);
+                                  void                          *aCallbackContext);
 
 /**
  * Send a Network Diagnostic Reset request.
@@ -330,7 +330,7 @@ otError otThreadSendDiagnosticGet(otInstance *                   aInstance,
  * @retval OT_ERROR_NO_BUFS Insufficient message buffers available to send DIAG_RST.ntf.
  *
  */
-otError otThreadSendDiagnosticReset(otInstance *        aInstance,
+otError otThreadSendDiagnosticReset(otInstance         *aInstance,
                                     const otIp6Address *aDestination,
                                     const uint8_t       aTlvTypes[],
                                     uint8_t             aCount);

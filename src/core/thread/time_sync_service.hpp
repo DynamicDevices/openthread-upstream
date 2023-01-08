@@ -40,6 +40,7 @@
 
 #include <openthread/network_time.h>
 
+#include "common/callback.hpp"
 #include "common/locator.hpp"
 #include "common/message.hpp"
 #include "common/non_copyable.hpp"
@@ -66,7 +67,7 @@ public:
     /**
      * Get the Thread network time.
      *
-     * @param[inout] aNetworkTime  The Thread network time in microseconds.
+     * @param[in,out] aNetworkTime  The Thread network time in microseconds.
      *
      * @returns The time synchronization status.
      *
@@ -151,8 +152,7 @@ public:
      */
     void SetTimeSyncCallback(otNetworkTimeSyncCallbackFn aCallback, void *aCallbackContext)
     {
-        mTimeSyncCallback        = aCallback;
-        mTimeSyncCallbackContext = aCallbackContext;
+        mTimeSyncCallback.Set(aCallback, aCallbackContext);
     }
 
     /**
@@ -169,14 +169,6 @@ private:
      *
      */
     void HandleNotifierEvents(Events aEvents);
-
-    /**
-     * Callback to be called when timer expires.
-     *
-     * @param[in] aTimer The corresponding timer.
-     *
-     */
-    static void HandleTimeout(Timer &aTimer);
 
     /**
      * Check and handle any status change, and notify observers if applicable.
@@ -199,6 +191,8 @@ private:
      */
     void NotifyTimeSyncCallback(void);
 
+    using SyncTimer = TimerMilliIn<TimeSync, &TimeSync::HandleTimeout>;
+
     bool     mTimeSyncRequired; ///< Indicate whether or not a time synchronization message is required.
     uint8_t  mTimeSyncSeq;      ///< The time synchronization sequence.
     uint16_t mTimeSyncPeriod;   ///< The time synchronization period.
@@ -208,11 +202,10 @@ private:
 #endif
     TimeMilli mLastTimeSyncReceived; ///< The time when the last time synchronization message was received.
     int64_t   mNetworkTimeOffset;    ///< The time offset to the Thread Network time
-    otNetworkTimeSyncCallbackFn
-                        mTimeSyncCallback; ///< The callback to be called when time sync is handled or status updated.
-    void *              mTimeSyncCallbackContext; ///< The context to be passed to callback.
-    TimerMilli          mTimer;                   ///< Timer for checking if a resync is required.
-    otNetworkTimeStatus mCurrentStatus;           ///< Current network time status.
+
+    Callback<otNetworkTimeSyncCallbackFn> mTimeSyncCallback; ///< Callback when time sync is handled or status updated.
+    SyncTimer                             mTimer;            ///< Timer for checking if a resync is required.
+    otNetworkTimeStatus                   mCurrentStatus;    ///< Current network time status.
 };
 
 /**

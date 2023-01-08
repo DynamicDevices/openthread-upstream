@@ -53,7 +53,7 @@ extern "C" {
  * @note This number versions both OpenThread platform and user APIs.
  *
  */
-#define OPENTHREAD_API_VERSION (190)
+#define OPENTHREAD_API_VERSION (273)
 
 /**
  * @addtogroup api-instance
@@ -78,9 +78,9 @@ typedef struct otInstance otInstance;
  *
  * This function is available and can only be used when support for multiple OpenThread instances is enabled.
  *
- * @param[in]    aInstanceBuffer      The buffer for OpenThread to use for allocating the otInstance structure.
- * @param[inout] aInstanceBufferSize  On input, the size of aInstanceBuffer. On output, if not enough space for
- *                                    otInstance, the number of bytes required for otInstance.
+ * @param[in]     aInstanceBuffer      The buffer for OpenThread to use for allocating the otInstance structure.
+ * @param[in,out] aInstanceBufferSize  On input, the size of aInstanceBuffer. On output, if not enough space for
+ *                                     otInstance, the number of bytes required for otInstance.
  *
  * @returns  A pointer to the new OpenThread instance.
  *
@@ -196,6 +196,7 @@ enum
     OT_CHANGED_JOINER_STATE                 = 1 << 27, ///< Joiner state changed
     OT_CHANGED_ACTIVE_DATASET               = 1 << 28, ///< Active Operational Dataset changed
     OT_CHANGED_PENDING_DATASET              = 1 << 29, ///< Pending Operational Dataset changed
+    OT_CHANGED_NAT64_TRANSLATOR_STATE       = 1 << 30, ///< The state of NAT64 translator changed
 };
 
 /**
@@ -250,7 +251,7 @@ void otRemoveStateChangeCallback(otInstance *aInstance, otStateChangedCallback a
 void otInstanceReset(otInstance *aInstance);
 
 /**
- * This method deletes all the settings stored on non-volatile memory, and then triggers platform reset.
+ * Deletes all the settings stored on non-volatile memory, and then triggers a platform reset.
  *
  * @param[in]  aInstance  A pointer to an OpenThread instance.
  *

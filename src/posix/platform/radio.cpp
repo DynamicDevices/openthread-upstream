@@ -35,6 +35,9 @@
 
 #include <string.h>
 
+#include <openthread/logging.h>
+
+#include "common/code_utils.hpp"
 #include "common/new.hpp"
 #include "lib/spinel/radio_spinel.hpp"
 #include "posix/platform/radio.hpp"
@@ -51,8 +54,18 @@ static ot::Spinel::RadioSpinel<ot::Posix::HdlcInterface, RadioProcessContext> sR
 #include "spi_interface.hpp"
 
 static ot::Spinel::RadioSpinel<ot::Posix::SpiInterface, RadioProcessContext> sRadioSpinel;
+#elif OPENTHREAD_POSIX_CONFIG_RCP_BUS == OT_POSIX_RCP_BUS_VENDOR
+#include "vendor_interface.hpp"
+
+static ot::Spinel::RadioSpinel<ot::Posix::VendorInterface, RadioProcessContext> sRadioSpinel;
 #else
-#error "OPENTHREAD_POSIX_CONFIG_RCP_BUS only allows OT_POSIX_RCP_BUS_UART and OT_POSIX_RCP_BUS_SPI!"
+#error "OPENTHREAD_POSIX_CONFIG_RCP_BUS only allows OT_POSIX_RCP_BUS_UART, OT_POSIX_RCP_BUS_SPI and " \
+    "OT_POSIX_RCP_BUS_VENDOR!"
+#endif
+
+#if OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
+#include "power_updater.hpp"
+static ot::Posix::PowerUpdater sPowerUpdater;
 #endif
 
 namespace ot {
@@ -127,7 +140,7 @@ void Radio::Init(void)
 
         VerifyOrDie(strnlen(region, 3) == 2, OT_EXIT_INVALID_ARGUMENTS);
         regionCode = static_cast<uint16_t>(static_cast<uint16_t>(region[0]) << 8) + static_cast<uint16_t>(region[1]);
-        SuccessOrDie(sRadioSpinel.SetRadioRegion(regionCode));
+        SuccessOrDie(otPlatRadioSetRegion(gInstance, regionCode));
     }
 
 #if OPENTHREAD_POSIX_CONFIG_MAX_POWER_TABLE_ENABLE
@@ -135,7 +148,7 @@ void Radio::Init(void)
     if (maxPowerTable != nullptr)
     {
         constexpr int8_t kPowerDefault = 30; // Default power 1 watt (30 dBm).
-        const char *     str           = nullptr;
+        const char      *str           = nullptr;
         uint8_t          channel       = ot::Radio::kChannelMin;
         int8_t           power         = kPowerDefault;
         otError          error;
@@ -145,10 +158,15 @@ void Radio::Init(void)
         {
             power = static_cast<int8_t>(strtol(str, nullptr, 0));
             error = sRadioSpinel.SetChannelMaxTransmitPower(channel, power);
-            if (error != OT_ERROR_NONE && error != OT_ERROR_NOT_FOUND)
+            if (error != OT_ERROR_NONE && error != OT_ERROR_NOT_IMPLEMENTED)
             {
                 DieNow(OT_ERROR_FAILED);
             }
+            else if (error == OT_ERROR_NOT_IMPLEMENTED)
+            {
+                otLogWarnPlat("The RCP doesn't support setting the max transmit power");
+            }
+
             ++channel;
         }
 
@@ -156,25 +174,36 @@ void Radio::Init(void)
         while (channel <= ot::Radio::kChannelMax)
         {
             error = sRadioSpinel.SetChannelMaxTransmitPower(channel, power);
-            if (error != OT_ERROR_NONE && error != OT_ERROR_NOT_FOUND)
+            if (error != OT_ERROR_NONE && error != OT_ERROR_NOT_IMPLEMENTED)
             {
                 DieNow(OT_ERROR_FAILED);
             }
+            else if (error == OT_ERROR_NOT_IMPLEMENTED)
+            {
+                otLogWarnPlat("The RCP doesn't support setting the max transmit power");
+            }
+
             ++channel;
         }
 
         VerifyOrDie(str == nullptr, OT_EXIT_INVALID_ARGUMENTS);
     }
 #endif // OPENTHREAD_POSIX_CONFIG_MAX_POWER_TABLE_ENABLE
+#if OPENTHREAD_CONFIG_PLATFORM_RADIO_COEX_ENABLE
+    {
+        const char *enableCoex = mRadioUrl.GetValue("enable-coex");
+        if (enableCoex != nullptr)
+        {
+            SuccessOrDie(sRadioSpinel.SetCoexEnabled(enableCoex[0] != '0'));
+        }
+    }
+#endif // OPENTHREAD_CONFIG_PLATFORM_RADIO_COEX_ENABLE
 }
 
 } // namespace Posix
 } // namespace ot
 
-void platformRadioDeinit(void)
-{
-    sRadioSpinel.Deinit();
-}
+void platformRadioDeinit(void) { sRadioSpinel.Deinit(); }
 
 void otPlatRadioGetIeeeEui64(otInstance *aInstance, uint8_t *aIeeeEui64)
 {
@@ -219,10 +248,7 @@ bool otPlatRadioIsEnabled(otInstance *aInstance)
     return sRadioSpinel.IsEnabled();
 }
 
-otError otPlatRadioEnable(otInstance *aInstance)
-{
-    return sRadioSpinel.Enable(aInstance);
-}
+otError otPlatRadioEnable(otInstance *aInstance) { return sRadioSpinel.Enable(aInstance); }
 
 otError otPlatRadioDisable(otInstance *aInstance)
 {
@@ -478,8 +504,8 @@ exit:
 #if OPENTHREAD_CONFIG_DIAG_ENABLE
 otError otPlatDiagProcess(otInstance *aInstance,
                           uint8_t     aArgsLength,
-                          char *      aArgs[],
-                          char *      aOutput,
+                          char       *aArgs[],
+                          char       *aOutput,
                           size_t      aOutputMaxLen)
 {
     // deliver the platform specific diags commands to radio only ncp.
@@ -505,10 +531,7 @@ exit:
     return;
 }
 
-bool otPlatDiagModeGet(void)
-{
-    return sRadioSpinel.IsDiagEnabled();
-}
+bool otPlatDiagModeGet(void) { return sRadioSpinel.IsDiagEnabled(); }
 
 void otPlatDiagTxPowerSet(int8_t aTxPower)
 {
@@ -532,6 +555,74 @@ exit:
     return;
 }
 
+otError otPlatDiagGpioSet(uint32_t aGpio, bool aValue)
+{
+    otError error;
+    char    cmd[OPENTHREAD_CONFIG_DIAG_CMD_LINE_BUFFER_SIZE];
+
+    snprintf(cmd, sizeof(cmd), "gpio set %d %d", aGpio, aValue);
+    SuccessOrExit(error = sRadioSpinel.PlatDiagProcess(cmd, nullptr, 0));
+
+exit:
+    return error;
+}
+
+otError otPlatDiagGpioGet(uint32_t aGpio, bool *aValue)
+{
+    otError error;
+    char    cmd[OPENTHREAD_CONFIG_DIAG_CMD_LINE_BUFFER_SIZE];
+    char    output[OPENTHREAD_CONFIG_DIAG_OUTPUT_BUFFER_SIZE];
+    char   *str;
+
+    snprintf(cmd, sizeof(cmd), "gpio get %d", aGpio);
+    SuccessOrExit(error = sRadioSpinel.PlatDiagProcess(cmd, output, sizeof(output)));
+    VerifyOrExit((str = strtok(output, "\r")) != nullptr, error = OT_ERROR_FAILED);
+    *aValue = static_cast<bool>(atoi(str));
+
+exit:
+    return error;
+}
+
+otError otPlatDiagGpioSetMode(uint32_t aGpio, otGpioMode aMode)
+{
+    otError error;
+    char    cmd[OPENTHREAD_CONFIG_DIAG_CMD_LINE_BUFFER_SIZE];
+
+    snprintf(cmd, sizeof(cmd), "gpio mode %d %s", aGpio, aMode == OT_GPIO_MODE_INPUT ? "in" : "out");
+    SuccessOrExit(error = sRadioSpinel.PlatDiagProcess(cmd, nullptr, 0));
+
+exit:
+    return error;
+}
+
+otError otPlatDiagGpioGetMode(uint32_t aGpio, otGpioMode *aMode)
+{
+    otError error;
+    char    cmd[OPENTHREAD_CONFIG_DIAG_CMD_LINE_BUFFER_SIZE];
+    char    output[OPENTHREAD_CONFIG_DIAG_OUTPUT_BUFFER_SIZE];
+    char   *str;
+
+    snprintf(cmd, sizeof(cmd), "gpio mode %d", aGpio);
+    SuccessOrExit(error = sRadioSpinel.PlatDiagProcess(cmd, output, sizeof(output)));
+    VerifyOrExit((str = strtok(output, "\r")) != nullptr, error = OT_ERROR_FAILED);
+
+    if (strcmp(str, "in") == 0)
+    {
+        *aMode = OT_GPIO_MODE_INPUT;
+    }
+    else if (strcmp(str, "out") == 0)
+    {
+        *aMode = OT_GPIO_MODE_OUTPUT;
+    }
+    else
+    {
+        error = OT_ERROR_FAILED;
+    }
+
+exit:
+    return error;
+}
+
 void otPlatDiagRadioReceived(otInstance *aInstance, otRadioFrame *aFrame, otError aError)
 {
     OT_UNUSED_VARIABLE(aInstance);
@@ -539,10 +630,7 @@ void otPlatDiagRadioReceived(otInstance *aInstance, otRadioFrame *aFrame, otErro
     OT_UNUSED_VARIABLE(aError);
 }
 
-void otPlatDiagAlarmCallback(otInstance *aInstance)
-{
-    OT_UNUSED_VARIABLE(aInstance);
-}
+void otPlatDiagAlarmCallback(otInstance *aInstance) { OT_UNUSED_VARIABLE(aInstance); }
 #endif // OPENTHREAD_CONFIG_DIAG_ENABLE
 
 uint32_t otPlatRadioGetSupportedChannelMask(otInstance *aInstance)
@@ -563,7 +651,7 @@ otRadioState otPlatRadioGetState(otInstance *aInstance)
     return sRadioSpinel.GetState();
 }
 
-void otPlatRadioSetMacKey(otInstance *            aInstance,
+void otPlatRadioSetMacKey(otInstance             *aInstance,
                           uint8_t                 aKeyIdMode,
                           uint8_t                 aKeyId,
                           const otMacKeyMaterial *aPrevKey,
@@ -594,12 +682,23 @@ uint32_t otPlatRadioGetBusSpeed(otInstance *aInstance)
     return sRadioSpinel.GetBusSpeed();
 }
 
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE || OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
 uint8_t otPlatRadioGetCslAccuracy(otInstance *aInstance)
 {
     OT_UNUSED_VARIABLE(aInstance);
 
-    return 0;
+    return sRadioSpinel.GetCslAccuracy();
 }
+#endif
+
+#if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+uint8_t otPlatRadioGetCslUncertainty(otInstance *aInstance)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+
+    return sRadioSpinel.GetCslUncertainty();
+}
+#endif
 
 otError otPlatRadioSetChannelMaxTransmitPower(otInstance *aInstance, uint8_t aChannel, int8_t aMaxPower)
 {
@@ -607,23 +706,56 @@ otError otPlatRadioSetChannelMaxTransmitPower(otInstance *aInstance, uint8_t aCh
     return sRadioSpinel.SetChannelMaxTransmitPower(aChannel, aMaxPower);
 }
 
+#if OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
+otError otPlatRadioAddCalibratedPower(otInstance    *aInstance,
+                                      uint8_t        aChannel,
+                                      int16_t        aActualPower,
+                                      const uint8_t *aRawPowerSetting,
+                                      uint16_t       aRawPowerSettingLength)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    return sRadioSpinel.AddCalibratedPower(aChannel, aActualPower, aRawPowerSetting, aRawPowerSettingLength);
+}
+
+otError otPlatRadioClearCalibratedPowers(otInstance *aInstance)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    return sRadioSpinel.ClearCalibratedPowers();
+}
+
+otError otPlatRadioSetChannelTargetPower(otInstance *aInstance, uint8_t aChannel, int16_t aTargetPower)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    return sRadioSpinel.SetChannelTargetPower(aChannel, aTargetPower);
+}
+#endif
+
 otError otPlatRadioSetRegion(otInstance *aInstance, uint16_t aRegionCode)
 {
     OT_UNUSED_VARIABLE(aInstance);
+#if OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
+    return sPowerUpdater.SetRegion(aRegionCode);
+#else
     return sRadioSpinel.SetRadioRegion(aRegionCode);
+#endif
 }
 
 otError otPlatRadioGetRegion(otInstance *aInstance, uint16_t *aRegionCode)
 {
     OT_UNUSED_VARIABLE(aInstance);
+#if OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
+    *aRegionCode = sPowerUpdater.GetRegion();
+    return OT_ERROR_NONE;
+#else
     return sRadioSpinel.GetRadioRegion(aRegionCode);
+#endif
 }
 
 #if OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
-otError otPlatRadioConfigureEnhAckProbing(otInstance *         aInstance,
+otError otPlatRadioConfigureEnhAckProbing(otInstance          *aInstance,
                                           otLinkMetrics        aLinkMetrics,
                                           const otShortAddress aShortAddress,
-                                          const otExtAddress * aExtAddress)
+                                          const otExtAddress  *aExtAddress)
 {
     OT_UNUSED_VARIABLE(aInstance);
 
@@ -638,4 +770,11 @@ otError otPlatRadioReceiveAt(otInstance *aInstance, uint8_t aChannel, uint32_t a
     OT_UNUSED_VARIABLE(aStart);
     OT_UNUSED_VARIABLE(aDuration);
     return OT_ERROR_NOT_IMPLEMENTED;
+}
+
+const otRadioSpinelMetrics *otSysGetRadioSpinelMetrics(void) { return sRadioSpinel.GetRadioSpinelMetrics(); }
+
+const otRcpInterfaceMetrics *otSysGetRcpInterfaceMetrics(void)
+{
+    return sRadioSpinel.GetSpinelInterface().GetRcpInterfaceMetrics();
 }

@@ -40,6 +40,7 @@
 
 #include <openthread/srp_client_buffers.h>
 
+#include "common/array.hpp"
 #include "common/as_core_type.hpp"
 #include "common/clearable.hpp"
 #include "common/locator.hpp"
@@ -165,12 +166,12 @@ public:
          */
         const char **GetSubTypeLabelsArray(uint16_t &aArrayLength)
         {
-            aArrayLength = OT_ARRAY_LENGTH(mSubTypeLabels);
+            aArrayLength = GetArrayLength(mSubTypeLabels);
             return mSubTypeLabels;
         }
 
     private:
-        ServiceEntry *      GetNext(void) { return reinterpret_cast<ServiceEntry *>(mService.mNext); }
+        ServiceEntry       *GetNext(void) { return reinterpret_cast<ServiceEntry *>(mService.mNext); }
         const ServiceEntry *GetNext(void) const { return reinterpret_cast<const ServiceEntry *>(mService.mNext); }
         void SetNext(ServiceEntry *aEntry) { mService.mNext = reinterpret_cast<Srp::Client::Service *>(aEntry); }
 
@@ -213,7 +214,7 @@ public:
      */
     Ip6::Address *GetHostAddressesArray(uint8_t &aArrayLength)
     {
-        aArrayLength = OT_ARRAY_LENGTH(mHostAddresses);
+        aArrayLength = static_cast<uint8_t>(GetArrayLength(mHostAddresses));
         return &mHostAddresses[0];
     }
 

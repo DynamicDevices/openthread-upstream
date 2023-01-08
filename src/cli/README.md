@@ -34,6 +34,7 @@ Done
 - [childtimeout](#childtimeout)
 - [coap](README_COAP.md)
 - [coaps](README_COAPS.md)
+- [coex](#coex)
 - [commissioner](README_COMMISSIONER.md)
 - [contextreusedelay](#contextreusedelay)
 - [counters](#counters)
@@ -62,7 +63,6 @@ Done
 - [leaderdata](#leaderdata)
 - [leaderweight](#leaderweight)
 - [linkmetrics](#linkmetrics-mgmt-ipaddr-enhanced-ack-clear)
-- [linkquality](#linkquality-extaddr)
 - [locate](#locate)
 - [log](#log-filename-filename)
 - [mac](#mac-retries-direct)
@@ -72,6 +72,7 @@ Done
 - [mode](#mode)
 - [mqtt](README_MQTT.md)
 - [multiradio](#multiradio)
+- [nat64](#nat64-cidr)
 - [neighbor](#neighbor-list)
 - [netdata](README_NETDATA.md)
 - [netstat](#netstat)
@@ -84,12 +85,14 @@ Done
 - [parent](#parent)
 - [parentpriority](#parentpriority)
 - [partitionid](#partitionid)
-- [ping](#ping--i-source-ipaddr-size-count-interval-hoplimit-timeout)
+- [ping](#ping-async--i-source-ipaddr-size-count-interval-hoplimit-timeout)
+- [platform](#platform)
 - [pollperiod](#pollperiod-pollperiod)
 - [preferrouterid](#preferrouterid-routerid)
 - [prefix](#prefix)
 - [promiscuous](#promiscuous)
-- [pskc](#pskc--p-keypassphrase)
+- [pskc](#pskc)
+- [pskcref](#pskcref)
 - [radiofilter](#radiofilter)
 - [rcp](#rcp)
 - [region](#region)
@@ -108,6 +111,7 @@ Done
 - [sntp](#sntp-query-sntp-server-ip-sntp-server-port)
 - [state](#state)
 - [srp](README_SRP.md)
+- [tcp](README_TCP.md)
 - [thread](#thread-start)
 - [trel](#trel)
 - [tvcheck](#tvcheck-enable)
@@ -325,17 +329,6 @@ Set jitter (in seconds) for Backbone Router registration for Thread 1.2 FTD.
 Done
 ```
 
-### bbr skipseqnuminc
-
-Skip increase of Sequence Number when updating the local BBR Dataset from the Network Data.
-
-Only for testing/reference device.
-
-```bash
-> bbr skipseqnuminc
-Done
-```
-
 ### ba
 
 Show current Border Agent information.
@@ -398,7 +391,7 @@ Done
 
 Get the local NAT64 prefix of the Border Router.
 
-`OPENTHREAD_CONFIG_BORDER_ROUTING_NAT64_ENABLE` is required.
+`OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE` is required.
 
 ```bash
 > br nat64prefix
@@ -406,23 +399,48 @@ fd14:1078:b3d5:b0b0:0:0::/96
 Done
 ```
 
+### br rioprf
+
+Get the preference used when advertising Route Info Options (e.g., for discovered OMR prefixes) in emitted Router Advertisement message.
+
+```bash
+> br rioprf
+med
+Done
+```
+
+### br rioprf \<prf\>
+
+Set the preference (which may be 'high', 'med', or 'low') to use when advertising Route Info Options (e.g., for discovered OMR prefixes) in emitted Router Advertisement message.
+
+```bash
+> br rioprf low
+Done
+```
+
 ### bufferinfo
 
 Show the current message buffer information.
+
+- The `total` shows total number of message buffers in pool.
+- The `free` shows the number of free message buffers.
+- This is then followed by info about different queues used by OpenThread stack, each line representing info about a queue.
+  - The first number shows number messages in the queue.
+  - The second number shows number of buffers used by all messages in the queue.
+  - The third number shows total number of bytes of all messages in the queue.
 
 ```bash
 > bufferinfo
 total: 40
 free: 40
-6lo send: 0 0
-6lo reas: 0 0
-ip6: 0 0
-mpl: 0 0
-mle: 0 0
-arp: 0 0
-coap: 0 0
-coap secure: 0 0
-application coap: 0 0
+6lo send: 0 0 0
+6lo reas: 0 0 0
+ip6: 0 0 0
+mpl: 0 0 0
+mle: 0 0 0
+coap: 0 0 0
+coap secure: 0 0 0
+application coap: 0 0 0
 Done
 ```
 
@@ -795,6 +813,72 @@ Set the Thread Child Timeout value.
 Done
 ```
 
+### coex
+
+Get the coex status.
+
+`OPENTHREAD_CONFIG_PLATFORM_RADIO_COEX_ENABLE` is required.
+
+```bash
+> coex
+Enabled
+Done
+```
+
+### coex disable
+
+Disable coex.
+
+`OPENTHREAD_CONFIG_PLATFORM_RADIO_COEX_ENABLE` is required.
+
+```bash
+> coex disable
+Done
+```
+
+### coex enable
+
+Enable coex.
+
+`OPENTHREAD_CONFIG_PLATFORM_RADIO_COEX_ENABLE` is required.
+
+```bash
+> coex enable
+Done
+```
+
+### coex metrics
+
+Show coex metrics.
+
+`OPENTHREAD_CONFIG_PLATFORM_RADIO_COEX_ENABLE` is required.
+
+```bash
+> coex metrics
+Stopped: false
+Grant Glitch: 0
+Transmit metrics
+    Request: 0
+    Grant Immediate: 0
+    Grant Wait: 0
+    Grant Wait Activated: 0
+    Grant Wait Timeout: 0
+    Grant Deactivated During Request: 0
+    Delayed Grant: 0
+    Average Request To Grant Time: 0
+Receive metrics
+    Request: 0
+    Grant Immediate: 0
+    Grant Wait: 0
+    Grant Wait Activated: 0
+    Grant Wait Timeout: 0
+    Grant Deactivated During Request: 0
+    Delayed Grant: 0
+    Average Request To Grant Time: 0
+    Grant None: 0
+Done
+```
+
 ### contextreusedelay
 
 Get the CONTEXT_ID_REUSE_DELAY value.
@@ -820,6 +904,7 @@ Get the supported counter names.
 
 ```bash
 > counters
+br
 ip
 mac
 mle
@@ -829,6 +914,11 @@ Done
 ### counters \<countername\>
 
 Get the counter value.
+
+Note:
+
+- `OPENTHREAD_CONFIG_UPTIME_ENABLE` is required for MLE role time tracking in `counters mle`
+- `OPENTHREAD_CONFIG_IP6_BR_COUNTERS_ENABLE` is required for `counters br`
 
 ```bash
 > counters mac
@@ -874,12 +964,30 @@ Attach Attempts: 1
 Partition Id Changes: 1
 Better Partition Attach Attempts: 0
 Parent Changes: 0
+Time Disabled Milli: 10026
+Time Detached Milli: 6852
+Time Child Milli: 0
+Time Router Milli: 0
+Time Leader Milli: 16195
+Time Tracked Milli: 33073
 Done
 > counters ip
 TxSuccess: 10
 TxFailed: 0
 RxSuccess: 5
 RxFailed: 0
+Done
+> counters br
+Inbound Unicast: Packets 4 Bytes 320
+Inbound Multicast: Packets 0 Bytes 0
+Outbound Unicast: Packets 2 Bytes 160
+Outbound Multicast: Packets 0 Bytes 0
+RA Rx: 4
+RA TxSuccess: 2
+RA TxFailed: 0
+RS Rx: 0
+RS TxSuccess: 2
+RS TxFailed: 0
 Done
 ```
 
@@ -1049,6 +1157,17 @@ The parameters after `hostname` are optional. Any unspecified (or zero) value fo
 > DNS response for ipv6.google.com - 2a00:1450:401b:801:0:0:0:200e TTL: 300
 ```
 
+The DNS server IP can be an IPv4 address, which will be synthesized to an IPv6 address using the preferred NAT64 prefix from the network data.
+
+> Note: The command will return `InvalidState` when the DNS server IP is an IPv4 address but the preferred NAT64 prefix is unavailable.
+
+```bash
+> dns resolve example.com 8.8.8.8
+Synthesized IPv6 DNS server address: fdde:ad00:beef:2:0:0:808:808
+DNS response for example.com. - fd4c:9574:3720:2:0:0:5db8:d822 TTL:20456
+Done
+```
+
 ### dns browse \<service-name\> \[DNS server IP\] \[DNS server port\] \[response timeout (ms)\] \[max tx attempts\] \[recursion desired (boolean)\]
 
 Send a browse (service instance enumeration) DNS query to get the list of services for given service-name.
@@ -1071,11 +1190,15 @@ instance2
 Done
 ```
 
+> Note: The DNS server IP can be an IPv4 address, which will be synthesized to an IPv6 address using the preferred NAT64 prefix from the network data. The command will return `InvalidState` when the DNS server IP is an IPv4 address but the preferred NAT64 prefix is unavailable.
+
 ### dns service \<service-instance-label\> \<service-name\> \[DNS server IP\] \[DNS server port\] \[response timeout (ms)\] \[max tx attempts\] \[recursion desired (boolean)\]
 
 Send a service instance resolution DNS query for a given service instance. Service instance label is provided first, followed by the service name (note that service instance label can contain dot '.' character).
 
 The parameters after `service-name` are optional. Any unspecified (or zero) value for these optional parameters is replaced by the value from the current default config (`dns config`).
+
+> Note: The DNS server IP can be an IPv4 address, which will be synthesized to an IPv6 address using the preferred NAT64 prefix from the network data. The command will return `InvalidState` when the DNS server IP is an IPv4 address but the preferred NAT64 prefix is unavailable.
 
 ### dns compression \[enable|disable\]
 
@@ -1632,25 +1755,6 @@ Done
  - RSSI: -18 (dBm) (Exponential Moving Average)
 ```
 
-### linkquality \<extaddr\>
-
-Get the link quality on the link to a given extended address.
-
-```bash
-> linkquality 36c1dd7a4f5201ff
-3
-Done
-```
-
-### linkquality \<extaddr\> \<linkquality\>
-
-Set the link quality on the link to a given extended address.
-
-```bash
-> linkquality 36c1dd7a4f5201ff 3
-Done
-```
-
 ### locate
 
 Gets the current state (`In Progress` or `Idle`) of anycast locator.
@@ -1841,6 +1945,136 @@ This command is only available when device supports more than one radio link.
 Done
 ```
 
+### nat64 cidr
+
+Gets the IPv4 configured CIDR in the NAT64 translator.
+
+`OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is required.
+
+```bash
+> nat64 cidr
+192.168.255.0/24
+Done
+```
+
+### nat64 disable
+
+Disable NAT64 functions, including the translator and the prefix publishing.
+
+This command will reset the mapping table in the translator (if NAT64 translator is enabled in the build).
+
+`OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` or `OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE` are required.
+
+```bash
+> nat64 disable
+Done
+```
+
+### nat64 enable
+
+Enable NAT64 functions, including the translator and the prefix publishing.
+
+This command can be called anytime.
+
+`OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` or `OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE` are required.
+
+```bash
+> nat64 enable
+Done
+```
+
+### nat64 state
+
+Gets the state of NAT64 functions.
+
+Possible results for prefix manager are (`OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE` is required):
+
+- `Disabled`: NAT64 prefix manager is disabled.
+- `NotRunning`: NAT64 prefix manager is enabled, but is not running, probably bacause the routing manager is disabled.
+- `Idle`: NAT64 prefix manager is enabled and is running, but is not publishing a NAT64 prefix. Usually when there is another border router publishing a NAT64 prefix with higher priority.
+- `Active`: NAT64 prefix manager is enabled, running and publishing a NAT64 prefix.
+
+Possible results for NAT64 translator are (`OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is required):
+
+- `Disabled`: NAT64 translator is disabled.
+- `NotRunning`: NAT64 translator is enabled, but is not translating packets, probably bacause it is not configued with a NAT64 prefix or a CIDR for NAT64.
+- `Active`: NAT64 translator is enabled and is translating packets.
+
+`OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` or `OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE` are required.
+
+```bash
+> nat64 state
+PrefixManager: NotRunning
+Translator:    NotRunning
+Done
+
+> nat64 state
+PrefixManager: Idle
+Translator:    NotRunning
+Done
+
+> nat64 state
+PrefixManager: Active
+Translator:    Active
+Done
+```
+
+### nat64 mappings
+
+Get the NAT64 translator mappings.
+
+`OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is required.
+
+```bash
+> nat64 mappings
+|          | Address                   |        | 4 to 6       | 6 to 4       |
++----------+---------------------------+--------+--------------+--------------+
+| ID       | IPv6       | IPv4         | Expiry | Pkts | Bytes | Pkts | Bytes |
++----------+------------+--------------+--------+------+-------+------+-------+
+| 00021cb9 | fdc7::df79 | 192.168.64.2 |  7196s |    6 |   456 |   11 |  1928 |
+|          |                                TCP |    0 |     0 |    0 |     0 |
+|          |                                UDP |    1 |   136 |   16 |  1608 |
+|          |                               ICMP |    5 |   320 |    5 |   320 |
+```
+
+### nat64 counters
+
+Get the NAT64 translator packet and error counters.
+
+`OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is required.
+
+```bash
+> nat64 counters
+|               | 4 to 6                  | 6 to 4                  |
++---------------+-------------------------+-------------------------+
+| Protocol      | Pkts     | Bytes        | Pkts     | Bytes        |
++---------------+----------+--------------+----------+--------------+
+|         Total |       11 |          704 |       11 |          704 |
+|           TCP |        0 |            0 |        0 |            0 |
+|           UDP |        0 |            0 |        0 |            0 |
+|          ICMP |       11 |          704 |       11 |          704 |
+| Errors        | Pkts                    | Pkts                    |
++---------------+-------------------------+-------------------------+
+|         Total |                       8 |                       4 |
+|   Illegal Pkt |                       0 |                       0 |
+|   Unsup Proto |                       0 |                       0 |
+|    No Mapping |                       2 |                       0 |
+Done
+```
+
+### neighbor linkquality
+
+Print link quality info for all neighbors.
+
+```bash
+> neighbor linkquality
+| RLOC16 | Extended MAC     | Frame Error | Msg Error | Avg RSS | Last RSS | Age   |
++--------+------------------+-------------+-----------+---------+----------+-------+
+| 0xe800 | 9e2fa4e1b84f92db |      0.00 % |    0.00 % |     -46 |      -48 |     1 |
+| 0xc001 | 0ad7ed6beaa6016d |      4.67 % |    0.08 % |     -68 |      -72 |    10 |
+Done
+```
+
 ### neighbor list
 
 List RLOC16 of neighbors.
@@ -2001,7 +2235,7 @@ Done
 
 Get the diagnostic information for a Thread Router as parent.
 
-Note: When operating as a Thread Router, this command will return the cached information from when the device was previously attached as a Thread Child. Returning cached information is necessary to support the Thread Test Harness - Test Scenario 8.2.x requests the former parent (i.e. Joiner Router's) MAC address even if the device has already promoted to a router.
+Note: When operating as a Thread Router when `OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE` is enabled, this command will return the cached information from when the device was previously attached as a Thread Child. Returning cached information is necessary to support the Thread Test Harness - Test Scenario 8.2.x requests the former parent (i.e. Joiner Router's) MAC address even if the device has already promoted to a router.
 
 ```bash
 > parent
@@ -2010,7 +2244,15 @@ Rloc: 5c00
 Link Quality In: 3
 Link Quality Out: 3
 Age: 20
+Version: 4
 Done
+```
+
+Note: When `OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE` is enabled, this command will return two extra lines with information relevant for CSL Receiver operation.
+
+```bash
+CSL clock accuracy: 20
+CSL uncertainty: 5
 ```
 
 ### parentpriority
@@ -2065,10 +2307,11 @@ Set the preferred Thread Leader Partition ID.
 Done
 ```
 
-### ping \[-I source\] \<ipaddr\> \[size\] \[count\] \[interval\] \[hoplimit\] \[timeout\]
+### ping \[async\] \[-I source\] \<ipaddr\> \[size\] \[count\] \[interval\] \[hoplimit\] \[timeout\]
 
 Send an ICMPv6 Echo Request.
 
+- async: Use the non-blocking mode. New commands are allowed before the ping process terminates.
 - source: The source IPv6 address of the echo request.
 - size: The number of data bytes to be sent.
 - count: The number of ICMPv6 Echo Requests to be sent.
@@ -2088,6 +2331,18 @@ Done
 Done
 ```
 
+The address can be an IPv4 address, which will be synthesized to an IPv6 address using the preferred NAT64 prefix from the network data.
+
+> Note: The command will return `InvalidState` when the preferred NAT64 prefix is unavailable.
+
+```bash
+> ping 172.17.0.1
+Pinging synthesized IPv6 address: fdde:ad00:beef:2:0:0:ac11:1
+> 16 bytes from fdde:ad00:beef:2:0:0:ac11:1: icmp_seq=5 hlim=64 time=0ms
+1 packets transmitted, 1 packets received. Packet loss = 0.0%. Round-trip min/avg/max = 0/0.0/0 ms.
+Done
+```
+
 ### ping stop
 
 Stop sending ICMPv6 Echo Requests.
@@ -2097,9 +2352,19 @@ Stop sending ICMPv6 Echo Requests.
 Done
 ```
 
+### platform
+
+Print the current platform
+
+```bash
+> platform
+NRF52840
+Done
+```
+
 ### pollperiod
 
-Get the customized data poll period of sleepy end device (milliseconds). Only for certification test
+Get the customized data poll period of sleepy end device (milliseconds). Only for certification test.
 
 ```bash
 > pollperiod
@@ -2109,10 +2374,20 @@ Done
 
 ### pollperiod \<pollperiod\>
 
-Set the customized data poll period for sleepy end device (milliseconds >= 10ms). Only for certification test
+Set the customized data poll period for sleepy end device (milliseconds >= 10ms). Only for certification test.
 
 ```bash
 > pollperiod 10
+Done
+```
+
+### pskc
+
+Get pskc in hex format.
+
+```bash
+> pskc
+00000000000000000000000000000000
 Done
 ```
 
@@ -2124,6 +2399,29 @@ With `-p` generate pskc from \<passphrase\> (UTF-8 encoded) together with **curr
 > pskc 67c0c203aa0b042bfb5381c47aef4d9e
 Done
 > pskc -p 123456
+Done
+```
+
+### pskcref
+
+Get pskc key reference.
+
+`OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE` is required.
+
+```bash
+> pskcref
+0x80000000
+Done
+```
+
+### pskcref \<keyref\>
+
+Set pskc key reference as \<keyref\>.
+
+`OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE` is required.
+
+```bash
+> pskcref 0x20017
 Done
 ```
 
@@ -2179,6 +2477,15 @@ Get the mesh local prefix.
 ```bash
 > prefix meshlocal
 fdde:ad00:beef:0::/64
+Done
+```
+
+### prefix meshlocal <prefix>
+
+Set the mesh local prefix.
+
+```bash
+> prefix meshlocal fdde:ad00:beef:0::/64
 Done
 ```
 
@@ -2492,9 +2799,9 @@ Perform an IEEE 802.15.4 Active Scan.
 
 ```bash
 > scan
-| J | Network Name     | Extended PAN     | PAN  | MAC Address      | Ch | dBm | LQI |
-+---+------------------+------------------+------+------------------+----+-----+-----+
-| 0 | OpenThread       | dead00beef00cafe | ffff | f1d92a82c8d8fe43 | 11 | -20 |   0 |
+| PAN  | MAC Address      | Ch | dBm | LQI |
++------+------------------+----+-----+-----+
+| ffff | f1d92a82c8d8fe43 | 11 | -20 |   0 |
 Done
 ```
 

@@ -49,7 +49,7 @@ namespace Cli {
  * This class implements the Commissioner CLI interpreter.
  *
  */
-class Commissioner : private OutputWrapper
+class Commissioner : private Output
 {
 public:
     typedef Utils::CmdLineParser::Arg Arg;
@@ -57,11 +57,12 @@ public:
     /**
      * Constructor
      *
-     * @param[in]  aOutput The CLI console output context
+     * @param[in]  aInstance            The OpenThread Instance.
+     * @param[in]  aOutputImplementer   An `OutputImplementer`.
      *
      */
-    explicit Commissioner(Output &aOutput)
-        : OutputWrapper(aOutput)
+    Commissioner(otInstance *aInstance, OutputImplementer &aOutputImplementer)
+        : Output(aInstance, aOutputImplementer)
     {
     }
 
@@ -81,51 +82,29 @@ private:
 
     using Command = CommandEntry<Commissioner>;
 
-    otError ProcessHelp(Arg aArgs[]);
-    otError ProcessAnnounce(Arg aArgs[]);
-    otError ProcessEnergy(Arg aArgs[]);
-    otError ProcessJoiner(Arg aArgs[]);
-    otError ProcessMgmtGet(Arg aArgs[]);
-    otError ProcessMgmtSet(Arg aArgs[]);
-    otError ProcessPanId(Arg aArgs[]);
-    otError ProcessProvisioningUrl(Arg aArgs[]);
-    otError ProcessSessionId(Arg aArgs[]);
-    otError ProcessStart(Arg aArgs[]);
-    otError ProcessState(Arg aArgs[]);
-    otError ProcessStop(Arg aArgs[]);
+    template <CommandId kCommandId> otError Process(Arg aArgs[]);
 
     static void HandleStateChanged(otCommissionerState aState, void *aContext);
     void        HandleStateChanged(otCommissionerState aState);
 
     static void HandleJoinerEvent(otCommissionerJoinerEvent aEvent,
-                                  const otJoinerInfo *      aJoinerInfo,
-                                  const otExtAddress *      aJoinerId,
-                                  void *                    aContext);
+                                  const otJoinerInfo       *aJoinerInfo,
+                                  const otExtAddress       *aJoinerId,
+                                  void                     *aContext);
     void        HandleJoinerEvent(otCommissionerJoinerEvent aEvent,
-                                  const otJoinerInfo *      aJoinerInfo,
-                                  const otExtAddress *      aJoinerId);
+                                  const otJoinerInfo       *aJoinerInfo,
+                                  const otExtAddress       *aJoinerId);
 
     static void HandleEnergyReport(uint32_t       aChannelMask,
                                    const uint8_t *aEnergyList,
                                    uint8_t        aEnergyListLength,
-                                   void *         aContext);
+                                   void          *aContext);
     void        HandleEnergyReport(uint32_t aChannelMask, const uint8_t *aEnergyList, uint8_t aEnergyListLength);
 
     static void HandlePanIdConflict(uint16_t aPanId, uint32_t aChannelMask, void *aContext);
     void        HandlePanIdConflict(uint16_t aPanId, uint32_t aChannelMask);
 
     static const char *StateToString(otCommissionerState aState);
-
-    static constexpr Command sCommands[] = {
-        {"announce", &Commissioner::ProcessAnnounce},   {"energy", &Commissioner::ProcessEnergy},
-        {"help", &Commissioner::ProcessHelp},           {"joiner", &Commissioner::ProcessJoiner},
-        {"mgmtget", &Commissioner::ProcessMgmtGet},     {"mgmtset", &Commissioner::ProcessMgmtSet},
-        {"panid", &Commissioner::ProcessPanId},         {"provisioningurl", &Commissioner::ProcessProvisioningUrl},
-        {"sessionid", &Commissioner::ProcessSessionId}, {"start", &Commissioner::ProcessStart},
-        {"state", &Commissioner::ProcessState},         {"stop", &Commissioner::ProcessStop},
-    };
-
-    static_assert(BinarySearch::IsSorted(sCommands), "Command Table is not sorted");
 };
 
 } // namespace Cli

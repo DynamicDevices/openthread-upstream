@@ -45,7 +45,7 @@ namespace ot {
 TimeTicker::TimeTicker(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mReceivers(0)
-    , mTimer(aInstance, HandleTimer)
+    , mTimer(aInstance)
 {
 }
 
@@ -69,11 +69,6 @@ void TimeTicker::UnregisterReceiver(Receiver aReceiver)
     }
 }
 
-void TimeTicker::HandleTimer(Timer &aTimer)
-{
-    aTimer.Get<TimeTicker>().HandleTimer();
-}
-
 void TimeTicker::HandleTimer(void)
 {
     mTimer.FireAt(mTimer.GetFireTime() + Random::NonCrypto::AddJitter(kTickInterval, kRestartJitter));
@@ -93,6 +88,13 @@ void TimeTicker::HandleTimer(void)
     {
         Get<AddressResolver>().HandleTimeTick();
     }
+
+#if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE && OPENTHREAD_CONFIG_BORDER_ROUTER_REQUEST_ROUTER_ROLE
+    if (mReceivers & Mask(kNetworkDataNotifier))
+    {
+        Get<NetworkData::Notifier>().HandleTimeTick();
+    }
+#endif
 
 #if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE
     if (mReceivers & Mask(kChildSupervisor))
@@ -122,6 +124,11 @@ void TimeTicker::HandleTimer(void)
         Get<MlrManager>().HandleTimeTick();
     }
 #endif
+
+    if (mReceivers & Mask(kIp6Mpl))
+    {
+        Get<Ip6::Mpl>().HandleTimeTick();
+    }
 }
 
 } // namespace ot

@@ -65,8 +65,8 @@ namespace ot {
 namespace Posix {
 
 SpiInterface::SpiInterface(SpinelInterface::ReceiveFrameCallback aCallback,
-                           void *                                aCallbackContext,
-                           SpinelInterface::RxFrameBuffer &      aFrameBuffer)
+                           void                                 *aCallbackContext,
+                           SpinelInterface::RxFrameBuffer       &aFrameBuffer)
     : mReceiveFrameCallback(aCallback)
     , mReceiveFrameContext(aCallbackContext)
     , mRxFrameBuffer(aFrameBuffer)
@@ -74,32 +74,27 @@ SpiInterface::SpiInterface(SpinelInterface::ReceiveFrameCallback aCallback,
     , mResetGpioValueFd(-1)
     , mIntGpioValueFd(-1)
     , mSlaveResetCount(0)
-    , mSpiFrameCount(0)
-    , mSpiValidFrameCount(0)
-    , mSpiGarbageFrameCount(0)
     , mSpiDuplexFrameCount(0)
     , mSpiUnresponsiveFrameCount(0)
-    , mSpiRxFrameCount(0)
-    , mSpiRxFrameByteCount(0)
-    , mSpiTxFrameCount(0)
-    , mSpiTxFrameByteCount(0)
     , mSpiTxIsReady(false)
     , mSpiTxRefusedCount(0)
     , mSpiTxPayloadSize(0)
     , mDidPrintRateLimitLog(false)
     , mSpiSlaveDataLen(0)
+    , mDidRxFrame(false)
 {
 }
 
 void SpiInterface::OnRcpReset(void)
 {
-    mSpiValidFrameCount   = 0;
     mSpiTxIsReady         = false;
     mSpiTxRefusedCount    = 0;
     mSpiTxPayloadSize     = 0;
     mDidPrintRateLimitLog = false;
     mSpiSlaveDataLen      = 0;
     memset(mSpiTxFrameBuffer, 0, sizeof(mSpiTxFrameBuffer));
+    memset(&mInterfaceMetrics, 0, sizeof(mInterfaceMetrics));
+    mInterfaceMetrics.mRcpInterfaceType = OT_POSIX_RCP_BUS_SPI;
 
     TriggerReset();
     usleep(static_cast<useconds_t>(mSpiResetDelay) * kUsecPerMsec);
@@ -196,10 +191,7 @@ otError SpiInterface::Init(const Url::Url &aRadioUrl)
     return OT_ERROR_NONE;
 }
 
-SpiInterface::~SpiInterface(void)
-{
-    Deinit();
-}
+SpiInterface::~SpiInterface(void) { Deinit(); }
 
 void SpiInterface::Deinit(void)
 {
@@ -348,7 +340,7 @@ void SpiInterface::TriggerReset(void)
 
 uint8_t *SpiInterface::GetRealRxFrameStart(uint8_t *aSpiRxFrameBuffer, uint8_t aAlignAllowance, uint16_t &aSkipLength)
 {
-    uint8_t *      start = aSpiRxFrameBuffer;
+    uint8_t       *start = aSpiRxFrameBuffer;
     const uint8_t *end   = aSpiRxFrameBuffer + aAlignAllowance;
 
     for (; start != end && start[0] == 0xff; start++)
@@ -398,10 +390,10 @@ otError SpiInterface::DoSpiTransfer(uint8_t *aSpiRxFrameBuffer, uint32_t aTransf
 
     if (ret != -1)
     {
-        otDumpDebg(OT_LOG_REGION_PLATFORM, "SPI-TX", mSpiTxFrameBuffer, transfer[1].len);
-        otDumpDebg(OT_LOG_REGION_PLATFORM, "SPI-RX", aSpiRxFrameBuffer, transfer[1].len);
+        otDumpDebgPlat("SPI-TX", mSpiTxFrameBuffer, static_cast<uint16_t>(transfer[1].len));
+        otDumpDebgPlat("SPI-RX", aSpiRxFrameBuffer, static_cast<uint16_t>(transfer[1].len));
 
-        mSpiFrameCount++;
+        mInterfaceMetrics.mTransferredFrameCount++;
     }
 
     return (ret < 0) ? OT_ERROR_FAILED : OT_ERROR_NONE;
@@ -413,14 +405,14 @@ otError SpiInterface::PushPullSpi(void)
     uint16_t      spiTransferBytes    = 0;
     uint8_t       successfulExchanges = 0;
     bool          discardRxFrame      = true;
-    uint8_t *     spiRxFrameBuffer;
-    uint8_t *     spiRxFrame;
+    uint8_t      *spiRxFrameBuffer;
+    uint8_t      *spiRxFrame;
     uint8_t       slaveHeader;
     uint16_t      slaveAcceptLen;
     Ncp::SpiFrame txFrame(mSpiTxFrameBuffer);
     uint16_t      skipAlignAllowanceLength;
 
-    if (mSpiValidFrameCount == 0)
+    if (mInterfaceMetrics.mTransferredValidFrameCount == 0)
     {
         // Set the reset flag to indicate to our slave that we are coming up from scratch.
         txFrame.SetHeaderFlagByte(true);
@@ -524,12 +516,12 @@ otError SpiInterface::PushPullSpi(void)
             else
             {
                 // Header is full of garbage
-                mSpiGarbageFrameCount++;
+                mInterfaceMetrics.mTransferredGarbageFrameCount++;
 
                 otLogWarnPlat("Garbage in header : %02X %02X %02X %02X %02X", spiRxFrame[0], spiRxFrame[1],
                               spiRxFrame[2], spiRxFrame[3], spiRxFrame[4]);
-                otDumpDebg(OT_LOG_REGION_PLATFORM, "SPI-TX", mSpiTxFrameBuffer, spiTransferBytes);
-                otDumpDebg(OT_LOG_REGION_PLATFORM, "SPI-RX", spiRxFrameBuffer, spiTransferBytes);
+                otDumpDebgPlat("SPI-TX", mSpiTxFrameBuffer, spiTransferBytes);
+                otDumpDebgPlat("SPI-RX", spiRxFrameBuffer, spiTransferBytes);
             }
 
             mSpiTxRefusedCount++;
@@ -541,19 +533,19 @@ otError SpiInterface::PushPullSpi(void)
 
         if (!rxFrame.IsValid() || (slaveAcceptLen > kMaxFrameSize) || (mSpiSlaveDataLen > kMaxFrameSize))
         {
-            mSpiGarbageFrameCount++;
+            mInterfaceMetrics.mTransferredGarbageFrameCount++;
             mSpiTxRefusedCount++;
             mSpiSlaveDataLen = 0;
 
             otLogWarnPlat("Garbage in header : %02X %02X %02X %02X %02X", spiRxFrame[0], spiRxFrame[1], spiRxFrame[2],
                           spiRxFrame[3], spiRxFrame[4]);
-            otDumpDebg(OT_LOG_REGION_PLATFORM, "SPI-TX", mSpiTxFrameBuffer, spiTransferBytes);
-            otDumpDebg(OT_LOG_REGION_PLATFORM, "SPI-RX", spiRxFrameBuffer, spiTransferBytes);
+            otDumpDebgPlat("SPI-TX", mSpiTxFrameBuffer, spiTransferBytes);
+            otDumpDebgPlat("SPI-RX", spiRxFrameBuffer, spiTransferBytes);
 
             ExitNow();
         }
 
-        mSpiValidFrameCount++;
+        mInterfaceMetrics.mTransferredValidFrameCount++;
 
         if (rxFrame.IsResetFlagSet())
         {
@@ -566,9 +558,9 @@ otError SpiInterface::PushPullSpi(void)
         // Handle received packet, if any.
         if ((mSpiSlaveDataLen != 0) && (mSpiSlaveDataLen <= txFrame.GetHeaderAcceptLen()))
         {
-            mSpiRxFrameByteCount += mSpiSlaveDataLen;
+            mInterfaceMetrics.mRxFrameByteCount += mSpiSlaveDataLen;
             mSpiSlaveDataLen = 0;
-            mSpiRxFrameCount++;
+            mInterfaceMetrics.mRxFrameCount++;
             successfulExchanges++;
 
             // Set the skip length to skip align bytes and SPI frame header.
@@ -579,6 +571,7 @@ otError SpiInterface::PushPullSpi(void)
             // Upper layer will free the frame buffer.
             discardRxFrame = false;
 
+            mDidRxFrame = true;
             mReceiveFrameCallback(mReceiveFrameContext);
         }
     }
@@ -592,8 +585,8 @@ otError SpiInterface::PushPullSpi(void)
             // that uplayer can pull another packet for us to send.
             successfulExchanges++;
 
-            mSpiTxFrameCount++;
-            mSpiTxFrameByteCount += mSpiTxPayloadSize;
+            mInterfaceMetrics.mTxFrameCount++;
+            mInterfaceMetrics.mTxFrameByteCount += mSpiTxPayloadSize;
 
             mSpiTxIsReady      = false;
             mSpiTxPayloadSize  = 0;
@@ -729,9 +722,13 @@ void SpiInterface::UpdateFdSet(fd_set &aReadFdSet, fd_set &aWriteFdSet, int &aMa
     }
 }
 
-void SpiInterface::Process(const RadioProcessContext &aContext)
+void SpiInterface::Process(const RadioProcessContext &aContext) { Process(aContext.mReadFdSet, aContext.mWriteFdSet); }
+
+void SpiInterface::Process(const fd_set *aReadFdSet, const fd_set *aWriteFdSet)
 {
-    if (FD_ISSET(mIntGpioValueFd, aContext.mReadFdSet))
+    OT_UNUSED_VARIABLE(aWriteFdSet);
+
+    if (FD_ISSET(mIntGpioValueFd, aReadFdSet))
     {
         struct gpioevent_data event;
 
@@ -751,68 +748,48 @@ void SpiInterface::Process(const RadioProcessContext &aContext)
 
 otError SpiInterface::WaitForFrame(uint64_t aTimeoutUs)
 {
-    otError        error      = OT_ERROR_NONE;
-    struct timeval spiTimeout = {kSecPerDay, 0};
-    struct timeval timeout;
-    fd_set         readFdSet;
-    int            ret;
-    bool           isDataReady = false;
+    otError  error = OT_ERROR_NONE;
+    uint64_t now   = otPlatTimeGet();
+    uint64_t end   = now + aTimeoutUs;
 
-    timeout.tv_sec  = static_cast<time_t>(aTimeoutUs / US_PER_S);
-    timeout.tv_usec = static_cast<suseconds_t>(aTimeoutUs % US_PER_S);
+    mDidRxFrame = false;
 
-    FD_ZERO(&readFdSet);
-
-    if (mIntGpioValueFd >= 0)
+    while (now < end)
     {
-        if ((isDataReady = CheckInterrupt()))
+        fd_set         readFdSet;
+        fd_set         writeFdSet;
+        int            maxFds = -1;
+        struct timeval timeout;
+        int            ret;
+
+        timeout.tv_sec  = static_cast<time_t>((end - now) / US_PER_S);
+        timeout.tv_usec = static_cast<suseconds_t>((end - now) % US_PER_S);
+
+        FD_ZERO(&readFdSet);
+        FD_ZERO(&writeFdSet);
+
+        UpdateFdSet(readFdSet, writeFdSet, maxFds, timeout);
+
+        ret = select(maxFds + 1, &readFdSet, &writeFdSet, nullptr, &timeout);
+
+        if (ret >= 0)
         {
-            // Interrupt pin is asserted, set the timeout to be 0.
-            spiTimeout.tv_sec  = 0;
-            spiTimeout.tv_usec = 0;
+            Process(&readFdSet, &writeFdSet);
+
+            if (mDidRxFrame)
+            {
+                ExitNow();
+            }
         }
-        else
+        else if (errno != EINTR)
         {
-            // The interrupt pin was not asserted, so we wait for the interrupt pin to be asserted by adding it to the
-            // read set.
-            FD_SET(mIntGpioValueFd, &readFdSet);
+            DieNow(OT_EXIT_ERROR_ERRNO);
         }
-    }
-    else
-    {
-        // In this case we don't have an interrupt, so we revert to SPI polling.
-        spiTimeout.tv_sec  = 0;
-        spiTimeout.tv_usec = kSpiPollPeriodUs;
+
+        now = otPlatTimeGet();
     }
 
-    if (timercmp(&spiTimeout, &timeout, <))
-    {
-        timeout = spiTimeout;
-    }
-
-    ret = select(mIntGpioValueFd + 1, &readFdSet, nullptr, nullptr, &timeout);
-
-    if (ret > 0 && FD_ISSET(mIntGpioValueFd, &readFdSet))
-    {
-        struct gpioevent_data event;
-
-        // Read event data to clear interrupt.
-        VerifyOrDie(read(mIntGpioValueFd, &event, sizeof(event)) != -1, OT_EXIT_FAILURE);
-        isDataReady = true;
-    }
-
-    if (isDataReady)
-    {
-        IgnoreError(PushPullSpi());
-    }
-    else if (ret == 0)
-    {
-        ExitNow(error = OT_ERROR_RESPONSE_TIMEOUT);
-    }
-    else if (errno != EINTR)
-    {
-        DieNow(OT_EXIT_ERROR_ERRNO);
-    }
+    error = OT_ERROR_RESPONSE_TIMEOUT;
 
 exit:
     return error;
@@ -844,16 +821,16 @@ void SpiInterface::LogError(const char *aString)
 
 void SpiInterface::LogStats(void)
 {
-    otLogInfoPlat("INFO: mSlaveResetCount=%" PRIu64, mSlaveResetCount);
-    otLogInfoPlat("INFO: mSpiFrameCount=%" PRIu64, mSpiFrameCount);
-    otLogInfoPlat("INFO: mSpiValidFrameCount=%" PRIu64, mSpiValidFrameCount);
-    otLogInfoPlat("INFO: mSpiDuplexFrameCount=%" PRIu64, mSpiDuplexFrameCount);
-    otLogInfoPlat("INFO: mSpiUnresponsiveFrameCount=%" PRIu64, mSpiUnresponsiveFrameCount);
-    otLogInfoPlat("INFO: mSpiGarbageFrameCount=%" PRIu64, mSpiGarbageFrameCount);
-    otLogInfoPlat("INFO: mSpiRxFrameCount=%" PRIu64, mSpiRxFrameCount);
-    otLogInfoPlat("INFO: mSpiRxFrameByteCount=%" PRIu64, mSpiRxFrameByteCount);
-    otLogInfoPlat("INFO: mSpiTxFrameCount=%" PRIu64, mSpiTxFrameCount);
-    otLogInfoPlat("INFO: mSpiTxFrameByteCount=%" PRIu64, mSpiTxFrameByteCount);
+    otLogInfoPlat("INFO: SlaveResetCount=%" PRIu64, mSlaveResetCount);
+    otLogInfoPlat("INFO: SpiDuplexFrameCount=%" PRIu64, mSpiDuplexFrameCount);
+    otLogInfoPlat("INFO: SpiUnresponsiveFrameCount=%" PRIu64, mSpiUnresponsiveFrameCount);
+    otLogInfoPlat("INFO: TransferredFrameCount=%" PRIu64, mInterfaceMetrics.mTransferredFrameCount);
+    otLogInfoPlat("INFO: TransferredValidFrameCount=%" PRIu64, mInterfaceMetrics.mTransferredValidFrameCount);
+    otLogInfoPlat("INFO: TransferredGarbageFrameCount=%" PRIu64, mInterfaceMetrics.mTransferredGarbageFrameCount);
+    otLogInfoPlat("INFO: RxFrameCount=%" PRIu64, mInterfaceMetrics.mRxFrameCount);
+    otLogInfoPlat("INFO: RxFrameByteCount=%" PRIu64, mInterfaceMetrics.mRxFrameByteCount);
+    otLogInfoPlat("INFO: TxFrameCount=%" PRIu64, mInterfaceMetrics.mTxFrameCount);
+    otLogInfoPlat("INFO: TxFrameByteCount=%" PRIu64, mInterfaceMetrics.mTxFrameByteCount);
 }
 } // namespace Posix
 } // namespace ot

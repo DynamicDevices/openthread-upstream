@@ -40,35 +40,17 @@
 
 using namespace ot;
 
-void otMessageFree(otMessage *aMessage)
-{
-    AsCoreType(aMessage).Free();
-}
+void otMessageFree(otMessage *aMessage) { AsCoreType(aMessage).Free(); }
 
-uint16_t otMessageGetLength(const otMessage *aMessage)
-{
-    return AsCoreType(aMessage).GetLength();
-}
+uint16_t otMessageGetLength(const otMessage *aMessage) { return AsCoreType(aMessage).GetLength(); }
 
-otError otMessageSetLength(otMessage *aMessage, uint16_t aLength)
-{
-    return AsCoreType(aMessage).SetLength(aLength);
-}
+otError otMessageSetLength(otMessage *aMessage, uint16_t aLength) { return AsCoreType(aMessage).SetLength(aLength); }
 
-uint16_t otMessageGetOffset(const otMessage *aMessage)
-{
-    return AsCoreType(aMessage).GetOffset();
-}
+uint16_t otMessageGetOffset(const otMessage *aMessage) { return AsCoreType(aMessage).GetOffset(); }
 
-void otMessageSetOffset(otMessage *aMessage, uint16_t aOffset)
-{
-    AsCoreType(aMessage).SetOffset(aOffset);
-}
+void otMessageSetOffset(otMessage *aMessage, uint16_t aOffset) { AsCoreType(aMessage).SetOffset(aOffset); }
 
-bool otMessageIsLinkSecurityEnabled(const otMessage *aMessage)
-{
-    return AsCoreType(aMessage).IsLinkSecurityEnabled();
-}
+bool otMessageIsLinkSecurityEnabled(const otMessage *aMessage) { return AsCoreType(aMessage).IsLinkSecurityEnabled(); }
 
 void otMessageSetDirectTransmission(otMessage *aMessage, bool aEnabled)
 {
@@ -82,23 +64,26 @@ void otMessageSetDirectTransmission(otMessage *aMessage, bool aEnabled)
     }
 }
 
-int8_t otMessageGetRss(const otMessage *aMessage)
-{
-    return AsCoreType(aMessage).GetAverageRss();
-}
+int8_t otMessageGetRss(const otMessage *aMessage) { return AsCoreType(aMessage).GetAverageRss(); }
 
 otError otMessageAppend(otMessage *aMessage, const void *aBuf, uint16_t aLength)
 {
+    AssertPointerIsNotNull(aBuf);
+
     return AsCoreType(aMessage).AppendBytes(aBuf, aLength);
 }
 
 uint16_t otMessageRead(const otMessage *aMessage, uint16_t aOffset, void *aBuf, uint16_t aLength)
 {
+    AssertPointerIsNotNull(aBuf);
+
     return AsCoreType(aMessage).ReadBytes(aOffset, aBuf, aLength);
 }
 
 int otMessageWrite(otMessage *aMessage, uint16_t aOffset, const void *aBuf, uint16_t aLength)
 {
+    AssertPointerIsNotNull(aBuf);
+
     AsCoreType(aMessage).WriteBytes(aOffset, aBuf, aLength);
 
     return aLength;
@@ -106,6 +91,8 @@ int otMessageWrite(otMessage *aMessage, uint16_t aOffset, const void *aBuf, uint
 
 void otMessageQueueInit(otMessageQueue *aQueue)
 {
+    AssertPointerIsNotNull(aQueue);
+
     aQueue->mData = nullptr;
 }
 
@@ -124,10 +111,7 @@ void otMessageQueueDequeue(otMessageQueue *aQueue, otMessage *aMessage)
     AsCoreType(aQueue).Dequeue(AsCoreType(aMessage));
 }
 
-otMessage *otMessageQueueGetHead(otMessageQueue *aQueue)
-{
-    return AsCoreType(aQueue).GetHead();
-}
+otMessage *otMessageQueueGetHead(otMessageQueue *aQueue) { return AsCoreType(aQueue).GetHead(); }
 
 otMessage *otMessageQueueGetNext(otMessageQueue *aQueue, const otMessage *aMessage)
 {
@@ -145,61 +129,6 @@ exit:
 #if OPENTHREAD_MTD || OPENTHREAD_FTD
 void otMessageGetBufferInfo(otInstance *aInstance, otBufferInfo *aBufferInfo)
 {
-    uint16_t  messages, buffers;
-    Instance &instance = AsCoreType(aInstance);
-
-    aBufferInfo->mTotalBuffers = instance.Get<MessagePool>().GetTotalBufferCount();
-
-    aBufferInfo->mFreeBuffers = instance.Get<MessagePool>().GetFreeBufferCount();
-
-    instance.Get<MeshForwarder>().GetSendQueue().GetInfo(aBufferInfo->m6loSendMessages, aBufferInfo->m6loSendBuffers);
-
-    instance.Get<MeshForwarder>().GetReassemblyQueue().GetInfo(aBufferInfo->m6loReassemblyMessages,
-                                                               aBufferInfo->m6loReassemblyBuffers);
-
-#if OPENTHREAD_FTD
-    instance.Get<MeshForwarder>().GetResolvingQueue().GetInfo(aBufferInfo->mArpMessages, aBufferInfo->mArpBuffers);
-#else
-    aBufferInfo->mArpMessages             = 0;
-    aBufferInfo->mArpBuffers              = 0;
-#endif
-
-    instance.Get<Ip6::Ip6>().GetSendQueue().GetInfo(aBufferInfo->mIp6Messages, aBufferInfo->mIp6Buffers);
-
-#if OPENTHREAD_FTD
-    instance.Get<Ip6::Mpl>().GetBufferedMessageSet().GetInfo(aBufferInfo->mMplMessages, aBufferInfo->mMplBuffers);
-#else
-    aBufferInfo->mMplMessages             = 0;
-    aBufferInfo->mMplBuffers              = 0;
-#endif
-
-    instance.Get<Mle::MleRouter>().GetMessageQueue().GetInfo(aBufferInfo->mMleMessages, aBufferInfo->mMleBuffers);
-
-    instance.Get<Tmf::Agent>().GetRequestMessages().GetInfo(aBufferInfo->mCoapMessages, aBufferInfo->mCoapBuffers);
-    instance.Get<Tmf::Agent>().GetCachedResponses().GetInfo(messages, buffers);
-    aBufferInfo->mCoapMessages += messages;
-    aBufferInfo->mCoapBuffers += buffers;
-
-#if OPENTHREAD_CONFIG_DTLS_ENABLE
-    instance.Get<Coap::CoapSecure>().GetRequestMessages().GetInfo(aBufferInfo->mCoapSecureMessages,
-                                                                  aBufferInfo->mCoapSecureBuffers);
-    instance.Get<Coap::CoapSecure>().GetCachedResponses().GetInfo(messages, buffers);
-    aBufferInfo->mCoapSecureMessages += messages;
-    aBufferInfo->mCoapSecureBuffers += buffers;
-#else
-    aBufferInfo->mCoapSecureMessages      = 0;
-    aBufferInfo->mCoapSecureBuffers       = 0;
-#endif
-
-#if OPENTHREAD_CONFIG_COAP_API_ENABLE
-    instance.GetApplicationCoap().GetRequestMessages().GetInfo(aBufferInfo->mApplicationCoapMessages,
-                                                               aBufferInfo->mApplicationCoapBuffers);
-    instance.GetApplicationCoap().GetCachedResponses().GetInfo(messages, buffers);
-    aBufferInfo->mApplicationCoapMessages += messages;
-    aBufferInfo->mApplicationCoapBuffers += buffers;
-#else
-    aBufferInfo->mApplicationCoapMessages = 0;
-    aBufferInfo->mApplicationCoapBuffers  = 0;
-#endif
+    AsCoreType(aInstance).GetBufferInfo(AsCoreType(aBufferInfo));
 }
 #endif // OPENTHREAD_MTD || OPENTHREAD_FTD

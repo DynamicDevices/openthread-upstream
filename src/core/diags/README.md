@@ -14,6 +14,7 @@ The diagnostics module supports common diagnostics features that are listed belo
 - [diag repeat](#diag-repeat-delay-length)
 - [diag radio](#diag-radio-sleep)
 - [diag stats](#diag-stats)
+- [diag gpio](#diag-gpio-get-gpio)
 - [diag stop](#diag-stop)
 
 ### diag
@@ -157,6 +158,55 @@ Clear statistics during diagnostics mode.
 stats cleared
 ```
 
+### diag gpio get \<gpio\>
+
+Get the gpio value.
+
+```bash
+> diag gpio get 0
+1
+Done
+```
+
+### diag gpio set \<gpio\> \<value\>
+
+Set the gpio value.
+
+The parameter `value` has to be `0` or `1`.
+
+```bash
+> diag gpio set 0 1
+Done
+```
+
+### diag gpio mode \<gpio\>
+
+Get the gpio mode.
+
+```bash
+> diag gpio mode 1
+in
+Done
+```
+
+### diag gpio mode \<gpio\> in
+
+Sets the given gpio to the input mode without pull resistor.
+
+```bash
+> diag gpio mode 1 in
+Done
+```
+
+### diag gpio mode \<gpio\> out
+
+Sets the given gpio to the output mode.
+
+```bash
+> diag gpio mode 1 out
+Done
+```
+
 ### diag stop
 
 Stop diagnostics mode and print statistics.
@@ -170,4 +220,64 @@ last received packet: rssi=-61, lqi=98
 
 stop diagnostics mode
 status 0x00
+```
+
+### diag rcp
+
+RCP-related diagnostics commands. These commands are used for debugging and testing only.
+
+#### diag rcp start
+
+Start RCP diagnostics mode.
+
+```bash
+> diag rcp start
+Done
+```
+
+#### diag rcp stop
+
+Stop RCP diagnostics mode.
+
+```bash
+> diag rcp stop
+Done
+```
+
+#### diag rcp channel \<channel\>
+
+Set the RCP IEEE 802.15.4 Channel value for diagnostics module.
+
+```bash
+> diag rcp channel 11
+Done
+```
+
+#### diag rcp power \<power\>
+
+Set the RCP tx power value(dBm) for diagnostics module.
+
+```bash
+> diag rcp power 0
+Done
+```
+
+#### diag rcp echo \<message\>
+
+RCP echoes the given message.
+
+```bash
+> diag rcp echo 0123456789
+0123456789
+Done
+```
+
+#### diag rcp echo -n \<number\>
+
+RCP echoes the message with the given number of bytes.
+
+```bash
+> diag rcp echo -n 20
+01234567890123456789
+Done
 ```

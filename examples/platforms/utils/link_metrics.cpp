@@ -134,7 +134,7 @@ public:
     otLinkMetrics GetLinkMetrics(void) const { return mLinkMetrics; }
 
 private:
-    uint8_t GetLinkMargin(int8_t aRssi) const { return LinkQualityInfo::ConvertRssToLinkMargin(sNoiseFloor, aRssi); }
+    uint8_t GetLinkMargin(int8_t aRssi) const { return ComputeLinkMargin(sNoiseFloor, aRssi); }
 
     bool Matches(const otShortAddress &aShortAddress) const { return mShortAddress == aShortAddress; };
 
@@ -153,7 +153,7 @@ private:
 
 enum
 {
-    kMaxEnhAckProbingInitiator = 10,
+    kMaxEnhAckProbingInitiator = OPENTHREAD_CONFIG_MLE_LINK_METRICS_MAX_SERIES_SUPPORTED,
 };
 
 typedef Pool<LinkMetricsDataInfo, kMaxEnhAckProbingInitiator> LinkMetricsDataInfoPool;
@@ -177,10 +177,7 @@ static inline bool IsLinkMetricsClear(otLinkMetrics aLinkMetrics)
     return !aLinkMetrics.mPduCount && !aLinkMetrics.mLqi && !aLinkMetrics.mLinkMargin && !aLinkMetrics.mRssi;
 }
 
-void otLinkMetricsInit(int8_t aNoiseFloor)
-{
-    sNoiseFloor = aNoiseFloor;
-}
+void otLinkMetricsInit(int8_t aNoiseFloor) { sNoiseFloor = aNoiseFloor; }
 
 otError otLinkMetricsConfigureEnhAckProbing(otShortAddress      aShortAddress,
                                             const otExtAddress *aExtAddress,

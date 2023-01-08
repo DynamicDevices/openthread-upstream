@@ -73,7 +73,7 @@ public:
      * @param aAddress Pointer to the long MAC address.
      *
      */
-    void SetMacSource(const uint8_t *aAddress) { mMacSource.SetExtended(aAddress); }
+    void SetMacSource(const uint8_t *aAddress) { mMacAddrs.mSource.SetExtended(aAddress); }
 
     /**
      * This method sets short MAC source address.
@@ -81,7 +81,7 @@ public:
      * @param aAddress Short MAC address.
      *
      */
-    void SetMacSource(uint16_t aAddress) { mMacSource.SetShort(aAddress); }
+    void SetMacSource(uint16_t aAddress) { mMacAddrs.mSource.SetShort(aAddress); }
 
     /**
      * This method sets long MAC destination address.
@@ -89,7 +89,7 @@ public:
      * @param aAddress Pointer to the long MAC address.
      *
      */
-    void SetMacDestination(const uint8_t *aAddress) { mMacDestination.SetExtended(aAddress); }
+    void SetMacDestination(const uint8_t *aAddress) { mMacAddrs.mDestination.SetExtended(aAddress); }
 
     /**
      * This method sets short MAC destination address.
@@ -97,7 +97,15 @@ public:
      * @param aAddress Short MAC address.
      *
      */
-    void SetMacDestination(uint16_t aAddress) { mMacDestination.SetShort(aAddress); }
+    void SetMacDestination(uint16_t aAddress) { mMacAddrs.mDestination.SetShort(aAddress); }
+
+    /**
+     * This method gets the IPv6 header
+     *
+     * @returns the IPv6 header.
+     *
+     */
+    const Ip6::Header &GetIpHeader(void) const { return mIpHeader; }
 
     /**
      * This method initializes IPv6 Header.
@@ -117,7 +125,7 @@ public:
                      const char *aSource,
                      const char *aDestination)
     {
-        mIpHeader.Init(aVersionClassFlow);
+        mIpHeader.SetVerionTrafficClassFlow(aVersionClassFlow);
         mIpHeader.SetPayloadLength(aPayloadLength);
         mIpHeader.SetNextHeader(aNextHeader);
         mIpHeader.SetHopLimit(aHopLimit);
@@ -143,7 +151,7 @@ public:
                              const char *aSource,
                              const char *aDestination)
     {
-        mIpTunneledHeader.Init(aVersionClassFlow);
+        mIpTunneledHeader.SetVerionTrafficClassFlow(aVersionClassFlow);
         mIpTunneledHeader.SetPayloadLength(aPayloadLength);
         mIpTunneledHeader.SetNextHeader(aNextHeader);
         mIpTunneledHeader.SetHopLimit(aHopLimit);
@@ -253,8 +261,7 @@ public:
      * This fields represent uncompressed IPv6 packet.
      *
      */
-    Mac::Address     mMacSource;
-    Mac::Address     mMacDestination;
+    Mac::Addresses   mMacAddrs;
     Ip6::Header      mIpHeader;
     Payload          mExtHeader;
     Ip6::Header      mIpTunneledHeader;

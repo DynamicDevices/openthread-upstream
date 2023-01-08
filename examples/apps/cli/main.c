@@ -39,6 +39,8 @@
 #include "cli/cli_config.h"
 #include "common/code_utils.hpp"
 
+#include "lib/platform/reset_util.h"
+
 /**
  * This function initializes the CLI app.
  *
@@ -47,38 +49,16 @@
  */
 extern void otAppCliInit(otInstance *aInstance);
 
-#if OPENTHREAD_EXAMPLES_SIMULATION
-#include <setjmp.h>
-#include <unistd.h>
-
-jmp_buf gResetJump;
-
-void __gcov_flush();
-#endif
-
-#ifndef OPENTHREAD_ENABLE_COVERAGE
-#define OPENTHREAD_ENABLE_COVERAGE 0
-#endif
-
 #if OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
-void *otPlatCAlloc(size_t aNum, size_t aSize)
-{
-    return calloc(aNum, aSize);
-}
+OT_TOOL_WEAK void *otPlatCAlloc(size_t aNum, size_t aSize) { return calloc(aNum, aSize); }
 
-void otPlatFree(void *aPtr)
-{
-    free(aPtr);
-}
+OT_TOOL_WEAK void otPlatFree(void *aPtr) { free(aPtr); }
 #endif
 
-void otTaskletsSignalPending(otInstance *aInstance)
-{
-    OT_UNUSED_VARIABLE(aInstance);
-}
+void otTaskletsSignalPending(otInstance *aInstance) { OT_UNUSED_VARIABLE(aInstance); }
 
 #if OPENTHREAD_POSIX && !defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION)
-static void ProcessExit(void *aContext, uint8_t aArgsLength, char *aArgs[])
+static otError ProcessExit(void *aContext, uint8_t aArgsLength, char *aArgs[])
 {
     OT_UNUSED_VARIABLE(aContext);
     OT_UNUSED_VARIABLE(aArgsLength);
@@ -86,23 +66,30 @@ static void ProcessExit(void *aContext, uint8_t aArgsLength, char *aArgs[])
 
     exit(EXIT_SUCCESS);
 }
-static const otCliCommand kCommands[] = {{"exit", ProcessExit}};
+
+#if OPENTHREAD_EXAMPLES_SIMULATION
+extern otError ProcessNodeIdFilter(void *aContext, uint8_t aArgsLength, char *aArgs[]);
 #endif
+
+static const otCliCommand kCommands[] = {
+    {"exit", ProcessExit},
+#if OPENTHREAD_EXAMPLES_SIMULATION
+    /*
+     * The CLI command `nodeidfilter` only works for simulation in real time.
+     * The usage of the command `nodeidfilter`:
+     *     - `nodeidfilter deny <nodeid>`:  It denies the connection to a specified node.
+     *     - `nodeidfilter clear`:          It restores the filter state to default.
+     */
+    {"nodeidfilter", ProcessNodeIdFilter},
+#endif
+};
+#endif // OPENTHREAD_POSIX && !defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION)
 
 int main(int argc, char *argv[])
 {
     otInstance *instance;
 
-#if OPENTHREAD_EXAMPLES_SIMULATION
-    if (setjmp(gResetJump))
-    {
-        alarm(0);
-#if OPENTHREAD_ENABLE_COVERAGE
-        __gcov_flush();
-#endif
-        execvp(argv[0], argv);
-    }
-#endif
+    OT_SETUP_RESET_JUMP(argv);
 
 #if OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
     size_t   otInstanceBufferLength = 0;
@@ -150,21 +137,13 @@ pseudo_reset:
     return 0;
 }
 
-/*
- * Provide, if required an "otPlatLog()" function
- */
 #if OPENTHREAD_CONFIG_LOG_OUTPUT == OPENTHREAD_CONFIG_LOG_OUTPUT_APP
 void otPlatLog(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aFormat, ...)
 {
     va_list ap;
+
     va_start(ap, aFormat);
     otCliPlatLogv(aLogLevel, aLogRegion, aFormat, ap);
     va_end(ap);
 }
-
-void otPlatLogLine(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aLogLine)
-{
-    otCliPlatLogLine(aLogLevel, aLogRegion, aLogLine);
-}
-
 #endif

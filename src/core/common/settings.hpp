@@ -42,19 +42,18 @@
 #include "common/encoding.hpp"
 #include "common/equatable.hpp"
 #include "common/locator.hpp"
+#include "common/log.hpp"
 #include "common/non_copyable.hpp"
 #include "common/settings_driver.hpp"
 #include "crypto/ecdsa.hpp"
 #include "mac/mac_types.hpp"
+#include "meshcop/dataset.hpp"
 #include "net/ip6_address.hpp"
+#include "thread/version.hpp"
 #include "utils/flash.hpp"
 #include "utils/slaac_address.hpp"
 
 namespace ot {
-
-namespace MeshCoP {
-class Dataset;
-}
 
 class Settings;
 
@@ -114,18 +113,19 @@ public:
         kKeyNetworkInfo       = OT_SETTINGS_KEY_NETWORK_INFO,
         kKeyParentInfo        = OT_SETTINGS_KEY_PARENT_INFO,
         kKeyChildInfo         = OT_SETTINGS_KEY_CHILD_INFO,
-        kKeyReserved          = OT_SETTINGS_KEY_RESERVED,
         kKeySlaacIidSecretKey = OT_SETTINGS_KEY_SLAAC_IID_SECRET_KEY,
         kKeyDadInfo           = OT_SETTINGS_KEY_DAD_INFO,
-        kKeyOmrPrefix         = OT_SETTINGS_KEY_OMR_PREFIX,
-        kKeyOnLinkPrefix      = OT_SETTINGS_KEY_ON_LINK_PREFIX,
         kKeySrpEcdsaKey       = OT_SETTINGS_KEY_SRP_ECDSA_KEY,
         kKeySrpClientInfo     = OT_SETTINGS_KEY_SRP_CLIENT_INFO,
         kKeySrpServerInfo     = OT_SETTINGS_KEY_SRP_SERVER_INFO,
-        kKeyNat64Prefix       = OT_SETTINGS_KEY_NAT64_PREFIX,
+        kKeyBrUlaPrefix       = OT_SETTINGS_KEY_BR_ULA_PREFIX,
+        kKeyBrOnLinkPrefixes  = OT_SETTINGS_KEY_BR_ON_LINK_PREFIXES,
     };
 
-    static constexpr Key kLastKey = kKeyNat64Prefix; ///< The last (numerically) enumerator value in `Key`.
+    static constexpr Key kLastKey = kKeyBrOnLinkPrefixes; ///< The last (numerically) enumerator value in `Key`.
+
+    static_assert(static_cast<uint16_t>(kLastKey) < static_cast<uint16_t>(OT_SETTINGS_KEY_VENDOR_RESERVED_MIN),
+                  "Core settings keys overlap with vendor reserved keys");
 
     /**
      * This structure represents the device's own network information for settings storage.
@@ -135,6 +135,7 @@ public:
     class NetworkInfo : private Clearable<NetworkInfo>
     {
         friend class Settings;
+        friend class Clearable<NetworkInfo>;
 
     public:
         static constexpr Key kKey = kKeyNetworkInfo; ///< The associated key.
@@ -146,7 +147,7 @@ public:
         void Init(void)
         {
             Clear();
-            SetVersion(OT_THREAD_VERSION_1_1);
+            SetVersion(kThreadVersion1p1);
         }
 
         /**
@@ -341,6 +342,7 @@ public:
     class ParentInfo : private Clearable<ParentInfo>
     {
         friend class Settings;
+        friend class Clearable<ParentInfo>;
 
     public:
         static constexpr Key kKey = kKeyParentInfo; ///< The associated key.
@@ -352,7 +354,7 @@ public:
         void Init(void)
         {
             Clear();
-            SetVersion(OT_THREAD_VERSION_1_1);
+            SetVersion(kThreadVersion1p1);
         }
 
         /**
@@ -414,7 +416,7 @@ public:
         void Init(void)
         {
             memset(this, 0, sizeof(*this));
-            SetVersion(OT_THREAD_VERSION_1_1);
+            SetVersion(kThreadVersion1p1);
         }
 
         /**
@@ -476,7 +478,7 @@ public:
         /**
          * This method sets the Thread device mode.
          *
-         * @param[in] aRloc16  The Thread device mode.
+         * @param[in] aMode  The Thread device mode.
          *
          */
         void SetMode(uint8_t aMode) { mMode = aMode; }
@@ -534,6 +536,7 @@ public:
     class DadInfo : private Clearable<DadInfo>
     {
         friend class Settings;
+        friend class Clearable<DadInfo>;
 
     public:
         static constexpr Key kKey = kKeyDadInfo; ///< The associated key.
@@ -569,51 +572,77 @@ public:
 
 #if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
     /**
-     * This class defines constants and types for OMR prefix settings.
+     * This class defines constants and types for BR ULA prefix settings.
      *
      */
-    class OmrPrefix
+    class BrUlaPrefix
     {
     public:
-        static constexpr Key kKey = kKeyOmrPrefix; ///< The associated key.
+        static constexpr Key kKey = kKeyBrUlaPrefix; ///< The associated key.
 
         typedef Ip6::Prefix ValueType; ///< The associated value type.
 
     private:
-        OmrPrefix(void) = default;
+        BrUlaPrefix(void) = default;
     };
 
     /**
-     * This class defines constants and types for on-link prefix settings.
+     * This class represents a BR on-link prefix entry for settings storage.
      *
      */
-    class OnLinkPrefix
+    OT_TOOL_PACKED_BEGIN
+    class BrOnLinkPrefix : public Clearable<BrOnLinkPrefix>
     {
-    public:
-        static constexpr Key kKey = kKeyOnLinkPrefix; ///< The associated key.
+        friend class Settings;
 
-        typedef Ip6::Prefix ValueType; ///< The associated value type.
+    public:
+        static constexpr Key kKey = kKeyBrOnLinkPrefixes; ///< The associated key.
+
+        /**
+         * This method initializes the `BrOnLinkPrefix` object.
+         *
+         */
+        void Init(void) { Clear(); }
+
+        /**
+         * This method gets the prefix.
+         *
+         * @returns The prefix.
+         *
+         */
+        const Ip6::Prefix &GetPrefix(void) const { return mPrefix; }
+
+        /**
+         * This method set the prefix.
+         *
+         * @param[in] aPrefix   The prefix.
+         *
+         */
+        void SetPrefix(const Ip6::Prefix &aPrefix) { mPrefix = aPrefix; }
+
+        /**
+         * This method gets the remaining prefix lifetime in seconds.
+         *
+         * @returns The prefix lifetime in seconds.
+         *
+         */
+        uint32_t GetLifetime(void) const { return mLifetime; }
+
+        /**
+         * This method sets the the prefix lifetime.
+         *
+         * @param[in] aLifetime  The prefix lifetime in seconds.
+         *
+         */
+        void SetLifetime(uint32_t aLifetime) { mLifetime = aLifetime; }
 
     private:
-        OnLinkPrefix(void) = default;
-    };
+        void Log(const char *aActionText) const;
 
-#if OPENTHREAD_CONFIG_BORDER_ROUTING_NAT64_ENABLE
-    /**
-     * This class defines constants and types for NAT64 prefix settings.
-     *
-     */
-    class Nat64Prefix
-    {
-    public:
-        static constexpr Key kKey = kKeyNat64Prefix; ///< The associated key.
+        Ip6::Prefix mPrefix;
+        uint32_t    mLifetime;
+    } OT_TOOL_PACKED_END;
 
-        typedef Ip6::Prefix ValueType; ///< The associated value type.
-
-    private:
-        Nat64Prefix(void) = default;
-    };
-#endif // OPENTHREAD_CONFIG_BORDER_ROUTING_NAT64_ENABLE
 #endif // OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
 
 #if OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE
@@ -641,6 +670,7 @@ public:
     class SrpClientInfo : private Clearable<SrpClientInfo>
     {
         friend class Settings;
+        friend class Clearable<SrpClientInfo>;
 
     public:
         static constexpr Key kKey = kKeySrpClientInfo; ///< The associated key.
@@ -701,6 +731,7 @@ public:
     class SrpServerInfo : private Clearable<SrpServerInfo>
     {
         friend class Settings;
+        friend class Clearable<SrpServerInfo>;
 
     public:
         static constexpr Key kKey = kKeySrpServerInfo; ///< The associated key.
@@ -744,10 +775,10 @@ protected:
     static void LogPrefix(Action aAction, Key aKey, const Ip6::Prefix &aPrefix);
 #endif
 
-#if OPENTHREAD_CONFIG_LOG_UTIL && (OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_WARN)
+#if OT_SHOULD_LOG_AT(OT_LOG_LEVEL_WARN)
     static const char *KeyToString(Key aKey);
 #endif
-#if OPENTHREAD_CONFIG_LOG_UTIL && (OPENTHREAD_CONFIG_LOG_LEVEL >= OT_LOG_LEVEL_INFO)
+#if OT_SHOULD_LOG_AT(OT_LOG_LEVEL_INFO)
     static const char *ActionToString(Action aAction);
 #endif
 };
@@ -797,38 +828,38 @@ public:
     /**
      * This method saves the Operational Dataset (active or pending).
      *
-     * @param[in]   aIsActive   Indicates whether Dataset is active or pending.
+     * @param[in]   aType       The Dataset type (active or pending) to save.
      * @param[in]   aDataset    A reference to a `Dataset` object to be saved.
      *
      * @retval kErrorNone             Successfully saved the Dataset.
      * @retval kErrorNotImplemented   The platform does not implement settings functionality.
      *
      */
-    Error SaveOperationalDataset(bool aIsActive, const MeshCoP::Dataset &aDataset);
+    Error SaveOperationalDataset(MeshCoP::Dataset::Type aType, const MeshCoP::Dataset &aDataset);
 
     /**
      * This method reads the Operational Dataset (active or pending).
      *
-     * @param[in]   aIsActive             Indicates whether Dataset is active or pending.
-     * @param[out]  aDataset              A reference to a `Dataset` object to output the read content.
+     * @param[in]   aType            The Dataset type (active or pending) to read.
+     * @param[out]  aDataset         A reference to a `Dataset` object to output the read content.
      *
      * @retval kErrorNone             Successfully read the Dataset.
      * @retval kErrorNotFound         No corresponding value in the setting store.
      * @retval kErrorNotImplemented   The platform does not implement settings functionality.
      *
      */
-    Error ReadOperationalDataset(bool aIsActive, MeshCoP::Dataset &aDataset) const;
+    Error ReadOperationalDataset(MeshCoP::Dataset::Type aType, MeshCoP::Dataset &aDataset) const;
 
     /**
      * This method deletes the Operational Dataset (active/pending) from settings.
      *
-     * @param[in]   aIsActive            Indicates whether Dataset is active or pending.
+     * @param[in]   aType            The Dataset type (active or pending) to delete.
      *
      * @retval kErrorNone            Successfully deleted the Dataset.
      * @retval kErrorNotImplemented  The platform does not implement settings functionality.
      *
      */
-    Error DeleteOperationalDataset(bool aIsActive);
+    Error DeleteOperationalDataset(MeshCoP::Dataset::Type aType);
 
     /**
      * This template method reads a specified settings entry.
@@ -920,7 +951,7 @@ public:
      *
      * @tparam EntryType              The settings entry type.
      *
-     * @param[in] aEntry              The entry value to be saved.
+     * @param[in] aValue              The entry value to be saved.
      *
      * @retval kErrorNone             Successfully saved Network Info in settings.
      * @retval kErrorNotImplemented   The platform does not implement settings functionality.
@@ -1059,7 +1090,7 @@ public:
          * @returns A reference to the `ChildInfo` entry currently pointed by the iterator.
          *
          */
-        const ChildInfo &operator*(void)const { return mChildInfo; }
+        const ChildInfo &operator*(void) const { return mChildInfo; }
 
         /**
          * This method overloads operator `==` to evaluate whether or not two iterator instances are equal.
@@ -1097,6 +1128,56 @@ public:
     };
 #endif // OPENTHREAD_FTD
 
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+    /**
+     * This method adds or updates an on-link prefix.
+     *
+     * If there is no matching entry (matching the same `GetPrefix()`) saved in `Settings`, the new entry will be added.
+     * If there is matching entry, it will be updated to the new @p aPrefix.
+     *
+     * @param[in] aBrOnLinkPrefix    The on-link prefix to save (add or updated).
+     *
+     * @retval kErrorNone             Successfully added or updated the entry in settings.
+     * @retval kErrorNotImplemented   The platform does not implement settings functionality.
+     *
+     */
+    Error AddOrUpdateBrOnLinkPrefix(const BrOnLinkPrefix &aBrOnLinkPrefix);
+
+    /**
+     * This method removes an on-link prefix entry matching a given prefix.
+     *
+     * @param[in] aPrefix            The prefix to remove
+     *
+     * @retval kErrorNone            Successfully removed the matching entry in settings.
+     * @retval kErrorNotImplemented  The platform does not implement settings functionality.
+     *
+     */
+    Error RemoveBrOnLinkPrefix(const Ip6::Prefix &aPrefix);
+
+    /**
+     * This method deletes all on-link prefix entries from the settings.
+     *
+     * @retval kErrorNone            Successfully deleted the entries.
+     * @retval kErrorNotImplemented  The platform does not implement settings functionality.
+     *
+     */
+    Error DeleteAllBrOnLinkPrefixes(void);
+
+    /**
+     * This method retrieves an entry from on-link prefixes list at a given index.
+     *
+     * @param[in]  aIndex            The index to read.
+     * @param[out] aBrOnLinkPrefix   A reference to `BrOnLinkPrefix` to output the read value.
+     *
+     * @retval kErrorNone             Successfully read the value.
+     * @retval kErrorNotFound         No corresponding value in the setting store.
+     * @retval kErrorNotImplemented   The platform does not implement settings functionality.
+     *
+     */
+    Error ReadBrOnLinkPrefix(int aIndex, BrOnLinkPrefix &aBrOnLinkPrefix);
+
+#endif // OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+
 private:
 #if OPENTHREAD_FTD
     class ChildInfoIteratorBuilder : public InstanceLocator
@@ -1112,13 +1193,15 @@ private:
     };
 #endif
 
+    static Key KeyForDatasetType(MeshCoP::Dataset::Type aType);
+
     Error ReadEntry(Key aKey, void *aValue, uint16_t aMaxLength) const;
     Error SaveEntry(Key aKey, const void *aValue, void *aPrev, uint16_t aLength);
     Error DeleteEntry(Key aKey);
 
     static void Log(Action aAction, Error aError, Key aKey, const void *aValue = nullptr);
 
-    static const uint16_t kCriticalKeys[];
+    static const uint16_t kSensitiveKeys[];
 };
 
 } // namespace ot

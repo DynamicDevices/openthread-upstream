@@ -51,7 +51,7 @@ namespace Cli {
  * This class implements the SRP Client CLI interpreter.
  *
  */
-class SrpClient : private OutputWrapper
+class SrpClient : private Output
 {
 public:
     typedef Utils::CmdLineParser::Arg Arg;
@@ -59,10 +59,11 @@ public:
     /**
      * Constructor
      *
-     * @param[in]  aOutput  The CLI console output context.
+     * @param[in]  aInstance            The OpenThread Instance.
+     * @param[in]  aOutputImplementer   An `OutputImplementer`.
      *
      */
-    explicit SrpClient(Output &aOutput);
+    SrpClient(otInstance *aInstance, OutputImplementer &aOutputImplementer);
 
     /**
      * This method interprets a list of CLI arguments.
@@ -81,18 +82,9 @@ private:
 
     using Command = CommandEntry<SrpClient>;
 
-    otError ProcessAutoStart(Arg aArgs[]);
-    otError ProcessCallback(Arg aArgs[]);
-    otError ProcessHelp(Arg aArgs[]);
-    otError ProcessHost(Arg aArgs[]);
-    otError ProcessLeaseInterval(Arg aArgs[]);
-    otError ProcessKeyLeaseInterval(Arg aArgs[]);
-    otError ProcessServer(Arg aArgs[]);
-    otError ProcessService(Arg aArgs[]);
+    template <CommandId kCommandId> otError Process(Arg aArgs[]);
+
     otError ProcessServiceAdd(Arg aArgs[]);
-    otError ProcessStart(Arg aArgs[]);
-    otError ProcessState(Arg aArgs[]);
-    otError ProcessStop(Arg aArgs[]);
 
     void OutputHostInfo(uint8_t aIndentSize, const otSrpClientHostInfo &aHostInfo);
     void OutputServiceList(uint8_t aIndentSize, const otSrpClientService *aServices);
@@ -100,29 +92,13 @@ private:
 
     static void HandleCallback(otError                    aError,
                                const otSrpClientHostInfo *aHostInfo,
-                               const otSrpClientService * aServices,
-                               const otSrpClientService * aRemovedServices,
-                               void *                     aContext);
+                               const otSrpClientService  *aServices,
+                               const otSrpClientService  *aRemovedServices,
+                               void                      *aContext);
     void        HandleCallback(otError                    aError,
                                const otSrpClientHostInfo *aHostInfo,
-                               const otSrpClientService * aServices,
-                               const otSrpClientService * aRemovedServices);
-
-    static constexpr Command sCommands[] = {
-        {"autostart", &SrpClient::ProcessAutoStart},
-        {"callback", &SrpClient::ProcessCallback},
-        {"help", &SrpClient::ProcessHelp},
-        {"host", &SrpClient::ProcessHost},
-        {"keyleaseinterval", &SrpClient::ProcessKeyLeaseInterval},
-        {"leaseinterval", &SrpClient::ProcessLeaseInterval},
-        {"server", &SrpClient::ProcessServer},
-        {"service", &SrpClient::ProcessService},
-        {"start", &SrpClient::ProcessStart},
-        {"state", &SrpClient::ProcessState},
-        {"stop", &SrpClient::ProcessStop},
-    };
-
-    static_assert(BinarySearch::IsSorted(sCommands), "Command Table is not sorted");
+                               const otSrpClientService  *aServices,
+                               const otSrpClientService  *aRemovedServices);
 
     bool mCallbackEnabled;
 };

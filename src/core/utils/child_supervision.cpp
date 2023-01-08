@@ -37,11 +37,13 @@
 #include "common/code_utils.hpp"
 #include "common/instance.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
 #include "thread/thread_netif.hpp"
 
 namespace ot {
 namespace Utils {
+
+RegisterLogModule("ChildSupervsn");
 
 #if OPENTHREAD_CONFIG_CHILD_SUPERVISION_ENABLE
 
@@ -61,7 +63,7 @@ void ChildSupervisor::SetSupervisionInterval(uint16_t aInterval)
 
 Child *ChildSupervisor::GetDestination(const Message &aMessage) const
 {
-    Child *  child = nullptr;
+    Child   *child = nullptr;
     uint16_t childIndex;
 
     VerifyOrExit(aMessage.GetType() == Message::kTypeSupervision);
@@ -94,16 +96,13 @@ void ChildSupervisor::SendMessage(Child &aChild)
     SuccessOrExit(Get<ThreadNetif>().SendMessage(*message));
     message = nullptr;
 
-    otLogInfoUtil("Sending supervision message to child 0x%04x", aChild.GetRloc16());
+    LogInfo("Sending supervision message to child 0x%04x", aChild.GetRloc16());
 
 exit:
     FreeMessage(message);
 }
 
-void ChildSupervisor::UpdateOnSend(Child &aChild)
-{
-    aChild.ResetSecondsSinceLastSupervision();
-}
+void ChildSupervisor::UpdateOnSend(Child &aChild) { aChild.ResetSecondsSinceLastSupervision(); }
 
 void ChildSupervisor::HandleTimeTick(void)
 {
@@ -132,13 +131,13 @@ void ChildSupervisor::CheckState(void)
     if (shouldRun && !Get<TimeTicker>().IsReceiverRegistered(TimeTicker::kChildSupervisor))
     {
         Get<TimeTicker>().RegisterReceiver(TimeTicker::kChildSupervisor);
-        otLogInfoUtil("Starting Child Supervision");
+        LogInfo("Starting Child Supervision");
     }
 
     if (!shouldRun && Get<TimeTicker>().IsReceiverRegistered(TimeTicker::kChildSupervisor))
     {
         Get<TimeTicker>().UnregisterReceiver(TimeTicker::kChildSupervisor);
-        otLogInfoUtil("Stopping Child Supervision");
+        LogInfo("Stopping Child Supervision");
     }
 }
 
@@ -155,20 +154,14 @@ void ChildSupervisor::HandleNotifierEvents(Events aEvents)
 SupervisionListener::SupervisionListener(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mTimeout(0)
-    , mTimer(aInstance, SupervisionListener::HandleTimer)
+    , mTimer(aInstance)
 {
     SetTimeout(kDefaultTimeout);
 }
 
-void SupervisionListener::Start(void)
-{
-    RestartTimer();
-}
+void SupervisionListener::Start(void) { RestartTimer(); }
 
-void SupervisionListener::Stop(void)
-{
-    mTimer.Stop();
-}
+void SupervisionListener::Stop(void) { mTimer.Stop(); }
 
 void SupervisionListener::SetTimeout(uint16_t aTimeout)
 {
@@ -204,16 +197,11 @@ void SupervisionListener::RestartTimer(void)
     }
 }
 
-void SupervisionListener::HandleTimer(Timer &aTimer)
-{
-    aTimer.Get<SupervisionListener>().HandleTimer();
-}
-
 void SupervisionListener::HandleTimer(void)
 {
     VerifyOrExit(Get<Mle::MleRouter>().IsChild() && !Get<MeshForwarder>().GetRxOnWhenIdle());
 
-    otLogWarnUtil("Supervision timeout. No frame from parent in %d sec", mTimeout);
+    LogWarn("Supervision timeout. No frame from parent in %d sec", mTimeout);
 
     IgnoreError(Get<Mle::MleRouter>().SendChildUpdateRequest());
 

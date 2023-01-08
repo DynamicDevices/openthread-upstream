@@ -39,7 +39,8 @@
 #include "common/heap.hpp"
 #include "common/instance.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
+#include "common/numeric_limits.hpp"
 #include "net/checksum.hpp"
 #include "net/ip6.hpp"
 
@@ -54,6 +55,8 @@
 #endif
 
 namespace ot {
+
+RegisterLogModule("Message");
 
 //---------------------------------------------------------------------------------------------------------------------
 // MessagePool
@@ -128,7 +131,7 @@ Buffer *MessagePool::NewBuffer(Message::Priority aPriority)
 exit:
     if (buffer == nullptr)
     {
-        otLogInfoMem("No available message buffer");
+        LogInfo("No available message buffer");
     }
 
     return buffer;
@@ -151,17 +154,18 @@ void MessagePool::FreeBuffers(Buffer *aBuffer)
     }
 }
 
-Error MessagePool::ReclaimBuffers(Message::Priority aPriority)
-{
-    return Get<MeshForwarder>().EvictMessage(aPriority);
-}
+Error MessagePool::ReclaimBuffers(Message::Priority aPriority) { return Get<MeshForwarder>().EvictMessage(aPriority); }
 
 uint16_t MessagePool::GetFreeBufferCount(void) const
 {
     uint16_t rval;
 
 #if OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE
+#if !OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
     rval = static_cast<uint16_t>(Instance::GetHeap().GetFreeSize() / sizeof(Buffer));
+#else
+    rval = NumericLimits<uint16_t>::kMax;
+#endif
 #elif OPENTHREAD_CONFIG_PLATFORM_MESSAGE_MANAGEMENT
     rval = otPlatMessagePoolNumFreeBuffers(&GetInstance());
 #else
@@ -173,11 +177,19 @@ uint16_t MessagePool::GetFreeBufferCount(void) const
 
 uint16_t MessagePool::GetTotalBufferCount(void) const
 {
+    uint16_t rval;
+
 #if OPENTHREAD_CONFIG_MESSAGE_USE_HEAP_ENABLE
-    return static_cast<uint16_t>(Instance::GetHeap().GetCapacity() / sizeof(Buffer));
+#if !OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
+    rval = static_cast<uint16_t>(Instance::GetHeap().GetCapacity() / sizeof(Buffer));
 #else
-    return OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS;
+    rval = NumericLimits<uint16_t>::kMax;
 #endif
+#else
+    rval = OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS;
+#endif
+
+    return rval;
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -197,6 +209,15 @@ const Message::Settings &Message::Settings::From(const otMessageSettings *aSetti
 }
 
 //---------------------------------------------------------------------------------------------------------------------
+// Message::Iterator
+
+void Message::Iterator::Advance(void)
+{
+    mItem = mNext;
+    mNext = NextMessage(mNext);
+}
+
+//---------------------------------------------------------------------------------------------------------------------
 // Message
 
 Error Message::ResizeMessage(uint16_t aLength)
@@ -205,8 +226,8 @@ Error Message::ResizeMessage(uint16_t aLength)
     // requested length.
 
     Error    error     = kErrorNone;
-    Buffer * curBuffer = this;
-    Buffer * lastBuffer;
+    Buffer  *curBuffer = this;
+    Buffer  *lastBuffer;
     uint16_t curLength = kHeadBufferDataSize;
 
     while (curLength < aLength)
@@ -231,10 +252,7 @@ exit:
     return error;
 }
 
-void Message::Free(void)
-{
-    GetMessagePool()->Free(this);
-}
+void Message::Free(void) { GetMessagePool()->Free(this); }
 
 Message *Message::GetNext(void) const
 {
@@ -334,6 +352,8 @@ Error Message::SetPriority(Priority aPriority)
     Error          error    = kErrorNone;
     uint8_t        priority = static_cast<uint8_t>(aPriority);
     PriorityQueue *priorityQueue;
+
+    static_assert(kNumPriorities <= 4, "`Metadata::mPriority` as a 2-bit field cannot fit all `Priority` values");
 
     VerifyOrExit(priority < kNumPriorities, error = kErrorInvalidArgs);
 
@@ -677,25 +697,13 @@ exit:
     return messageCopy;
 }
 
-bool Message::GetChildMask(uint16_t aChildIndex) const
-{
-    return GetMetadata().mChildMask.Get(aChildIndex);
-}
+bool Message::GetChildMask(uint16_t aChildIndex) const { return GetMetadata().mChildMask.Get(aChildIndex); }
 
-void Message::ClearChildMask(uint16_t aChildIndex)
-{
-    GetMetadata().mChildMask.Set(aChildIndex, false);
-}
+void Message::ClearChildMask(uint16_t aChildIndex) { GetMetadata().mChildMask.Set(aChildIndex, false); }
 
-void Message::SetChildMask(uint16_t aChildIndex)
-{
-    GetMetadata().mChildMask.Set(aChildIndex, true);
-}
+void Message::SetChildMask(uint16_t aChildIndex) { GetMetadata().mChildMask.Set(aChildIndex, true); }
 
-bool Message::IsChildPending(void) const
-{
-    return GetMetadata().mChildMask.HasAny();
-}
+bool Message::IsChildPending(void) const { return GetMetadata().mChildMask.HasAny(); }
 
 void Message::SetLinkInfo(const ThreadLinkInfo &aLinkInfo)
 {
@@ -737,16 +745,6 @@ void Message::SetPriorityQueue(PriorityQueue *aPriorityQueue)
 
 //---------------------------------------------------------------------------------------------------------------------
 // MessageQueue
-
-MessageQueue::MessageQueue(void)
-{
-    SetTail(nullptr);
-}
-
-Message *MessageQueue::GetHead(void) const
-{
-    return (GetTail() == nullptr) ? nullptr : GetTail()->Next();
-}
 
 void MessageQueue::Enqueue(Message &aMessage, QueuePosition aPosition)
 {
@@ -819,37 +817,31 @@ void MessageQueue::DequeueAndFreeAll(void)
     }
 }
 
-void MessageQueue::GetInfo(uint16_t &aMessageCount, uint16_t &aBufferCount) const
-{
-    aMessageCount = 0;
-    aBufferCount  = 0;
+Message::Iterator MessageQueue::begin(void) { return Message::Iterator(GetHead()); }
 
-    for (const Message *message = GetHead(); message != nullptr; message = message->GetNext())
+Message::ConstIterator MessageQueue::begin(void) const { return Message::ConstIterator(GetHead()); }
+
+void MessageQueue::GetInfo(Info &aInfo) const
+{
+    for (const Message &message : *this)
     {
-        aMessageCount++;
-        aBufferCount += message->GetBufferCount();
+        aInfo.mNumMessages++;
+        aInfo.mNumBuffers += message.GetBufferCount();
+        aInfo.mTotalBytes += message.GetLength();
     }
 }
 
 //---------------------------------------------------------------------------------------------------------------------
 // PriorityQueue
 
-PriorityQueue::PriorityQueue(void)
-{
-    for (Message *&tail : mTails)
-    {
-        tail = nullptr;
-    }
-}
-
-Message *PriorityQueue::FindFirstNonNullTail(Message::Priority aStartPriorityLevel) const
+const Message *PriorityQueue::FindFirstNonNullTail(Message::Priority aStartPriorityLevel) const
 {
     // Find the first non-`nullptr` tail starting from the given priority
     // level and moving forward (wrapping from priority value
     // `kNumPriorities` -1 back to 0).
 
-    Message *tail = nullptr;
-    uint8_t  priority;
+    const Message *tail = nullptr;
+    uint8_t        priority;
 
     priority = static_cast<uint8_t>(aStartPriorityLevel);
 
@@ -867,19 +859,15 @@ Message *PriorityQueue::FindFirstNonNullTail(Message::Priority aStartPriorityLev
     return tail;
 }
 
-Message *PriorityQueue::GetHead(void) const
+const Message *PriorityQueue::GetHead(void) const
 {
-    Message *tail;
-
-    tail = FindFirstNonNullTail(Message::kPriorityLow);
-
-    return (tail == nullptr) ? nullptr : tail->Next();
+    return Message::NextOf(FindFirstNonNullTail(Message::kPriorityLow));
 }
 
-Message *PriorityQueue::GetHeadForPriority(Message::Priority aPriority) const
+const Message *PriorityQueue::GetHeadForPriority(Message::Priority aPriority) const
 {
-    Message *head;
-    Message *previousTail;
+    const Message *head;
+    const Message *previousTail;
 
     if (mTails[aPriority] != nullptr)
     {
@@ -897,16 +885,13 @@ Message *PriorityQueue::GetHeadForPriority(Message::Priority aPriority) const
     return head;
 }
 
-Message *PriorityQueue::GetTail(void) const
-{
-    return FindFirstNonNullTail(Message::kPriorityLow);
-}
+const Message *PriorityQueue::GetTail(void) const { return FindFirstNonNullTail(Message::kPriorityLow); }
 
 void PriorityQueue::Enqueue(Message &aMessage)
 {
     Message::Priority priority;
-    Message *         tail;
-    Message *         next;
+    Message          *tail;
+    Message          *next;
 
     OT_ASSERT(!aMessage.IsInAQueue());
 
@@ -937,7 +922,7 @@ void PriorityQueue::Enqueue(Message &aMessage)
 void PriorityQueue::Dequeue(Message &aMessage)
 {
     Message::Priority priority;
-    Message *         tail;
+    Message          *tail;
 
     OT_ASSERT(aMessage.GetPriorityQueue() == this);
 
@@ -981,15 +966,17 @@ void PriorityQueue::DequeueAndFreeAll(void)
     }
 }
 
-void PriorityQueue::GetInfo(uint16_t &aMessageCount, uint16_t &aBufferCount) const
-{
-    aMessageCount = 0;
-    aBufferCount  = 0;
+Message::Iterator PriorityQueue::begin(void) { return Message::Iterator(GetHead()); }
 
-    for (const Message *message = GetHead(); message != nullptr; message = message->GetNext())
+Message::ConstIterator PriorityQueue::begin(void) const { return Message::ConstIterator(GetHead()); }
+
+void PriorityQueue::GetInfo(Info &aInfo) const
+{
+    for (const Message &message : *this)
     {
-        aMessageCount++;
-        aBufferCount += message->GetBufferCount();
+        aInfo.mNumMessages++;
+        aInfo.mNumBuffers += message.GetBufferCount();
+        aInfo.mTotalBytes += message.GetLength();
     }
 }
 

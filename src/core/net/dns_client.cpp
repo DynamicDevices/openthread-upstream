@@ -30,12 +30,13 @@
 
 #if OPENTHREAD_CONFIG_DNS_CLIENT_ENABLE
 
+#include "common/array.hpp"
 #include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/instance.hpp"
 #include "common/locator_getters.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
 #include "net/udp6.hpp"
 #include "thread/network_data_types.hpp"
 #include "thread/thread_netif.hpp"
@@ -47,6 +48,8 @@
 
 namespace ot {
 namespace Dns {
+
+RegisterLogModule("DnsClient");
 
 //---------------------------------------------------------------------------------------------------------------------
 // Client::QueryConfig
@@ -173,10 +176,10 @@ exit:
 }
 
 Error Client::Response::FindHostAddress(Section       aSection,
-                                        const Name &  aHostName,
+                                        const Name   &aHostName,
                                         uint16_t      aIndex,
                                         Ip6::Address &aAddress,
-                                        uint32_t &    aTtl) const
+                                        uint32_t     &aTtl) const
 {
     Error      error;
     uint16_t   offset;
@@ -266,11 +269,10 @@ Error Client::Response::FindServiceInfo(Section aSection, const Name &aName, Ser
     {
         AsCoreType(&aServiceInfo.mHostAddress).Clear();
         aServiceInfo.mHostAddressTtl = 0;
+        error                        = kErrorNone;
     }
-    else
-    {
-        SuccessOrExit(error);
-    }
+
+    SuccessOrExit(error);
 
     // A null `mTxtData` indicates that caller does not want to retrieve TXT data.
     VerifyOrExit(aServiceInfo.mTxtData != nullptr);
@@ -279,19 +281,30 @@ Error Client::Response::FindServiceInfo(Section aSection, const Name &aName, Ser
     // setting `aServiceInfo.mTxtDataSize` to zero.
 
     SelectSection(aSection, offset, numRecords);
+
+    aServiceInfo.mTxtDataTruncated = false;
+
     error = ResourceRecord::FindRecord(*mMessage, offset, numRecords, /* aIndex */ 0, aName, txtRecord);
 
     switch (error)
     {
     case kErrorNone:
-        SuccessOrExit(error =
-                          txtRecord.ReadTxtData(*mMessage, offset, aServiceInfo.mTxtData, aServiceInfo.mTxtDataSize));
+        error = txtRecord.ReadTxtData(*mMessage, offset, aServiceInfo.mTxtData, aServiceInfo.mTxtDataSize);
+
+        if (error == kErrorNoBufs)
+        {
+            error                          = kErrorNone;
+            aServiceInfo.mTxtDataTruncated = true;
+        }
+
+        SuccessOrExit(error);
         aServiceInfo.mTxtDataTtl = txtRecord.GetTtl();
         break;
 
     case kErrorNotFound:
         aServiceInfo.mTxtDataSize = 0;
         aServiceInfo.mTxtDataTtl  = 0;
+        error                     = kErrorNone;
         break;
 
     default:
@@ -325,16 +338,17 @@ Error Client::AddressResponse::GetAddress(uint16_t aIndex, Ip6::Address &aAddres
 
     if ((info.mQueryType == kIp4AddressQuery) || mIp6QueryResponseRequiresNat64)
     {
-        Section     section;
-        ARecord     aRecord;
-        Ip6::Prefix nat64Prefix;
+        Section                          section;
+        ARecord                          aRecord;
+        NetworkData::ExternalRouteConfig nat64Prefix;
 
-        SuccessOrExit(error = GetNat64Prefix(nat64Prefix));
+        VerifyOrExit(mInstance->Get<NetworkData::Leader>().GetPreferredNat64Prefix(nat64Prefix) == kErrorNone,
+                     error = kErrorInvalidState);
 
         section = (info.mQueryType == kIp4AddressQuery) ? kAnswerSection : kAdditionalDataSection;
         SuccessOrExit(error = FindARecord(section, name, aIndex, aRecord));
 
-        aAddress.SynthesizeFromIp4Address(nat64Prefix, aRecord.GetAddress());
+        aAddress.SynthesizeFromIp4Address(nat64Prefix.GetPrefix(), aRecord.GetAddress());
         aTtl = aRecord.GetTtl();
 
         ExitNow();
@@ -347,37 +361,6 @@ Error Client::AddressResponse::GetAddress(uint16_t aIndex, Ip6::Address &aAddres
 exit:
     return error;
 }
-
-#if OPENTHREAD_CONFIG_DNS_CLIENT_NAT64_ENABLE
-
-Error Client::AddressResponse::GetNat64Prefix(Ip6::Prefix &aPrefix) const
-{
-    Error                            error      = kErrorNotFound;
-    NetworkData::Iterator            iterator   = NetworkData::kIteratorInit;
-    signed int                       preference = NetworkData::kRoutePreferenceLow;
-    NetworkData::ExternalRouteConfig config;
-
-    aPrefix.Clear();
-
-    while (mInstance->Get<NetworkData::Leader>().GetNextExternalRoute(iterator, config) == kErrorNone)
-    {
-        if (!config.mNat64 || !config.GetPrefix().IsValidNat64())
-        {
-            continue;
-        }
-
-        if ((aPrefix.GetLength() == 0) || (config.mPreference > preference))
-        {
-            aPrefix    = config.GetPrefix();
-            preference = config.mPreference;
-            error      = kErrorNone;
-        }
-    }
-
-    return error;
-}
-
-#endif // OPENTHREAD_CONFIG_DNS_CLIENT_NAT64_ENABLE
 
 #if OPENTHREAD_CONFIG_DNS_CLIENT_SERVICE_DISCOVERY_ENABLE
 
@@ -418,10 +401,10 @@ exit:
     return error;
 }
 
-Error Client::BrowseResponse::GetHostAddress(const char *  aHostName,
+Error Client::BrowseResponse::GetHostAddress(const char   *aHostName,
                                              uint16_t      aIndex,
                                              Ip6::Address &aAddress,
-                                             uint32_t &    aTtl) const
+                                             uint32_t     &aTtl) const
 {
     return FindHostAddress(kAdditionalDataSection, Name(aHostName), aIndex, aAddress, aTtl);
 }
@@ -485,9 +468,9 @@ exit:
 //---------------------------------------------------------------------------------------------------------------------
 // Client::ServiceResponse
 
-Error Client::ServiceResponse::GetServiceName(char *   aLabelBuffer,
+Error Client::ServiceResponse::GetServiceName(char    *aLabelBuffer,
                                               uint8_t  aLabelBufferSize,
-                                              char *   aNameBuffer,
+                                              char    *aNameBuffer,
                                               uint16_t aNameBufferSize) const
 {
     Error    error;
@@ -510,10 +493,10 @@ Error Client::ServiceResponse::GetServiceInfo(ServiceInfo &aServiceInfo) const
     return FindServiceInfo(kAnswerSection, Name(*mQuery, kNameOffsetInQuery), aServiceInfo);
 }
 
-Error Client::ServiceResponse::GetHostAddress(const char *  aHostName,
+Error Client::ServiceResponse::GetHostAddress(const char   *aHostName,
                                               uint16_t      aIndex,
                                               Ip6::Address &aAddress,
-                                              uint32_t &    aTtl) const
+                                              uint32_t     &aTtl) const
 {
     return FindHostAddress(kAdditionalDataSection, Name(aHostName), aIndex, aAddress, aTtl);
 }
@@ -533,13 +516,13 @@ const uint16_t Client::kServiceQueryRecordTypes[] = {ResourceRecord::kTypeSrv, R
 #endif
 
 const uint8_t Client::kQuestionCount[] = {
-    /* kIp6AddressQuery -> */ OT_ARRAY_LENGTH(kIp6AddressQueryRecordTypes), // AAAA records
+    /* kIp6AddressQuery -> */ GetArrayLength(kIp6AddressQueryRecordTypes), // AAAA records
 #if OPENTHREAD_CONFIG_DNS_CLIENT_NAT64_ENABLE
-    /* kIp4AddressQuery -> */ OT_ARRAY_LENGTH(kIp4AddressQueryRecordTypes), // A records
+    /* kIp4AddressQuery -> */ GetArrayLength(kIp4AddressQueryRecordTypes), // A records
 #endif
 #if OPENTHREAD_CONFIG_DNS_CLIENT_SERVICE_DISCOVERY_ENABLE
-    /* kBrowseQuery  -> */ OT_ARRAY_LENGTH(kBrowseQueryRecordTypes),  // PTR records
-    /* kServiceQuery -> */ OT_ARRAY_LENGTH(kServiceQueryRecordTypes), // SRV and TXT records
+    /* kBrowseQuery  -> */ GetArrayLength(kBrowseQueryRecordTypes),  // PTR records
+    /* kServiceQuery -> */ GetArrayLength(kServiceQueryRecordTypes), // SRV and TXT records
 #endif
 };
 
@@ -557,7 +540,7 @@ const uint16_t *Client::kQuestionRecordTypes[] = {
 Client::Client(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mSocket(aInstance)
-    , mTimer(aInstance, Client::HandleTimer)
+    , mTimer(aInstance)
     , mDefaultConfig(QueryConfig::kInitFromDefaults)
 #if OPENTHREAD_CONFIG_DNS_CLIENT_DEFAULT_SERVER_ADDRESS_AUTO_SET_ENABLE
     , mUserDidSetDefaultAddress(false)
@@ -581,7 +564,7 @@ Error Client::Start(void)
     Error error;
 
     SuccessOrExit(error = mSocket.Open(&Client::HandleUdpReceive, this));
-    SuccessOrExit(error = mSocket.Bind(0, OT_NETIF_UNSPECIFIED));
+    SuccessOrExit(error = mSocket.Bind(0, Ip6::kNetifUnspecified));
 
 exit:
     return error;
@@ -634,9 +617,9 @@ void Client::UpdateDefaultConfigAddress(void)
 }
 #endif
 
-Error Client::ResolveAddress(const char *       aHostName,
+Error Client::ResolveAddress(const char        *aHostName,
                              AddressCallback    aCallback,
-                             void *             aContext,
+                             void              *aContext,
                              const QueryConfig *aConfig)
 {
     QueryInfo info;
@@ -647,6 +630,22 @@ Error Client::ResolveAddress(const char *       aHostName,
 
     return StartQuery(info, aConfig, nullptr, aHostName, aContext);
 }
+
+#if OPENTHREAD_CONFIG_DNS_CLIENT_NAT64_ENABLE
+Error Client::ResolveIp4Address(const char        *aHostName,
+                                AddressCallback    aCallback,
+                                void              *aContext,
+                                const QueryConfig *aConfig)
+{
+    QueryInfo info;
+
+    info.Clear();
+    info.mQueryType                 = kIp4AddressQuery;
+    info.mCallback.mAddressCallback = aCallback;
+
+    return StartQuery(info, aConfig, nullptr, aHostName, aContext);
+}
+#endif
 
 #if OPENTHREAD_CONFIG_DNS_CLIENT_SERVICE_DISCOVERY_ENABLE
 
@@ -661,10 +660,10 @@ Error Client::Browse(const char *aServiceName, BrowseCallback aCallback, void *a
     return StartQuery(info, aConfig, nullptr, aServiceName, aContext);
 }
 
-Error Client::ResolveService(const char *       aInstanceLabel,
-                             const char *       aServiceName,
+Error Client::ResolveService(const char        *aInstanceLabel,
+                             const char        *aServiceName,
                              ServiceCallback    aCallback,
-                             void *             aContext,
+                             void              *aContext,
                              const QueryConfig *aConfig)
 {
     QueryInfo info;
@@ -684,11 +683,11 @@ exit:
 
 #endif // OPENTHREAD_CONFIG_DNS_CLIENT_SERVICE_DISCOVERY_ENABLE
 
-Error Client::StartQuery(QueryInfo &        aInfo,
+Error Client::StartQuery(QueryInfo         &aInfo,
                          const QueryConfig *aConfig,
-                         const char *       aLabel,
-                         const char *       aName,
-                         void *             aContext)
+                         const char        *aLabel,
+                         const char        *aName,
+                         void              *aContext)
 {
     // This method assumes that `mQueryType` and `mCallback` to be
     // already set by caller on `aInfo`. The `aLabel` can be `nullptr`
@@ -715,6 +714,17 @@ Error Client::StartQuery(QueryInfo &        aInfo,
 
     aInfo.mCallbackContext = aContext;
 
+#if OPENTHREAD_CONFIG_DNS_CLIENT_NAT64_ENABLE
+    if (aInfo.mQueryType == kIp4AddressQuery)
+    {
+        NetworkData::ExternalRouteConfig nat64Prefix;
+
+        VerifyOrExit(aInfo.mConfig.GetNat64Mode() == QueryConfig::kNat64Allow, error = kErrorInvalidArgs);
+        VerifyOrExit(Get<NetworkData::Leader>().GetPreferredNat64Prefix(nat64Prefix) == kErrorNone,
+                     error = kErrorInvalidState);
+    }
+#endif
+
     SuccessOrExit(error = AllocateQuery(aInfo, aLabel, aName, query));
     mQueries.Enqueue(*query);
 
@@ -727,6 +737,10 @@ exit:
 Error Client::AllocateQuery(const QueryInfo &aInfo, const char *aLabel, const char *aName, Query *&aQuery)
 {
     Error error = kErrorNone;
+
+    aQuery = nullptr;
+
+    VerifyOrExit(aInfo.mConfig.GetResponseTimeout() <= TimerMilli::kMaxDelay, error = kErrorInvalidArgs);
 
     aQuery = Get<MessagePool>().Allocate(Message::kTypeOther);
     VerifyOrExit(aQuery != nullptr, error = kErrorNoBufs);
@@ -745,10 +759,7 @@ exit:
     return error;
 }
 
-void Client::FreeQuery(Query &aQuery)
-{
-    mQueries.DequeueAndFree(aQuery);
-}
+void Client::FreeQuery(Query &aQuery) { mQueries.DequeueAndFree(aQuery); }
 
 void Client::SendQuery(Query &aQuery, QueryInfo &aInfo, bool aUpdateTimer)
 {
@@ -760,7 +771,7 @@ void Client::SendQuery(Query &aQuery, QueryInfo &aInfo, bool aUpdateTimer)
     // is handled by caller).
 
     Error            error   = kErrorNone;
-    Message *        message = nullptr;
+    Message         *message = nullptr;
     Header           header;
     Ip6::MessageInfo messageInfo;
 
@@ -857,7 +868,7 @@ void Client::FinalizeQuery(Query &aQuery, Error aError)
 void Client::FinalizeQuery(Response &aResponse, QueryType aType, Error aError)
 {
     Callback callback;
-    void *   context;
+    void    *context;
 
     GetCallback(*aResponse.mQuery, callback, context);
 
@@ -905,20 +916,21 @@ void Client::GetCallback(const Query &aQuery, Callback &aCallback, void *&aConte
 
 Client::Query *Client::FindQueryById(uint16_t aMessageId)
 {
-    Query *   query;
+    Query    *matchedQuery = nullptr;
     QueryInfo info;
 
-    for (query = mQueries.GetHead(); query != nullptr; query = query->GetNext())
+    for (Query &query : mQueries)
     {
-        info.ReadFrom(*query);
+        info.ReadFrom(query);
 
         if (info.mMessageId == aMessageId)
         {
+            matchedQuery = &query;
             break;
         }
     }
 
-    return query;
+    return matchedQuery;
 }
 
 void Client::HandleUdpReceive(void *aContext, otMessage *aMessage, const otMessageInfo *aMsgInfo)
@@ -975,12 +987,18 @@ Error Client::ParseResponse(Response &aResponse, QueryType &aType, Error &aRespo
 
     // Check the Question Section
 
-    VerifyOrExit(header.GetQuestionCount() == kQuestionCount[aType], error = kErrorParse);
-
-    for (uint8_t num = 0; num < kQuestionCount[aType]; num++)
+    if (header.GetQuestionCount() == kQuestionCount[aType])
     {
-        SuccessOrExit(error = Name::CompareName(message, offset, queryName));
-        offset += sizeof(Question);
+        for (uint8_t num = 0; num < kQuestionCount[aType]; num++)
+        {
+            SuccessOrExit(error = Name::CompareName(message, offset, queryName));
+            offset += sizeof(Question);
+        }
+    }
+    else
+    {
+        VerifyOrExit((header.GetResponseCode() != Header::kResponseSuccess) && (header.GetQuestionCount() == 0),
+                     error = kErrorParse);
     }
 
     // Check the answer, authority and additional record sections
@@ -1049,39 +1067,31 @@ Error Client::ParseResponse(Response &aResponse, QueryType &aType, Error &aRespo
 exit:
     if (error != kErrorNone)
     {
-        otLogInfoDns("Failed to parse response %s", ErrorToString(error));
+        LogInfo("Failed to parse response %s", ErrorToString(error));
     }
 
     return error;
-}
-
-void Client::HandleTimer(Timer &aTimer)
-{
-    aTimer.Get<Client>().HandleTimer();
 }
 
 void Client::HandleTimer(void)
 {
     TimeMilli now      = TimerMilli::GetNow();
     TimeMilli nextTime = now.GetDistantFuture();
-    Query *   nextQuery;
     QueryInfo info;
 
-    for (Query *query = mQueries.GetHead(); query != nullptr; query = nextQuery)
+    for (Query &query : mQueries)
     {
-        nextQuery = query->GetNext();
-
-        info.ReadFrom(*query);
+        info.ReadFrom(query);
 
         if (now >= info.mRetransmissionTime)
         {
             if (info.mTransmissionCount >= info.mConfig.GetMaxTxAttempts())
             {
-                FinalizeQuery(*query, kErrorResponseTimeout);
+                FinalizeQuery(query, kErrorResponseTimeout);
                 continue;
             }
 
-            SendQuery(*query, info, /* aUpdateTimer */ false);
+            SendQuery(query, info, /* aUpdateTimer */ false);
         }
 
         if (nextTime > info.mRetransmissionTime)

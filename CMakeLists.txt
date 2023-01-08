@@ -40,6 +40,9 @@ set(OT_EXTERNAL_MBEDTLS "" CACHE STRING "Specify external mbedtls library")
 option(OT_MBEDTLS_THREADING "enable mbedtls threading" OFF)
 
 add_library(ot-config INTERFACE)
+add_library(ot-config-ftd INTERFACE)
+add_library(ot-config-mtd INTERFACE)
+add_library(ot-config-radio INTERFACE)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_C_STANDARD 99)
@@ -58,7 +61,6 @@ if(OT_BIG_ENDIAN)
     target_compile_definitions(ot-config INTERFACE "BYTE_ORDER_BIG_ENDIAN=1")
 endif()
 
-include("${PROJECT_SOURCE_DIR}/etc/cmake/checks.cmake")
 include("${PROJECT_SOURCE_DIR}/etc/cmake/options.cmake")
 include("${PROJECT_SOURCE_DIR}/etc/cmake/functions.cmake")
 
@@ -103,12 +105,14 @@ if(OT_PACKAGE_VERSION STREQUAL "")
 endif()
 message(STATUS "Package Version: ${OT_PACKAGE_VERSION}")
 
-set(OT_THREAD_VERSION "1.2" CACHE STRING "Thread version chosen by the user at configure time")
-set_property(CACHE OT_THREAD_VERSION PROPERTY STRINGS "1.1" "1.2")
+set(OT_THREAD_VERSION "1.3" CACHE STRING "Thread version chosen by the user at configure time")
+set_property(CACHE OT_THREAD_VERSION PROPERTY STRINGS "1.1" "1.2" "1.3")
 if(${OT_THREAD_VERSION} EQUAL "1.1")
     target_compile_definitions(ot-config INTERFACE "OPENTHREAD_CONFIG_THREAD_VERSION=OT_THREAD_VERSION_1_1")
 elseif(${OT_THREAD_VERSION} EQUAL "1.2")
     target_compile_definitions(ot-config INTERFACE "OPENTHREAD_CONFIG_THREAD_VERSION=OT_THREAD_VERSION_1_2")
+elseif(${OT_THREAD_VERSION} EQUAL "1.3")
+    target_compile_definitions(ot-config INTERFACE "OPENTHREAD_CONFIG_THREAD_VERSION=OT_THREAD_VERSION_1_3")
 else()
     message(FATAL_ERROR "Thread version unknown: ${OT_THREAD_VERSION}")
 endif()
@@ -205,6 +209,7 @@ if(OT_PLATFORM STREQUAL "simulation")
 endif()
 
 add_subdirectory(tests)
+add_subdirectory(tools)
 
 add_custom_target(print-ot-config ALL
                   COMMAND ${CMAKE_COMMAND}

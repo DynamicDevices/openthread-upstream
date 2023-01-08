@@ -200,6 +200,16 @@
 #endif
 
 /**
+ * @def OPENTHREAD_CONFIG_MLE_MAX_CHILDREN
+ *
+ * The maximum number of children.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_MLE_MAX_CHILDREN
+#define OPENTHREAD_CONFIG_MLE_MAX_CHILDREN 128
+#endif
+
+/**
  * @def OPENTHREAD_CONFIG_MLE_INFORM_PREVIOUS_PARENT_ON_REATTACH
  *
  * Define as 1 for a child to inform its previous parent when it attaches to a new parent.
@@ -242,6 +252,37 @@
  */
 #ifndef OPENTHREAD_CONFIG_SRP_CLIENT_BUFFERS_MAX_SERVICES
 #define OPENTHREAD_CONFIG_SRP_CLIENT_BUFFERS_MAX_SERVICES 20
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_DETERMINISTIC_ECDSA_ENABLE
+ *
+ * Define to 1 to generate ECDSA signatures determinsitically
+ * according to RFC 6979 instead of randomly.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_DETERMINISTIC_ECDSA_ENABLE
+#define OPENTHREAD_CONFIG_DETERMINISTIC_ECDSA_ENABLE 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_POWER_CALIBRATION_ENABLE
+ *
+ * Define as 1 to enable power calibration support.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_POWER_CALIBRATION_ENABLE
+#define OPENTHREAD_CONFIG_POWER_CALIBRATION_ENABLE 1
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
+ *
+ * Define as 1 to enable platform power calibration support.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
+#define OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE 1
 #endif
 
 #endif // OPENTHREAD_CORE_SIMULATION_CONFIG_H_

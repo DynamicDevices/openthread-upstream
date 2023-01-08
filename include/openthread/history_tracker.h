@@ -241,26 +241,26 @@ void otHistoryTrackerInitIterator(otHistoryTrackerIterator *aIterator);
 /**
  * This function iterates over the entries in the network info history list.
  *
- * @param[in]    aInstance   A pointer to the OpenThread instance.
- * @param[inout] aIterator   A pointer to an iterator. MUST be initialized or the behavior is undefined.
- * @param[out]   aEntryAge   A pointer to a variable to output the entry's age. MUST NOT be NULL.
- *                           Age is provided as the duration (in milliseconds) from when entry was recorded to
- *                           @p aIterator initialization time. It is set to `OT_HISTORY_TRACKER_MAX_AGE` for entries
- *                           older than max age.
+ * @param[in]     aInstance   A pointer to the OpenThread instance.
+ * @param[in,out] aIterator   A pointer to an iterator. MUST be initialized or the behavior is undefined.
+ * @param[out]    aEntryAge   A pointer to a variable to output the entry's age. MUST NOT be NULL.
+ *                            Age is provided as the duration (in milliseconds) from when entry was recorded to
+ *                            @p aIterator initialization time. It is set to `OT_HISTORY_TRACKER_MAX_AGE` for entries
+ *                            older than max age.
  *
  * @returns A pointer to `otHistoryTrackerNetworkInfo` entry or `NULL` if no more entries in the list.
  *
  */
-const otHistoryTrackerNetworkInfo *otHistoryTrackerIterateNetInfoHistory(otInstance *              aInstance,
+const otHistoryTrackerNetworkInfo *otHistoryTrackerIterateNetInfoHistory(otInstance               *aInstance,
                                                                          otHistoryTrackerIterator *aIterator,
-                                                                         uint32_t *                aEntryAge);
+                                                                         uint32_t                 *aEntryAge);
 
 /**
  * This function iterates over the entries in the unicast address history list.
  *
- * @param[in]    aInstance   A pointer to the OpenThread instance.
- * @param[inout] aIterator   A pointer to an iterator. MUST be initialized or the behavior is undefined.
- * @param[out]   aEntryAge   A pointer to a variable to output the entry's age. MUST NOT be NULL.
+ * @param[in]     aInstance  A pointer to the OpenThread instance.
+ * @param[in,out] aIterator  A pointer to an iterator. MUST be initialized or the behavior is undefined.
+ * @param[out]    aEntryAge  A pointer to a variable to output the entry's age. MUST NOT be NULL.
  *                           Age is provided as the duration (in milliseconds) from when entry was recorded to
  *                           @p aIterator initialization time. It is set to `OT_HISTORY_TRACKER_MAX_AGE` for entries
  *                           older than max age.
@@ -269,16 +269,16 @@ const otHistoryTrackerNetworkInfo *otHistoryTrackerIterateNetInfoHistory(otInsta
  *
  */
 const otHistoryTrackerUnicastAddressInfo *otHistoryTrackerIterateUnicastAddressHistory(
-    otInstance *              aInstance,
+    otInstance               *aInstance,
     otHistoryTrackerIterator *aIterator,
-    uint32_t *                aEntryAge);
+    uint32_t                 *aEntryAge);
 
 /**
  * This function iterates over the entries in the multicast address history list.
  *
- * @param[in]    aInstance   A pointer to the OpenThread instance.
- * @param[inout] aIterator   A pointer to an iterator. MUST be initialized or the behavior is undefined.
- * @param[out]   aEntryAge   A pointer to a variable to output the entry's age. MUST NOT be NULL.
+ * @param[in]     aInstance  A pointer to the OpenThread instance.
+ * @param[in,out] aIterator  A pointer to an iterator. MUST be initialized or the behavior is undefined.
+ * @param[out]    aEntryAge  A pointer to a variable to output the entry's age. MUST NOT be NULL.
  *                           Age is provided as the duration (in milliseconds) from when entry was recorded to
  *                           @p aIterator initialization time. It is set to `OT_HISTORY_TRACKER_MAX_AGE` for entries
  *                           older than max age.
@@ -287,16 +287,16 @@ const otHistoryTrackerUnicastAddressInfo *otHistoryTrackerIterateUnicastAddressH
  *
  */
 const otHistoryTrackerMulticastAddressInfo *otHistoryTrackerIterateMulticastAddressHistory(
-    otInstance *              aInstance,
+    otInstance               *aInstance,
     otHistoryTrackerIterator *aIterator,
-    uint32_t *                aEntryAge);
+    uint32_t                 *aEntryAge);
 
 /**
  * This function iterates over the entries in the RX message history list.
  *
- * @param[in]    aInstance   A pointer to the OpenThread instance.
- * @param[inout] aIterator   A pointer to an iterator. MUST be initialized or the behavior is undefined.
- * @param[out]   aEntryAge   A pointer to a variable to output the entry's age. MUST NOT be NULL.
+ * @param[in]     aInstance  A pointer to the OpenThread instance.
+ * @param[in,out] aIterator  A pointer to an iterator. MUST be initialized or the behavior is undefined.
+ * @param[out]    aEntryAge  A pointer to a variable to output the entry's age. MUST NOT be NULL.
  *                           Age is provided as the duration (in milliseconds) from when entry was recorded to
  *                           @p aIterator initialization time. It is set to `OT_HISTORY_TRACKER_MAX_AGE` for entries
  *                           older than max age.
@@ -304,16 +304,16 @@ const otHistoryTrackerMulticastAddressInfo *otHistoryTrackerIterateMulticastAddr
  * @returns The `otHistoryTrackerMessageInfo` entry or `NULL` if no more entries in the list.
  *
  */
-const otHistoryTrackerMessageInfo *otHistoryTrackerIterateRxHistory(otInstance *              aInstance,
+const otHistoryTrackerMessageInfo *otHistoryTrackerIterateRxHistory(otInstance               *aInstance,
                                                                     otHistoryTrackerIterator *aIterator,
-                                                                    uint32_t *                aEntryAge);
+                                                                    uint32_t                 *aEntryAge);
 
 /**
  * This function iterates over the entries in the TX message history list.
  *
- * @param[in]    aInstance   A pointer to the OpenThread instance.
- * @param[inout] aIterator   A pointer to an iterator. MUST be initialized or the behavior is undefined.
- * @param[out]   aEntryAge   A pointer to a variable to output the entry's age. MUST NOT be NULL.
+ * @param[in]     aInstance  A pointer to the OpenThread instance.
+ * @param[in,out] aIterator  A pointer to an iterator. MUST be initialized or the behavior is undefined.
+ * @param[out]    aEntryAge  A pointer to a variable to output the entry's age. MUST NOT be NULL.
  *                           Age is provided as the duration (in milliseconds) from when entry was recorded to
  *                           @p aIterator initialization time. It is set to `OT_HISTORY_TRACKER_MAX_AGE` for entries
  *                           older than max age.
@@ -321,16 +321,16 @@ const otHistoryTrackerMessageInfo *otHistoryTrackerIterateRxHistory(otInstance *
  * @returns The `otHistoryTrackerMessageInfo` entry or `NULL` if no more entries in the list.
  *
  */
-const otHistoryTrackerMessageInfo *otHistoryTrackerIterateTxHistory(otInstance *              aInstance,
+const otHistoryTrackerMessageInfo *otHistoryTrackerIterateTxHistory(otInstance               *aInstance,
                                                                     otHistoryTrackerIterator *aIterator,
-                                                                    uint32_t *                aEntryAge);
+                                                                    uint32_t                 *aEntryAge);
 
 /**
  * This function iterates over the entries in the neighbor history list.
  *
- * @param[in]    aInstance   A pointer to the OpenThread instance.
- * @param[inout] aIterator   A pointer to an iterator. MUST be initialized or the behavior is undefined.
- * @param[out]   aEntryAge   A pointer to a variable to output the entry's age. MUST NOT be NULL.
+ * @param[in]     aInstance  A pointer to the OpenThread instance.
+ * @param[in,out] aIterator  A pointer to an iterator. MUST be initialized or the behavior is undefined.
+ * @param[out]    aEntryAge  A pointer to a variable to output the entry's age. MUST NOT be NULL.
  *                           Age is provided as the duration (in milliseconds) from when entry was recorded to
  *                           @p aIterator initialization time. It is set to `OT_HISTORY_TRACKER_MAX_AGE` for entries
  *                           older than max age.
@@ -338,16 +338,16 @@ const otHistoryTrackerMessageInfo *otHistoryTrackerIterateTxHistory(otInstance *
  * @returns The `otHistoryTrackerNeighborInfo` entry or `NULL` if no more entries in the list.
  *
  */
-const otHistoryTrackerNeighborInfo *otHistoryTrackerIterateNeighborHistory(otInstance *              aInstance,
+const otHistoryTrackerNeighborInfo *otHistoryTrackerIterateNeighborHistory(otInstance               *aInstance,
                                                                            otHistoryTrackerIterator *aIterator,
-                                                                           uint32_t *                aEntryAge);
+                                                                           uint32_t                 *aEntryAge);
 
 /**
  * This function iterates over the entries in the Network Data on mesh prefix entry history list.
  *
- * @param[in]    aInstance   A pointer to the OpenThread instance.
- * @param[inout] aIterator   A pointer to an iterator. MUST be initialized or the behavior is undefined.
- * @param[out]   aEntryAge   A pointer to a variable to output the entry's age. MUST NOT be NULL.
+ * @param[in]     aInstance  A pointer to the OpenThread instance.
+ * @param[in,out] aIterator  A pointer to an iterator. MUST be initialized or the behavior is undefined.
+ * @param[out]    aEntryAge  A pointer to a variable to output the entry's age. MUST NOT be NULL.
  *                           Age is provided as the duration (in milliseconds) from when entry was recorded to
  *                           @p aIterator initialization time. It is set to `OT_HISTORY_TRACKER_MAX_AGE` for entries
  *                           older than max age.
@@ -355,16 +355,16 @@ const otHistoryTrackerNeighborInfo *otHistoryTrackerIterateNeighborHistory(otIns
  * @returns The `otHistoryTrackerOnMeshPrefixInfo` entry or `NULL` if no more entries in the list.
  *
  */
-const otHistoryTrackerOnMeshPrefixInfo *otHistoryTrackerIterateOnMeshPrefixHistory(otInstance *              aInstance,
+const otHistoryTrackerOnMeshPrefixInfo *otHistoryTrackerIterateOnMeshPrefixHistory(otInstance               *aInstance,
                                                                                    otHistoryTrackerIterator *aIterator,
-                                                                                   uint32_t *                aEntryAge);
+                                                                                   uint32_t                 *aEntryAge);
 
 /**
  * This function iterates over the entries in the Network Data external route entry history list.
  *
- * @param[in]    aInstance   A pointer to the OpenThread instance.
- * @param[inout] aIterator   A pointer to an iterator. MUST be initialized or the behavior is undefined.
- * @param[out]   aEntryAge   A pointer to a variable to output the entry's age. MUST NOT be NULL.
+ * @param[in]     aInstance  A pointer to the OpenThread instance.
+ * @param[in,out] aIterator  A pointer to an iterator. MUST be initialized or the behavior is undefined.
+ * @param[out]    aEntryAge  A pointer to a variable to output the entry's age. MUST NOT be NULL.
  *                           Age is provided as the duration (in milliseconds) from when entry was recorded to
  *                           @p aIterator initialization time. It is set to `OT_HISTORY_TRACKER_MAX_AGE` for entries
  *                           older than max age.
@@ -373,9 +373,9 @@ const otHistoryTrackerOnMeshPrefixInfo *otHistoryTrackerIterateOnMeshPrefixHisto
  *
  */
 const otHistoryTrackerExternalRouteInfo *otHistoryTrackerIterateExternalRouteHistory(
-    otInstance *              aInstance,
+    otInstance               *aInstance,
     otHistoryTrackerIterator *aIterator,
-    uint32_t *                aEntryAge);
+    uint32_t                 *aEntryAge);
 
 /**
  * This function converts a given entry age to a human-readable string.

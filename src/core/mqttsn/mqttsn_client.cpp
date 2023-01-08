@@ -35,7 +35,7 @@
 #include "common/locator_getters.hpp"
 #include "common/timer.hpp"
 #include "common/instance.hpp"
-#include "common/logging.hpp"
+#include "common/log.hpp"
 
 #if OPENTHREAD_CONFIG_MQTTSN_ENABLE
 
@@ -66,6 +66,8 @@
 namespace ot {
 
 namespace Mqttsn {
+
+RegisterLogModule("Mqtt");
 
 bool Topic::HasTopicName(void) const
 {
@@ -386,8 +388,8 @@ void MqttsnClient::HandleUdpReceive(void *aContext, otMessage *aMessage, const o
     }
     message.ReadBytes(offset, data, length);
 
-    otLogDebgMqttsn("UDP message received:");
-    otDumpDebgMqttsn("received", data, length);
+    LogDebg("UDP message received:");
+    DumpDebg("received", data, length);
 
     // Determine message type
     MessageType messageType;
@@ -395,7 +397,7 @@ void MqttsnClient::HandleUdpReceive(void *aContext, otMessage *aMessage, const o
     {
         return;
     }
-    otLogDebgMqttsn("Message type: %d", messageType);
+    LogDebg("Message type: %d", messageType);
 
     // Handle received message type
     switch (messageType)
@@ -612,7 +614,7 @@ void MqttsnClient::AdvertiseReceived(const Ip6::MessageInfo &messageInfo, const 
         return;
     }
 
-    otLogDebgMqttsn("received advertise from %s[%u]: gateway_id=%u, keepalive=%u",
+    LogDebg("received advertise from %s[%u]: gateway_id=%u, keepalive=%u",
             messageInfo.GetPeerAddr().ToString().AsCString(), (uint32_t)messageInfo.GetPeerPort(),
             (uint32_t)advertiseMessage.GetGatewayId(), (uint32_t)advertiseMessage.GetDuration());
     // Multiply duration by 1.2 to minimize timing error probability and multiply by 1000
@@ -1112,7 +1114,7 @@ void MqttsnClient::HandleProcessTask(Tasklet &aTasklet)
     otError error = static_cast<MqttsnClient *>(static_cast<TaskletContext &>(aTasklet).GetContext())->Process();
     if (error != OT_ERROR_NONE)
     {
-        otLogWarnMqttsn("Process task failed: %s", otThreadErrorToString(error));
+        LogWarn("Process task failed: %s", otThreadErrorToString(error));
     }
 }
 
@@ -1220,14 +1222,14 @@ otError MqttsnClient::Connect(const MqttsnConfig &aConfig)
     // Previous Connect message is still pending
     if (!mConnectQueue.IsEmpty())
     {
-        otLogInfoMqttsn("Previous connect message is still pending. Wait for timeout.");
+        LogInfo("Previous connect message is still pending. Wait for timeout.");
         error = OT_ERROR_INVALID_STATE;
         goto exit;
     }
     // MQTT-SN service is not running
     if (!mIsRunning)
     {
-        otLogInfoMqttsn("MQTT-SN service is not running.");
+        LogInfo("MQTT-SN service is not running.");
         error = OT_ERROR_INVALID_STATE;
         goto exit;
     }
@@ -1623,7 +1625,7 @@ otError MqttsnClient::SendMessage(Message &aMessage, const Ip6::Address &aAddres
     messageInfo.SetPeerPort(aPort);
     messageInfo.SetIsHostInterface(false);
 
-    otLogDebgMqttsn("Sending message to %s[:%u]", messageInfo.GetPeerAddr().ToString().AsCString(), messageInfo.GetPeerPort());
+    LogDebg("Sending message to %s[:%u]", messageInfo.GetPeerAddr().ToString().AsCString(), messageInfo.GetPeerPort());
     SuccessOrExit(error = mSocket.SendTo(aMessage, messageInfo));
 
 exit:
@@ -1796,14 +1798,14 @@ void MqttsnClient::HandlePingreqTimeout(const MessageMetadata<void*> &aMetadata,
 {
     OT_UNUSED_VARIABLE(aMetadata);
     MqttsnClient* client = static_cast<MqttsnClient*>(aContext);
-    otLogInfoMqttsn("Ping timeout - gateway not responding");
+    LogInfo("Ping timeout - gateway not responding");
     // If gateway not responding to ping client will be disconnected
     client->mTimeoutRaised = true;
 }
 
 void MqttsnClient::HandleMessageRetransmission(const Message &aMessage, const Ip6::Address &aAddress, uint16_t aPort, void* aContext)
 {
-    otLogInfoMqttsn("Message retransmission");
+    LogInfo("Message retransmission");
     MqttsnClient* client = static_cast<MqttsnClient*>(aContext);
     Message* retransmissionMessage = aMessage.Clone(aMessage.GetLength());
     if (retransmissionMessage != NULL)
@@ -1814,7 +1816,7 @@ void MqttsnClient::HandleMessageRetransmission(const Message &aMessage, const Ip
 
 void MqttsnClient::HandlePublishRetransmission(const Message &aMessage, const Ip6::Address &aAddress, uint16_t aPort, void* aContext)
 {
-    otLogInfoMqttsn("Publish message retransmission");
+    LogInfo("Publish message retransmission");
     MqttsnClient* client = static_cast<MqttsnClient*>(aContext);
     unsigned char buffer[MAX_PACKET_SIZE];
     PublishMessage publishMessage;
@@ -1848,7 +1850,7 @@ void MqttsnClient::HandlePublishRetransmission(const Message &aMessage, const Ip
 
 void MqttsnClient::HandleSubscribeRetransmission(const Message &aMessage, const Ip6::Address &aAddress, uint16_t aPort, void* aContext)
 {
-    otLogInfoMqttsn("Subscribe message retransmission");
+    LogInfo("Subscribe message retransmission");
     MqttsnClient* client = static_cast<MqttsnClient*>(aContext);
     unsigned char buffer[MAX_PACKET_SIZE];
     SubscribeMessage subscribeMessage;
@@ -1884,7 +1886,7 @@ void MqttsnClient::HandleSubscribeRetransmission(const Message &aMessage, const 
 
 void MqttsnClient::HandlePingreqRetransmission(const Message &aMessage, const Ip6::Address &aAddress, uint16_t aPort, void* aContext)
 {
-    otLogInfoMqttsn("Pingreq message retransmission");
+    LogInfo("Pingreq message retransmission");
     MqttsnClient* client = static_cast<MqttsnClient*>(aContext);
     Message* retransmissionMessage = aMessage.Clone(aMessage.GetLength());
     if (retransmissionMessage != NULL)

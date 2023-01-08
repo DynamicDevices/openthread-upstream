@@ -68,7 +68,7 @@ public:
      * @param[in]   aOutputMaxLen  The output buffer size.
      *
      */
-    void ProcessLine(const char *aString, char *aOutput, size_t aOutputMaxLen);
+    Error ProcessLine(const char *aString, char *aOutput, size_t aOutputMaxLen);
 
     /**
      * This method processes a factory diagnostics command line.
@@ -144,6 +144,7 @@ private:
 
     Error ParseCmd(char *aString, uint8_t &aArgsLength, char *aArgs[]);
     Error ProcessChannel(uint8_t aArgsLength, char *aArgs[], char *aOutput, size_t aOutputMaxLen);
+    Error ProcessGpio(uint8_t aArgsLength, char *aArgs[], char *aOutput, size_t aOutputMaxLen);
     Error ProcessPower(uint8_t aArgsLength, char *aArgs[], char *aOutput, size_t aOutputMaxLen);
     Error ProcessRadio(uint8_t aArgsLength, char *aArgs[], char *aOutput, size_t aOutputMaxLen);
     Error ProcessRepeat(uint8_t aArgsLength, char *aArgs[], char *aOutput, size_t aOutputMaxLen);
@@ -151,11 +152,15 @@ private:
     Error ProcessStart(uint8_t aArgsLength, char *aArgs[], char *aOutput, size_t aOutputMaxLen);
     Error ProcessStats(uint8_t aArgsLength, char *aArgs[], char *aOutput, size_t aOutputMaxLen);
     Error ProcessStop(uint8_t aArgsLength, char *aArgs[], char *aOutput, size_t aOutputMaxLen);
+#if OPENTHREAD_RADIO && !OPENTHREAD_RADIO_CLI
+    Error ProcessEcho(uint8_t aArgsLength, char *aArgs[], char *aOutput, size_t aOutputMaxLen);
+#endif
 
     void TransmitPacket(void);
 
     static void  AppendErrorResult(Error aError, char *aOutput, size_t aOutputMaxLen);
     static Error ParseLong(char *aString, long &aLong);
+    static Error ParseBool(char *aString, bool &aBool);
 
     static const struct Command sCommands[];
 

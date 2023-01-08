@@ -172,7 +172,7 @@ class TestOTCI(unittest.TestCase):
         self.assertEqual(leader.get_preferred_partition_id(), 0xabcddead)
 
         leader.thread_start()
-        leader.wait(5)
+        leader.wait(10)
         self.assertEqual('leader', leader.get_state())
         self.assertEqual(0xabcddead, leader.get_leader_data()['partition_id'])
         logging.info('leader key sequence counter = %d', leader.get_key_sequence_counter())
@@ -243,7 +243,7 @@ class TestOTCI(unittest.TestCase):
         for counter_name in leader.counter_names:
             logging.info('counter %s: %r', counter_name, leader.get_counter(counter_name))
             leader.reset_counter(counter_name)
-            self.assertTrue(all(x == 0 for x in leader.get_counter(counter_name).values()))
+            self.assertTrue(all(x == 0 for name, x in leader.get_counter(counter_name).items() if "Time" not in name))
 
         logging.info("CSL config: %r", leader.get_csl_config())
         leader.config_csl(channel=13, period=100, timeout=200)
@@ -378,7 +378,7 @@ class TestOTCI(unittest.TestCase):
         self.assertEqual('default.service.arpa.', server.srp_server_get_domain())
 
         default_leases = server.srp_server_get_lease()
-        self.assertEqual(default_leases, (1800, 7200, 86400, 1209600))
+        self.assertEqual(default_leases, (30, 97200, 30, 680400))
         server.srp_server_set_lease(1801, 7201, 86401, 1209601)
         leases = server.srp_server_get_lease()
         self.assertEqual(leases, (1801, 7201, 86401, 1209601))
@@ -519,7 +519,7 @@ class TestOTCI(unittest.TestCase):
 
         node1.ifconfig_up()
         node1.thread_start()
-        node1.wait(5)
+        node1.wait(10)
         assert node1.get_state() == "leader"
 
         node1.commissioner_start()
@@ -533,7 +533,7 @@ class TestOTCI(unittest.TestCase):
         node2.joiner_start("TEST123")
         node2.wait(10, expect_line="Join success")
         node2.thread_start()
-        node2.wait(5)
+        node2.wait(10)
         assert node2.get_state() == "router"
 
     def _test_otci_multi_nodes(self, leader, commissioner, child1, child2):
@@ -571,7 +571,7 @@ class TestOTCI(unittest.TestCase):
         self.assertEqual('rdn', leader.get_mode())
 
         leader.thread_start()
-        leader.wait(5)
+        leader.wait(10)
         self.assertEqual('leader', leader.get_state())
         logging.info('leader key sequence counter = %d', leader.get_key_sequence_counter())
 
@@ -587,7 +587,7 @@ class TestOTCI(unittest.TestCase):
         commissioner.set_network_key(TEST_NETWORKKEY)
         commissioner.thread_start()
 
-        commissioner.wait(5)
+        commissioner.wait(10)
 
         self.assertEqual('router', commissioner.get_state())
 

@@ -46,54 +46,40 @@ namespace ot {
 
 AnycastLocator::AnycastLocator(Instance &aInstance)
     : InstanceLocator(aInstance)
-    , mCallback(nullptr)
-    , mContext(nullptr)
-#if OPENTHREAD_CONFIG_TMF_ANYCAST_LOCATOR_SEND_RESPONSE
-    , mAnycastLocate(UriPath::kAnycastLocate, HandleAnycastLocate, this)
-#endif
 
 {
-#if OPENTHREAD_CONFIG_TMF_ANYCAST_LOCATOR_SEND_RESPONSE
-    Get<Tmf::Agent>().AddResource(mAnycastLocate);
-#endif
 }
 
-Error AnycastLocator::Locate(const Ip6::Address &aAnycastAddress, Callback aCallback, void *aContext)
+Error AnycastLocator::Locate(const Ip6::Address &aAnycastAddress, LocatorCallback aCallback, void *aContext)
 {
     Error            error   = kErrorNone;
-    Coap::Message *  message = nullptr;
-    Ip6::MessageInfo messageInfo;
+    Coap::Message   *message = nullptr;
+    Tmf::MessageInfo messageInfo(GetInstance());
 
     VerifyOrExit((aCallback != nullptr) && Get<Mle::Mle>().IsAnycastLocator(aAnycastAddress),
                  error = kErrorInvalidArgs);
 
-    message = Get<Tmf::Agent>().NewMessage();
+    message = Get<Tmf::Agent>().NewConfirmablePostMessage(kUriAnycastLocate);
     VerifyOrExit(message != nullptr, error = kErrorNoBufs);
 
-    SuccessOrExit(error = message->InitAsConfirmablePost(UriPath::kAnycastLocate));
-    SuccessOrExit(error = message->SetPayloadMarker());
-
-    if (mCallback != nullptr)
+    if (mCallback.IsSet())
     {
         IgnoreError(Get<Tmf::Agent>().AbortTransaction(HandleResponse, this));
     }
 
-    messageInfo.SetSockAddr(Get<Mle::MleRouter>().GetMeshLocal16());
-    messageInfo.SetPeerAddr(aAnycastAddress);
-    messageInfo.SetPeerPort(Tmf::kUdpPort);
+    messageInfo.SetSockAddrToRlocPeerAddrTo(aAnycastAddress);
 
     SuccessOrExit(error = Get<Tmf::Agent>().SendMessage(*message, messageInfo, HandleResponse, this));
 
-    mCallback = aCallback;
-    mContext  = aContext;
+    mCallback.Set(aCallback, aContext);
 
 exit:
     FreeMessageOnError(message, error);
     return error;
 }
 
-void AnycastLocator::HandleResponse(void *               aContext,
-                                    otMessage *          aMessage,
+void AnycastLocator::HandleResponse(void                *aContext,
+                                    otMessage           *aMessage,
                                     const otMessageInfo *aMessageInfo,
                                     Error                aError)
 {
@@ -123,33 +109,26 @@ void AnycastLocator::HandleResponse(Coap::Message *aMessage, const Ip6::MessageI
     address = &meshLocalAddress;
 
 exit:
-    if (mCallback != nullptr)
+    if (mCallback.IsSet())
     {
-        Callback callback = mCallback;
+        Callback<LocatorCallback> callbackCopy = mCallback;
 
-        mCallback = nullptr;
-        callback(mContext, aError, address, rloc16);
+        mCallback.Clear();
+        callbackCopy.Invoke(aError, address, rloc16);
     }
 }
 
 #if OPENTHREAD_CONFIG_TMF_ANYCAST_LOCATOR_SEND_RESPONSE
 
-void AnycastLocator::HandleAnycastLocate(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo)
-{
-    static_cast<AnycastLocator *>(aContext)->HandleAnycastLocate(AsCoapMessage(aMessage), AsCoreType(aMessageInfo));
-}
-
-void AnycastLocator::HandleAnycastLocate(const Coap::Message &aRequest, const Ip6::MessageInfo &aMessageInfo)
+template <>
+void AnycastLocator::HandleTmf<kUriAnycastLocate>(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
 {
     Coap::Message *message = nullptr;
 
-    VerifyOrExit(aRequest.IsConfirmablePostRequest());
+    VerifyOrExit(aMessage.IsConfirmablePostRequest());
 
-    message = Get<Tmf::Agent>().NewMessage();
+    message = Get<Tmf::Agent>().NewResponseMessage(aMessage);
     VerifyOrExit(message != nullptr);
-
-    SuccessOrExit(message->SetDefaultResponseHeader(aRequest));
-    SuccessOrExit(message->SetPayloadMarker());
 
     SuccessOrExit(Tlv::Append<ThreadMeshLocalEidTlv>(*message, Get<Mle::Mle>().GetMeshLocal64().GetIid()));
     SuccessOrExit(Tlv::Append<ThreadRloc16Tlv>(*message, Get<Mle::Mle>().GetRloc16()));

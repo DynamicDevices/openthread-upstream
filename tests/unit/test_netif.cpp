@@ -89,7 +89,7 @@ void TestNetifMulticastAddresses(void)
 {
     const uint8_t kMaxAddresses = 8;
 
-    Instance *   instance = testInitInstance();
+    Instance    *instance = testInitInstance();
     TestNetif    netif(*instance);
     Ip6::Address addresses[kMaxAddresses];
 
@@ -168,11 +168,11 @@ void TestNetifMulticastAddresses(void)
     VerifyMulticastAddressList(netif, &addresses[0], 8);
 
     IgnoreError(address.FromString(kTestAddress1)); // same as netifAddress (internal)
-    VerifyOrQuit(netif.UnsubscribeExternalMulticast(address) == kErrorInvalidArgs,
+    VerifyOrQuit(netif.UnsubscribeExternalMulticast(address) == kErrorRejected,
                  "UnsubscribeExternalMulticast() did not fail when address was not external");
 
     IgnoreError(address.FromString(kRealmLocalAllMpl));
-    VerifyOrQuit(netif.UnsubscribeExternalMulticast(address) == kErrorInvalidArgs,
+    VerifyOrQuit(netif.UnsubscribeExternalMulticast(address) == kErrorRejected,
                  "UnsubscribeExternalMulticast() did not fail when address was fixed address");
 
     netif.UnsubscribeAllRoutersMulticast();

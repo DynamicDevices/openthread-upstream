@@ -161,12 +161,13 @@ void platformRadioReceive(otInstance *aInstance, uint8_t *aBuf, uint16_t aBufLen
 /**
  * This function updates the file descriptor sets with file descriptors used by the radio driver.
  *
- * @param[inout]  aReadFdSet   A pointer to the read file descriptors.
- * @param[inout]  aWriteFdSet  A pointer to the write file descriptors.
- * @param[inout]  aMaxFd       A pointer to the max file descriptor.
+ * @param[in,out]  aReadFdSet   A pointer to the read file descriptors.
+ * @param[in,out]  aWriteFdSet  A pointer to the write file descriptors.
+ * @param[in,out]  aTimeout     A pointer to the timeout.
+ * @param[in,out]  aMaxFd       A pointer to the max file descriptor.
  *
  */
-void platformRadioUpdateFdSet(fd_set *aReadFdSet, fd_set *aWriteFdSet, int *aMaxFd);
+void platformRadioUpdateFdSet(fd_set *aReadFdSet, fd_set *aWriteFdSet, struct timeval *aTimeout, int *aMaxFd);
 
 /**
  * This function performs radio driver processing.
@@ -185,11 +186,33 @@ void platformRadioProcess(otInstance *aInstance, const fd_set *aReadFdSet, const
 void platformRandomInit(void);
 
 /**
+ * This functions set the file name to use for logging.
+ *
+ * @param[in] aName  The file name.
+ *
+ */
+void platformLoggingSetFileName(const char *aName);
+
+/**
+ * This function initializes the platform logging service.
+ *
+ * @param[in] aName    The log module name to set with syslog.
+ *
+ */
+void platformLoggingInit(const char *aName);
+
+/**
+ * This function finalizes the platform logging service.
+ *
+ */
+void platformLoggingDeinit(void);
+
+/**
  * This function updates the file descriptor sets with file descriptors used by the UART driver.
  *
- * @param[inout]  aReadFdSet   A pointer to the read file descriptors.
- * @param[inout]  aWriteFdSet  A pointer to the write file descriptors.
- * @param[inout]  aMaxFd       A pointer to the max file descriptor.
+ * @param[in,out]  aReadFdSet   A pointer to the read file descriptors.
+ * @param[in,out]  aWriteFdSet  A pointer to the write file descriptors.
+ * @param[in,out]  aMaxFd       A pointer to the max file descriptor.
  *
  */
 void platformUartUpdateFdSet(fd_set *aReadFdSet, fd_set *aWriteFdSet, fd_set *aErrorFdSet, int *aMaxFd);
@@ -231,6 +254,18 @@ void otSimSendUartWriteEvent(const uint8_t *aData, uint16_t aLength);
  */
 bool platformRadioIsTransmitPending(void);
 
+/**
+ * This function parses an environment variable as an unsigned 16-bit integer.
+ *
+ * If the environment variable does not exist, this function does nothing.
+ * If it is not a valid integer, this function will terminate the process with an error message.
+ *
+ * @param[in]   aEnvName  The name of the environment variable.
+ * @param[out]  aValue    A pointer to the unsigned 16-bit integer.
+ *
+ */
+void parseFromEnvAsUint16(const char *aEnvName, uint16_t *aValue);
+
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
 
 /**
@@ -250,10 +285,10 @@ void platformTrelDeinit(void);
 /**
  * This function updates the file descriptor sets with file descriptors used by the TREL.
  *
- * @param[inout]  aReadFdSet   A pointer to the read file descriptors.
- * @param[inout]  aWriteFdSet  A pointer to the write file descriptors.
- * @param[inout]  aTimeout     A pointer to the timeout.
- * @param[inout]  aMaxFd       A pointer to the max file descriptor.
+ * @param[in,out]  aReadFdSet   A pointer to the read file descriptors.
+ * @param[in,out]  aWriteFdSet  A pointer to the write file descriptors.
+ * @param[in,out]  aTimeout     A pointer to the timeout.
+ * @param[in,out]  aMaxFd       A pointer to the max file descriptor.
  *
  */
 void platformTrelUpdateFdSet(fd_set *aReadFdSet, fd_set *aWriteFdSet, struct timeval *aTimeout, int *aMaxFd);

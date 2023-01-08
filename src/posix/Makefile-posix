@@ -81,6 +81,7 @@ UPTIME                               ?= 1
 
 COMMONCFLAGS                         := \
     -g                                  \
+    -rdynamic                           \
     $(NULL)
 
 # If the user has asserted COVERAGE, alter the configuration options

@@ -43,49 +43,13 @@ using ot::Utils::CmdLineParser::ParseAsUint16;
 namespace ot {
 namespace Cli {
 
-constexpr Mqtt::Command Mqtt::sCommands[];
-
-Mqtt::Mqtt(Output &aOutput)
-    : OutputWrapper(aOutput)
+Mqtt::Mqtt(otInstance *aInstance, OutputImplementer &aOutputImplementer)
+    : Output(aInstance, aOutputImplementer)
 {
     ;
 }
 
-otError Mqtt::Process(Arg aArgs[])
-{
-    otError error = OT_ERROR_PARSE;
-    const Command *command;
-
-    if (aArgs[0].IsEmpty())
-    {
-        ProcessHelp(NULL);
-        error = OT_ERROR_NONE;
-    }
-    else
-    {
-        command = BinarySearch::Find(aArgs[0].GetCString(), sCommands);
-        VerifyOrExit(command != nullptr, error = OT_ERROR_INVALID_COMMAND);
-
-        error = (this->*command->mHandler)(aArgs + 1);
-    }
-
-exit:
-    return error;
-}
-
-otError Mqtt::ProcessHelp(Arg aArgs[])
-{
-    OT_UNUSED_VARIABLE(aArgs);
-
-    for (const Command &command : sCommands)
-    {
-        OutputLine(command.mName);
-    }
-
-    return OT_ERROR_NONE;
-}
-
-otError Mqtt::ProcessStart(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("start")>(Arg aArgs[])
 {
     otError error;
     uint16_t port = OPENTHREAD_CONFIG_MQTTSN_DEFAULT_PORT;
@@ -101,14 +65,14 @@ exit:
     return error;
 }
 
-otError Mqtt::ProcessStop(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("stop")>(Arg aArgs[])
 {
     OT_UNUSED_VARIABLE(aArgs);
 
     return otMqttsnStop(GetInstancePtr());
 }
 
-otError Mqtt::ProcessConnect(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("connect")>(Arg aArgs[])
 {
 	otError error;
 	otIp6Address destinationIp;
@@ -128,14 +92,14 @@ exit:
 	return error;
 }
 
-otError Mqtt::ProcessReconnect(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("reconnect")>(Arg aArgs[])
 {
     OT_UNUSED_VARIABLE(aArgs);
 
     return otMqttsnReconnect(GetInstancePtr());
 }
 
-otError Mqtt::ProcessSubscribe(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("subscribe")>(Arg aArgs[])
 {
     otError error;
     otMqttsnQos qos = kQos1;
@@ -154,7 +118,7 @@ exit:
     return error;
 }
 
-otError Mqtt::ProcessState(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("state")>(Arg aArgs[])
 {
     OT_UNUSED_VARIABLE(aArgs);
 
@@ -168,7 +132,7 @@ exit:
     return error;
 }
 
-otError Mqtt::ProcessRegister(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("register")>(Arg aArgs[])
 {
     otError error;
     char *topicName;
@@ -211,7 +175,7 @@ exit:
     return error;
 }
 
-otError Mqtt::ProcessPublish(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("publish")>(Arg aArgs[])
 {
     otError error;
     otMqttsnQos qos = kQos1;
@@ -236,7 +200,7 @@ exit:
     return error;
 }
 
-otError Mqtt::ProcessPublishm1(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("publishm1")>(Arg aArgs[])
 {
     otError error;
     otIp6Address destinationIp;
@@ -265,7 +229,7 @@ exit:
     return error;
 }
 
-otError Mqtt::ProcessUnsubscribe(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("unsubscribe")>(Arg aArgs[])
 {
     otError error;
     otMqttsnTopic topic;
@@ -281,14 +245,14 @@ exit:
     return error;
 }
 
-otError Mqtt::ProcessDisconnect(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("disconnect")>(Arg aArgs[])
 {
     OT_UNUSED_VARIABLE(aArgs);
 
     return otMqttsnDisconnect(GetInstancePtr());
 }
 
-otError Mqtt::ProcessSleep(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("sleep")>(Arg aArgs[])
 {
     otError error;
     uint16_t duration;
@@ -303,7 +267,7 @@ exit:
     return error;
 }
 
-otError Mqtt::ProcessAwake(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("awake")>(Arg aArgs[])
 {
     otError error;
     uint32_t timeout;
@@ -318,7 +282,7 @@ exit:
     return error;
 }
 
-otError Mqtt::ProcessSearchgw(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("searchgw")>(Arg aArgs[])
 {
     otError error;
     otIp6Address multicastAddress;
@@ -338,7 +302,7 @@ exit:
     return error;
 }
 
-otError Mqtt::ProcessGateways(Arg aArgs[])
+template <> otError Mqtt::Process<Cmd("gateways")>(Arg aArgs[])
 {
     OT_UNUSED_VARIABLE(aArgs);
 
@@ -350,9 +314,43 @@ otError Mqtt::ProcessGateways(Arg aArgs[])
         otMqttsnGatewayInfo &info = gateways[i];
         OutputFormat("gateway ");
         OutputIp6Address(*static_cast<Ip6::Address *>(&info.mGatewayAddress));
-        OutputFormat(": gateway_id=%d\r\n", (uint32_t)info.mGatewayId);
+        OutputFormat(": gateway_id=%lu\r\n", (uint32_t)info.mGatewayId);
     }
     return OT_ERROR_NONE;
+}
+
+otError Mqtt::Process(Arg aArgs[])
+{
+#define CmdEntry(aCommandString)                            \
+    {                                                       \
+        aCommandString, &Mqtt::Process<Cmd(aCommandString)> \
+    }
+
+    static constexpr Command kCommands[] = {
+        CmdEntry("awake"),    CmdEntry("connect"),   CmdEntry("disconnect"), CmdEntry("gateways"),
+        CmdEntry("publish"),  CmdEntry("publishm1"), CmdEntry("reconnect"),  CmdEntry("register"), 
+        CmdEntry("searchgw"), CmdEntry("sleep"),     CmdEntry("start"),      CmdEntry("state"),
+        CmdEntry("stop"),     CmdEntry("subscribe"), CmdEntry("unsubscribe"),
+    };
+
+    static_assert(BinarySearch::IsSorted(kCommands), "kCommands is not sorted");
+
+    otError        error = OT_ERROR_INVALID_COMMAND;
+    const Command *command;
+
+    if (aArgs[0].IsEmpty() || (aArgs[0] == "help"))
+    {
+        OutputCommandTable(kCommands);
+        ExitNow(error = aArgs[0].IsEmpty() ? error : OT_ERROR_NONE);
+    }
+
+    command = BinarySearch::Find(aArgs[0].GetCString(), kCommands);
+    VerifyOrExit(command != nullptr);
+
+    error = (this->*command->mHandler)(aArgs + 1);
+
+exit:
+    return error;
 }
 
 void Mqtt::HandleConnected(otMqttsnReturnCode aCode, void *aContext)
@@ -460,7 +458,7 @@ otMqttsnReturnCode Mqtt::HandlePublishReceived(const uint8_t* aPayload, int32_t 
     {
         OutputFormat("received publish from topic %s:\r\n", otMqttsnGetTopicName(aTopic));
     }
-    OutputFormat("%.*s\r\n", aPayloadLength, aPayload);
+    OutputFormat("%.*s\r\n", static_cast<int>(aPayloadLength), aPayload);
     return kCodeAccepted;
 }
 

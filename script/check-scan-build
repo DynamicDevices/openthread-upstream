@@ -29,15 +29,15 @@
 
 set -euxo pipefail
 
-readonly OT_SRCDIR="$(pwd)"
+OT_SRCDIR="$(pwd)"
+readonly OT_SRCDIR
 
-readonly OT_BUILD_OPTIONS=(
+OT_BUILD_OPTIONS=(
     "-DOT_ANYCAST_LOCATOR=ON"
     "-DOT_BUILD_EXECUTABLES=OFF"
     "-DOT_BORDER_AGENT=ON"
     "-DOT_BORDER_ROUTER=ON"
     "-DOT_BORDER_ROUTING=ON"
-    "-DOT_BORDER_ROUTING_NAT64=ON"
     "-DOT_COAP=ON"
     "-DOT_COAP_BLOCK=ON"
     "-DOT_COAP_OBSERVE=ON"
@@ -63,6 +63,8 @@ readonly OT_BUILD_OPTIONS=(
     "-DOT_LOG_LEVEL_DYNAMIC=ON"
     "-DOT_MAC_FILTER=ON"
     "-DOT_MTD_NETDIAG=ON"
+    "-DOT_NAT64_BORDER_ROUTING=ON"
+    "-DOT_NAT64_TRANSLATOR=ON"
     "-DOT_NEIGHBOR_DISCOVERY_AGENT=ON"
     "-DOT_PING_SENDER=ON"
     "-DOT_PLATFORM=external"
@@ -74,21 +76,23 @@ readonly OT_BUILD_OPTIONS=(
     "-DOT_SRP_CLIENT=ON"
     "-DOT_SRP_SERVER=ON"
 )
+readonly OT_BUILD_OPTIONS
 
-readonly OT_CFLAGS=(
+OT_CFLAGS=(
     "-DMBEDTLS_DEBUG_C"
     "-I$(pwd)/third_party/mbedtls"
     "-I$(pwd)/third_party/mbedtls/repo/include"
     '-DMBEDTLS_CONFIG_FILE=\"mbedtls-config.h\"'
 )
+readonly OT_CFLAGS
 
 main()
 {
     mkdir -p build
     cd build
 
-    scan-build-9 cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DOT_COMPILE_WARNING_AS_ERROR=ON -DCMAKE_C_FLAGS="${OT_CFLAGS[*]}" -DCMAKE_CXX_FLAGS="${OT_CFLAGS[*]}" "${OT_BUILD_OPTIONS[@]}" "${OT_SRCDIR}"
-    scan-build-9 --status-bugs -analyze-headers -v ninja
+    scan-build-14 cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DOT_COMPILE_WARNING_AS_ERROR=ON -DCMAKE_C_FLAGS="${OT_CFLAGS[*]}" -DCMAKE_CXX_FLAGS="${OT_CFLAGS[*]}" "${OT_BUILD_OPTIONS[@]}" "${OT_SRCDIR}"
+    scan-build-14 --status-bugs -analyze-headers -v ninja
 
     cd "${OT_SRCDIR}"
 }

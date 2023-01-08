@@ -321,11 +321,51 @@
  *
  *   - SPINEL_MIN_HOST_SUPPORTED_RCP_API_VERSION specifies the minimum spinel
  *     RCP API Version which is supported by the host-side implementation.
+ *     To reduce the backward compatibility issues, this number should be kept
+ *     as constant as possible.
  *
  *   - On start, host implementation queries the RCP API version and accepts
  *     any version number from SPINEL_MIN_HOST_SUPPORTED_RCP_API_VERSION up to
  *     and including SPINEL_RCP_API_VERSION.
  *
+ *   Host and RCP compatibility guideline:
+ *
+ *   - New host spinel layer should work with an older RCP firmware, i.e., host
+ *     implementation should remain backward compatible.
+ *
+ *   - Existing fields in the format of an already implemented spinel
+ *     property or command must not change.
+ *
+ *   - New fields must be appended to the end of the existing spinel format.
+ *     *  New fields for new features:
+ *          Adding a new capability flag to the otRadioCaps to indicate the new
+ *          fields. The host parses the spinel format based on the pre-fetched
+ *          otRadioCaps. The host should be able to enable/disable the feature
+ *          in runtime based on the otRadioCaps. Refer to PR4919 and PR5139.
+ *     *  New fields for changing existing implementations:
+ *          This case should be avoided as much as possible. It will cause the
+ *          compatibility issue.
+ *
+ *   - Deprecated fields must not be removed from the spinel format and they
+ *     must be set to a suitable default value.
+ *
+ *   - Adding new spinel properties.
+ *     * If the old version RCP doesn't support the new spinel property, it
+ *       must return the spinel error SPINEL_STATUS_PROP_NOT_FOUND.
+ *
+ *     * If the host can handle the new spinel property by processing the error
+ *       SPINEL_STATUS_PROP_NOT_FOUND, the API of the new spinel property must
+ *       return OT_ERROR_NOT_IMPLEMENTED or default value.
+ *
+ *     * If the host can't handle the new spinel property by processing the
+ *       error SPINEL_STATUS_PROP_NOT_FOUND, a new capability flag must be
+ *       added to the otRadioCaps to indicate whether RCP supports the new
+ *       spinel property. The host must handle the new spinel property by
+ *       processing the new capability flag.
+ *
+ *   - If none of the above methods make the new functions work, increasing the
+ *     SPINEL_MIN_HOST_SUPPORTED_RCP_API_VERSION. This case should be avoided
+ *     as much as possible.
  * ---------------------------------------------------------------------------
  */
 
@@ -377,7 +417,7 @@
  * Please see section "Spinel definition compatibility guideline" for more details.
  *
  */
-#define SPINEL_RCP_API_VERSION 5
+#define SPINEL_RCP_API_VERSION 7
 
 /**
  * @def SPINEL_MIN_HOST_SUPPORTED_RCP_API_VERSION
@@ -706,7 +746,7 @@ enum
     SPINEL_NCP_LOG_REGION_OT_UTIL     = 17,
     SPINEL_NCP_LOG_REGION_OT_BBR      = 18,
     SPINEL_NCP_LOG_REGION_OT_MLR      = 19,
-    SPINEL_NCP_LOG_REGION_OT_DUA      = 10,
+    SPINEL_NCP_LOG_REGION_OT_DUA      = 20,
     SPINEL_NCP_LOG_REGION_OT_BR       = 21,
     SPINEL_NCP_LOG_REGION_OT_SRP      = 22,
     SPINEL_NCP_LOG_REGION_OT_DNS      = 23,
@@ -1704,6 +1744,28 @@ enum
      */
     SPINEL_PROP_PHY_REGION_CODE = SPINEL_PROP_PHY__BEGIN + 12,
 
+    /// Calibrated Power Table
+    /** Format: `A(Csd)` - Insert/Set
+     *
+     *  The `Insert` command on the property inserts a calibration power entry to the calibrated power table.
+     *  The `Set` command on the property with empty payload clears the calibrated power table.
+     *
+     * Structure Parameters:
+     *  `C`: Channel.
+     *  `s`: Actual power in 0.01 dBm.
+     *  `d`: Raw power setting.
+     */
+    SPINEL_PROP_PHY_CALIBRATED_POWER = SPINEL_PROP_PHY__BEGIN + 13,
+
+    /// Target power for a channel
+    /** Format: `t(Cs)` - Write only
+     *
+     * Structure Parameters:
+     *  `C`: Channel.
+     *  `s`: Target power in 0.01 dBm.
+     */
+    SPINEL_PROP_PHY_CHAN_TARGET_POWER = SPINEL_PROP_PHY__BEGIN + 14,
+
     SPINEL_PROP_PHY__END = 0x30,
 
     SPINEL_PROP_PHY_EXT__BEGIN = 0x1200,
@@ -2296,7 +2358,7 @@ enum
     SPINEL_PROP_THREAD_LEADER_ADDR = SPINEL_PROP_THREAD__BEGIN + 0,
 
     /// Thread Parent Info
-    /** Format: `ESLccCC` - Read only
+    /** Format: `ESLccCCCCC` - Read only
      *
      *  `E`: Extended address
      *  `S`: RLOC16
@@ -2305,6 +2367,9 @@ enum
      *  `c`: Last RSSI (in dBm)
      *  `C`: Link Quality In
      *  `C`: Link Quality Out
+     *  `C`: Version
+     *  `C`: CSL clock accuracy
+     *  `C`: CSL uncertainty
      *
      */
     SPINEL_PROP_THREAD_PARENT = SPINEL_PROP_THREAD__BEGIN + 1,
@@ -4732,6 +4797,24 @@ enum
      */
     SPINEL_PROP_RCP_ENH_ACK_PROBING = SPINEL_PROP_RCP_EXT__BEGIN + 3,
 
+    /// CSL Accuracy
+    /** Format: `C`
+     * Required capability: `SPINEL_CAP_NET_THREAD_1_2`
+     *
+     * The current CSL rx/tx scheduling drift, in units of ± ppm.
+     *
+     */
+    SPINEL_PROP_RCP_CSL_ACCURACY = SPINEL_PROP_RCP_EXT__BEGIN + 4,
+
+    /// CSL Uncertainty
+    /** Format: `C`
+     * Required capability: `SPINEL_CAP_NET_THREAD_1_2`
+     *
+     * The current uncertainty, in units of 10 us, of the clock used for scheduling CSL operations.
+     *
+     */
+    SPINEL_PROP_RCP_CSL_UNCERTAINTY = SPINEL_PROP_RCP_EXT__BEGIN + 5,
+
     SPINEL_PROP_RCP_EXT__END = 0x900,
 
     SPINEL_PROP_NEST__BEGIN = 0x3BC0,
@@ -4811,6 +4894,9 @@ typedef uint32_t spinel_prop_key_t;
 // ----------------------------------------------------------------------------
 
 #define SPINEL_HEADER_FLAG 0x80
+#define SPINEL_HEADER_FLAGS_SHIFT 6
+#define SPINEL_HEADER_FLAGS_MASK (3 << SPINEL_HEADER_FLAGS_SHIFT)
+#define SPINEL_HEADER_GET_FLAG(x) (((x)&SPINEL_HEADER_FLAGS_MASK) >> SPINEL_HEADER_FLAGS_SHIFT)
 
 #define SPINEL_HEADER_TID_SHIFT 0
 #define SPINEL_HEADER_TID_MASK (15 << SPINEL_HEADER_TID_SHIFT)
@@ -4898,17 +4984,17 @@ typedef char spinel_datatype_t;
 
 #define SPINEL_MAX_UINT_PACKED 2097151
 
-SPINEL_API_EXTERN spinel_ssize_t spinel_datatype_pack(uint8_t *     data_out,
+SPINEL_API_EXTERN spinel_ssize_t spinel_datatype_pack(uint8_t      *data_out,
                                                       spinel_size_t data_len_max,
-                                                      const char *  pack_format,
+                                                      const char   *pack_format,
                                                       ...);
-SPINEL_API_EXTERN spinel_ssize_t spinel_datatype_vpack(uint8_t *     data_out,
+SPINEL_API_EXTERN spinel_ssize_t spinel_datatype_vpack(uint8_t      *data_out,
                                                        spinel_size_t data_len_max,
-                                                       const char *  pack_format,
+                                                       const char   *pack_format,
                                                        va_list       args);
 SPINEL_API_EXTERN spinel_ssize_t spinel_datatype_unpack(const uint8_t *data_in,
                                                         spinel_size_t  data_len,
-                                                        const char *   pack_format,
+                                                        const char    *pack_format,
                                                         ...);
 /**
  * This function parses spinel data similar to sscanf().
@@ -4936,11 +5022,11 @@ SPINEL_API_EXTERN spinel_ssize_t spinel_datatype_unpack(const uint8_t *data_in,
  */
 SPINEL_API_EXTERN spinel_ssize_t spinel_datatype_unpack_in_place(const uint8_t *data_in,
                                                                  spinel_size_t  data_len,
-                                                                 const char *   pack_format,
+                                                                 const char    *pack_format,
                                                                  ...);
 SPINEL_API_EXTERN spinel_ssize_t spinel_datatype_vunpack(const uint8_t *data_in,
                                                          spinel_size_t  data_len,
-                                                         const char *   pack_format,
+                                                         const char    *pack_format,
                                                          va_list        args);
 /**
  * This function parses spinel data similar to vsscanf().
@@ -4966,12 +5052,12 @@ SPINEL_API_EXTERN spinel_ssize_t spinel_datatype_vunpack(const uint8_t *data_in,
  */
 SPINEL_API_EXTERN spinel_ssize_t spinel_datatype_vunpack_in_place(const uint8_t *data_in,
                                                                   spinel_size_t  data_len,
-                                                                  const char *   pack_format,
+                                                                  const char    *pack_format,
                                                                   va_list        args);
 
 SPINEL_API_EXTERN spinel_ssize_t spinel_packed_uint_decode(const uint8_t *bytes,
                                                            spinel_size_t  len,
-                                                           unsigned int * value_ptr);
+                                                           unsigned int  *value_ptr);
 SPINEL_API_EXTERN spinel_ssize_t spinel_packed_uint_encode(uint8_t *bytes, spinel_size_t len, unsigned int value);
 SPINEL_API_EXTERN spinel_ssize_t spinel_packed_uint_size(unsigned int value);
 

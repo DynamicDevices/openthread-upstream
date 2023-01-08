@@ -126,12 +126,12 @@ public:
     /**
      * This method generates the IID of an IPv6 address.
      *
-     * @param[inout]  aAddress             A reference to the address that will be filled with the IID generated.
+     * @param[in,out]  aAddress            A reference to the address that will be filled with the IID generated.
      *                                     Note the prefix of the address must already be filled and will be used
      *                                     to generate the IID.
-     * @param[in]     aNetworkId           A pointer to a byte array of Network_ID to generate IID.
-     * @param[in]     aNetworkIdLength     The size of array @p aNetworkId.
-     * @param[inout]  aDadCounter          A pointer to the DAD_Counter that is employed to resolve Duplicate
+     * @param[in]      aNetworkId          A pointer to a byte array of Network_ID to generate IID.
+     * @param[in]      aNetworkIdLength    The size of array @p aNetworkId.
+     * @param[in,out]  aDadCounter         A pointer to the DAD_Counter that is employed to resolve Duplicate
      *                                     Address Detection connflicts.
      *
      * @retval kErrorNone    If successfully generated the IID.
@@ -139,9 +139,9 @@ public:
      *
      */
     Error GenerateIid(Ip6::Netif::UnicastAddress &aAddress,
-                      uint8_t *                   aNetworkId       = nullptr,
+                      uint8_t                    *aNetworkId       = nullptr,
                       uint8_t                     aNetworkIdLength = 0,
-                      uint8_t *                   aDadCounter      = nullptr) const;
+                      uint8_t                    *aDadCounter      = nullptr) const;
 
 private:
     static constexpr uint16_t kMaxIidCreationAttempts = 256; // Maximum number of attempts when generating IID.
@@ -163,7 +163,7 @@ private:
     void        GetIidSecretKey(IidSecretKey &aKey) const;
     void        HandleNotifierEvents(Events aEvents);
     static bool DoesConfigMatchNetifAddr(const NetworkData::OnMeshPrefixConfig &aConfig,
-                                         const Ip6::Netif::UnicastAddress &     aAddr);
+                                         const Ip6::Netif::UnicastAddress      &aAddr);
 
     bool                       mEnabled;
     otIp6SlaacPrefixFilter     mFilter;

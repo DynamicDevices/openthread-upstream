@@ -40,12 +40,12 @@
 
 #include <stdint.h>
 
-#include "coap/coap.hpp"
 #include "common/non_copyable.hpp"
 #include "common/timer.hpp"
 #include "net/ip6_address.hpp"
 #include "thread/mle_router.hpp"
 #include "thread/network_data.hpp"
+#include "thread/tmf.hpp"
 
 namespace ot {
 
@@ -67,6 +67,8 @@ namespace NetworkData {
  */
 class Leader : public LeaderBase, private NonCopyable
 {
+    friend class Tmf::Agent;
+
 public:
     /**
      * This enumeration defines the match mode constants to compare two RLOC16 values.
@@ -95,14 +97,15 @@ public:
     /**
      * This method starts the Leader services.
      *
-     */
-    void Start(void);
-
-    /**
-     * This method stops the Leader services.
+     * The start mode indicates whether device is starting normally as leader or restoring its role as leader after
+     * reset. In the latter case, we do not accept any new registrations (`HandleServerData()`) and wait for
+     * `HandleNetworkDataRestoredAfterReset()` to indicate that the leader has successfully recovered the Network Data
+     * before allowing new Network Data registrations.
+     *
+     * @param[in] aStartMode   The start mode.
      *
      */
-    void Stop(void);
+    void Start(Mle::LeaderStartMode aStartMode);
 
     /**
      * This method increments the Thread Network Data version.
@@ -149,7 +152,7 @@ public:
      * Note that this method should be called only by the Leader once after reset.
      *
      */
-    void UpdateContextsAfterReset(void);
+    void HandleNetworkDataRestoredAfterReset(void);
 
     /**
      * This method scans network data for given Service ID and returns pointer to the respective TLV, if present.
@@ -160,18 +163,18 @@ public:
      */
     const ServiceTlv *FindServiceById(uint8_t aServiceId) const;
 
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
     /**
-     * This method sends SVR_DATA.ntf message for any stale child entries that exist in the network data.
+     * This method indicates whether a given Prefix can act as a valid OMR prefix and exists in the network data.
      *
-     * @param[in]  aHandler  A function pointer that is called when the transaction ends.
-     * @param[in]  aContext  A pointer to arbitrary context information.
+     * @param[in]  aPrefix   The OMR prefix to check.
      *
-     * @retval kErrorNone      A stale child entry was found and successfully enqueued a SVR_DATA.ntf message.
-     * @retval kErrorNoBufs    A stale child entry was found, but insufficient message buffers were available.
-     * @retval kErrorNotFound  No stale child entries were found.
+     * @retval TRUE  If @p aPrefix is a valid OMR prefix and Network Data contains @p aPrefix.
+     * @retval FALSE Otherwise.
      *
      */
-    Error RemoveStaleChildEntries(Coap::ResponseHandler aHandler, void *aContext);
+    bool ContainsOmrPrefix(const Ip6::Prefix &aPrefix);
+#endif
 
 private:
     class ChangedFlags
@@ -203,11 +206,9 @@ private:
         kTlvUpdated, // TLV stable flag is updated based on its sub TLVs.
     };
 
-    static void HandleServerData(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo);
-    void        HandleServerData(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo);
+    template <Uri kUri> void HandleTmf(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo);
 
-    static void HandleTimer(Timer &aTimer);
-    void        HandleTimer(void);
+    void HandleTimer(void);
 
     void RegisterNetworkData(uint16_t aRloc16, const NetworkData &aNetworkData);
 
@@ -233,29 +234,29 @@ private:
     void RemoveRloc(uint16_t           aRloc16,
                     MatchMode          aMatchMode,
                     const NetworkData &aExcludeNetworkData,
-                    ChangedFlags &     aChangedFlags);
-    void RemoveRlocInPrefix(PrefixTlv &      aPrefix,
+                    ChangedFlags      &aChangedFlags);
+    void RemoveRlocInPrefix(PrefixTlv       &aPrefix,
                             uint16_t         aRloc16,
                             MatchMode        aMatchMode,
                             const PrefixTlv *aExcludePrefix,
-                            ChangedFlags &   aChangedFlags);
-    void RemoveRlocInService(ServiceTlv &      aService,
+                            ChangedFlags    &aChangedFlags);
+    void RemoveRlocInService(ServiceTlv       &aService,
                              uint16_t          aRloc16,
                              MatchMode         aMatchMode,
                              const ServiceTlv *aExcludeService,
-                             ChangedFlags &    aChangedFlags);
-    void RemoveRlocInHasRoute(PrefixTlv &      aPrefix,
-                              HasRouteTlv &    aHasRoute,
+                             ChangedFlags     &aChangedFlags);
+    void RemoveRlocInHasRoute(PrefixTlv       &aPrefix,
+                              HasRouteTlv     &aHasRoute,
                               uint16_t         aRloc16,
                               MatchMode        aMatchMode,
                               const PrefixTlv *aExcludePrefix,
-                              ChangedFlags &   aChangedFlags);
-    void RemoveRlocInBorderRouter(PrefixTlv &      aPrefix,
+                              ChangedFlags    &aChangedFlags);
+    void RemoveRlocInBorderRouter(PrefixTlv       &aPrefix,
                                   BorderRouterTlv &aBorderRouter,
                                   uint16_t         aRloc16,
                                   MatchMode        aMatchMode,
                                   const PrefixTlv *aExcludePrefix,
-                                  ChangedFlags &   aChangedFlags);
+                                  ChangedFlags    &aChangedFlags);
 
     static bool RlocMatch(uint16_t aFirstRloc16, uint16_t aSecondRloc16, MatchMode aMatchMode);
 
@@ -273,36 +274,33 @@ private:
     UpdateStatus UpdateService(ServiceTlv &aService);
     UpdateStatus UpdateTlv(NetworkDataTlv &aTlv, const NetworkDataTlv *aSubTlvs);
 
-    static void HandleCommissioningSet(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo);
-    void        HandleCommissioningSet(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo);
-
-    static void HandleCommissioningGet(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo);
-    void        HandleCommissioningGet(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo);
-
-    void SendCommissioningGetResponse(const Coap::Message &   aRequest,
+    void SendCommissioningGetResponse(const Coap::Message    &aRequest,
                                       uint16_t                aLength,
                                       const Ip6::MessageInfo &aMessageInfo);
-    void SendCommissioningSetResponse(const Coap::Message &    aRequest,
-                                      const Ip6::MessageInfo & aMessageInfo,
+    void SendCommissioningSetResponse(const Coap::Message     &aRequest,
+                                      const Ip6::MessageInfo  &aMessageInfo,
                                       MeshCoP::StateTlv::State aState);
     void IncrementVersions(bool aIncludeStable);
     void IncrementVersions(const ChangedFlags &aFlags);
+
+    using UpdateTimer = TimerMilliIn<Leader, &Leader::HandleTimer>;
 
     static constexpr uint8_t  kMinContextId        = 1;            // Minimum Context ID (0 is used for Mesh Local)
     static constexpr uint8_t  kNumContextIds       = 15;           // Maximum Context ID
     static constexpr uint32_t kContextIdReuseDelay = 48 * 60 * 60; // in seconds
     static constexpr uint32_t kStateUpdatePeriod   = 60 * 1000;    // State update period in milliseconds
+    static constexpr uint32_t kMaxNetDataSyncWait  = 60 * 1000;    // Maximum time to wait for netdata sync.
 
-    uint16_t   mContextUsed;
-    TimeMilli  mContextLastUsed[kNumContextIds];
-    uint32_t   mContextIdReuseDelay;
-    TimerMilli mTimer;
-
-    Coap::Resource mServerData;
-
-    Coap::Resource mCommissioningDataGet;
-    Coap::Resource mCommissioningDataSet;
+    bool        mWaitingForNetDataSync;
+    uint16_t    mContextUsed;
+    TimeMilli   mContextLastUsed[kNumContextIds];
+    uint32_t    mContextIdReuseDelay;
+    UpdateTimer mTimer;
 };
+
+DeclareTmfHandler(Leader, kUriServerData);
+DeclareTmfHandler(Leader, kUriCommissionerGet);
+DeclareTmfHandler(Leader, kUriCommissionerSet);
 
 /**
  * @}

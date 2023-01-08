@@ -47,7 +47,7 @@ namespace Cli {
  * This class implements the Network Data CLI.
  *
  */
-class NetworkData : private OutputWrapper
+class NetworkData : private Output
 {
 public:
     typedef Utils::CmdLineParser::Arg Arg;
@@ -67,11 +67,12 @@ public:
     /**
      * Constructor
      *
-     * @param[in]  aOutput The CLI console output context
+     * @param[in]  aInstance            The OpenThread Instance.
+     * @param[in]  aOutputImplementer   An `OutputImplementer`.
      *
      */
-    explicit NetworkData(Output &aOutput)
-        : OutputWrapper(aOutput)
+    NetworkData(otInstance *aInstance, OutputImplementer &aOutputImplementer)
+        : Output(aInstance, aOutputImplementer)
     {
     }
 
@@ -125,29 +126,10 @@ public:
      */
     static void RouteFlagsToString(const otExternalRouteConfig &aConfig, FlagsString &aString);
 
-    /**
-     * This static method converts a route preference value to human-readable string.
-     *
-     * @param[in] aPreference   The preference value to convert (`OT_ROUTE_PREFERENCE_*` values).
-     *
-     * @returns A string representation @p aPreference.
-     *
-     */
-    static const char *PreferenceToString(signed int aPreference);
-
 private:
     using Command = CommandEntry<NetworkData>;
 
-    otError ProcessHelp(Arg aArgs[]);
-#if OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE
-    otError ProcessPublish(Arg aArgs[]);
-    otError ProcessUnpublish(Arg aArgs[]);
-#endif
-#if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE || OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
-    otError ProcessRegister(Arg aArgs[]);
-#endif
-    otError ProcessShow(Arg aArgs[]);
-    otError ProcessSteeringData(Arg aArgs[]);
+    template <CommandId kCommandId> otError Process(Arg aArgs[]);
 
     otError GetNextPrefix(otNetworkDataIterator *aIterator, otBorderRouterConfig *aConfig, bool aLocal);
     otError GetNextRoute(otNetworkDataIterator *aIterator, otExternalRouteConfig *aConfig, bool aLocal);
@@ -157,23 +139,6 @@ private:
     void    OutputPrefixes(bool aLocal);
     void    OutputRoutes(bool aLocal);
     void    OutputServices(bool aLocal);
-
-    static constexpr Command sCommands[] = {
-        {"help", &NetworkData::ProcessHelp},
-#if OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE
-        {"publish", &NetworkData::ProcessPublish},
-#endif
-#if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE || OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
-        {"register", &NetworkData::ProcessRegister},
-#endif
-        {"show", &NetworkData::ProcessShow},
-        {"steeringdata", &NetworkData::ProcessSteeringData},
-#if OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE
-        {"unpublish", &NetworkData::ProcessUnpublish},
-#endif
-    };
-
-    static_assert(BinarySearch::IsSorted(sCommands), "Command Table is not sorted");
 };
 
 } // namespace Cli

@@ -36,7 +36,7 @@
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/instance.hpp"
-#include "common/logging.hpp"
+#include "common/num_utils.hpp"
 #include "common/random.hpp"
 #include "common/string.hpp"
 
@@ -335,7 +335,7 @@ Error Name::ReadName(const Message &aMessage, uint16_t &aOffset, char *aNameBuff
                 // here since `iterator.ReadLabel()` would verify it.
             }
 
-            labelLength = static_cast<uint8_t>(OT_MIN(static_cast<uint8_t>(kMaxLabelSize), aNameBufferSize));
+            labelLength = static_cast<uint8_t>(Min(static_cast<uint16_t>(kMaxLabelSize), aNameBufferSize));
             SuccessOrExit(error = iterator.ReadLabel(aNameBuffer, labelLength, /* aAllowDotCharInLabel */ false));
             aNameBuffer += labelLength;
             aNameBufferSize -= labelLength;
@@ -522,6 +522,7 @@ Error Name::LabelIterator::GetNextLabel(void)
             // specify an offset value from the start of the DNS header.
 
             uint16_t pointerValue;
+            uint16_t nextLabelOffset;
 
             SuccessOrExit(error = mMessage.Read(mNextLabelOffset, pointerValue));
 
@@ -532,7 +533,9 @@ Error Name::LabelIterator::GetNextLabel(void)
 
             // `mMessage.GetOffset()` must point to the start of the
             // DNS header.
-            mNextLabelOffset = mMessage.GetOffset() + (HostSwap16(pointerValue) & kPointerLabelOffsetMask);
+            nextLabelOffset = mMessage.GetOffset() + (HostSwap16(pointerValue) & kPointerLabelOffsetMask);
+            VerifyOrExit(nextLabelOffset < mNextLabelOffset, error = kErrorParse);
+            mNextLabelOffset = nextLabelOffset;
 
             // Go back through the `while(true)` loop to get the next label.
         }
@@ -736,11 +739,11 @@ exit:
     return error;
 }
 
-Error ResourceRecord::FindRecord(const Message & aMessage,
-                                 uint16_t &      aOffset,
+Error ResourceRecord::FindRecord(const Message  &aMessage,
+                                 uint16_t       &aOffset,
                                  uint16_t        aNumRecords,
                                  uint16_t        aIndex,
-                                 const Name &    aName,
+                                 const Name     &aName,
                                  uint16_t        aType,
                                  ResourceRecord &aRecord,
                                  uint16_t        aMinRecordSize)
@@ -795,8 +798,8 @@ exit:
     return error;
 }
 
-Error ResourceRecord::ReadRecord(const Message & aMessage,
-                                 uint16_t &      aOffset,
+Error ResourceRecord::ReadRecord(const Message  &aMessage,
+                                 uint16_t       &aOffset,
                                  uint16_t        aType,
                                  ResourceRecord &aRecord,
                                  uint16_t        aMinRecordSize)
@@ -829,9 +832,9 @@ exit:
 }
 
 Error ResourceRecord::ReadName(const Message &aMessage,
-                               uint16_t &     aOffset,
+                               uint16_t      &aOffset,
                                uint16_t       aStartOffset,
-                               char *         aNameBuffer,
+                               char          *aNameBuffer,
                                uint16_t       aNameBufferSize,
                                bool           aSkipRecord) const
 {
@@ -919,7 +922,7 @@ Error TxtEntry::Iterator::GetNextEntry(TxtEntry &aEntry)
     uint8_t     length;
     uint8_t     index;
     const char *cur;
-    char *      keyBuffer = GetKeyBuffer();
+    char       *keyBuffer = GetKeyBuffer();
 
     static_assert(sizeof(mChar) == TxtEntry::kMaxKeyLength + 1, "KeyBuffer cannot fit the max key length");
 
@@ -1071,10 +1074,7 @@ bool AaaaRecord::IsValid(void) const
     return GetType() == Dns::ResourceRecord::kTypeAaaa && GetSize() == sizeof(*this);
 }
 
-bool KeyRecord::IsValid(void) const
-{
-    return GetType() == Dns::ResourceRecord::kTypeKey;
-}
+bool KeyRecord::IsValid(void) const { return GetType() == Dns::ResourceRecord::kTypeKey; }
 
 #if OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
 void Ecdsa256KeyRecord::Init(void)
@@ -1095,16 +1095,13 @@ bool SigRecord::IsValid(void) const
     return GetType() == Dns::ResourceRecord::kTypeSig && GetLength() >= sizeof(*this) - sizeof(ResourceRecord);
 }
 
-bool LeaseOption::IsValid(void) const
-{
-    return GetLeaseInterval() <= GetKeyLeaseInterval();
-}
+bool LeaseOption::IsValid(void) const { return GetLeaseInterval() <= GetKeyLeaseInterval(); }
 
 Error PtrRecord::ReadPtrName(const Message &aMessage,
-                             uint16_t &     aOffset,
-                             char *         aLabelBuffer,
+                             uint16_t      &aOffset,
+                             char          *aLabelBuffer,
                              uint8_t        aLabelBufferSize,
-                             char *         aNameBuffer,
+                             char          *aNameBuffer,
                              uint16_t       aNameBufferSize) const
 {
     Error    error       = kErrorNone;
@@ -1130,17 +1127,18 @@ exit:
 }
 
 Error TxtRecord::ReadTxtData(const Message &aMessage,
-                             uint16_t &     aOffset,
-                             uint8_t *      aTxtBuffer,
-                             uint16_t &     aTxtBufferSize) const
+                             uint16_t      &aOffset,
+                             uint8_t       *aTxtBuffer,
+                             uint16_t      &aTxtBufferSize) const
 {
     Error error = kErrorNone;
 
-    VerifyOrExit(GetLength() <= aTxtBufferSize, error = kErrorNoBufs);
-    SuccessOrExit(error = aMessage.Read(aOffset, aTxtBuffer, GetLength()));
-    VerifyOrExit(VerifyTxtData(aTxtBuffer, GetLength(), /* aAllowEmpty */ true), error = kErrorParse);
-    aTxtBufferSize = GetLength();
+    SuccessOrExit(error = aMessage.Read(aOffset, aTxtBuffer, Min(GetLength(), aTxtBufferSize)));
     aOffset += GetLength();
+
+    VerifyOrExit(GetLength() <= aTxtBufferSize, error = kErrorNoBufs);
+    aTxtBufferSize = GetLength();
+    VerifyOrExit(VerifyTxtData(aTxtBuffer, aTxtBufferSize, /* aAllowEmpty */ true), error = kErrorParse);
 
 exit:
     return error;

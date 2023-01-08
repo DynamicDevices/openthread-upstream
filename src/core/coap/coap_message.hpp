@@ -47,6 +47,7 @@
 #include "net/ip6.hpp"
 #include "net/ip6_address.hpp"
 #include "net/udp6.hpp"
+#include "thread/uri_paths.hpp"
 
 namespace ot {
 
@@ -166,6 +167,7 @@ enum OptionNumber : uint16_t
 class Message : public ot::Message
 {
     friend class Option;
+    friend class MessageQueue;
 
 public:
     static constexpr uint8_t kDefaultTokenLength = OT_COAP_DEFAULT_TOKEN_LENGTH; ///< Default token length.
@@ -203,51 +205,17 @@ public:
     void Init(Type aType, Code aCode);
 
     /**
-     * This method initializes the CoAP header as `kTypeConfirmable` and `kCodePost`.
-     *
-     */
-    void InitAsConfirmablePost(void);
-
-    /**
-     * This method initializes the CoAP header as `kTypeNonConfirmable` and `kCodePost`.
-     *
-     */
-    void InitAsNonConfirmablePost(void);
-
-    /**
      * This method initializes the CoAP header with specific Type and Code.
      *
      * @param[in]  aType              The Type value.
      * @param[in]  aCode              The Code value.
-     * @param[in]  aUriPath           A pointer to a null-terminated string.
+     * @param[in]  aUri               The URI.
      *
      * @retval kErrorNone         Successfully appended the option.
      * @retval kErrorNoBufs       The option length exceeds the buffer size.
      *
      */
-    Error Init(Type aType, Code aCode, const char *aUriPath);
-
-    /**
-     * This method initializes the CoAP header as `kTypeConfirmable` and `kCodePost` with a given URI Path.
-     *
-     * @param[in]  aUriPath           A pointer to a null-terminated string.
-     *
-     * @retval kErrorNone         Successfully appended the option.
-     * @retval kErrorNoBufs       The option length exceeds the buffer size.
-     *
-     */
-    Error InitAsConfirmablePost(const char *aUriPath);
-
-    /**
-     * This method initializes the CoAP header as `kTypeNonConfirmable` and `kCodePost` with a given URI Path.
-     *
-     * @param[in]  aUriPath           A pointer to a null-terminated string.
-     *
-     * @retval kErrorNone         Successfully appended the option.
-     * @retval kErrorNoBufs       The option length exceeds the buffer size.
-     *
-     */
-    Error InitAsNonConfirmablePost(const char *aUriPath);
+    Error Init(Type aType, Code aCode, Uri aUri);
 
     /**
      * This method initializes the CoAP header as `kCodePost` with a given URI Path with its type determined from a
@@ -255,13 +223,13 @@ public:
      *
      * @param[in]  aDestination       The message destination IPv6 address used to determine the CoAP type,
      *                                `kTypeNonConfirmable` if multicast address, `kTypeConfirmable` otherwise.
-     * @param[in]  aUriPath           A pointer to a null-terminated string.
+     * @param[in]  aUri               The URI.
      *
      * @retval kErrorNone         Successfully appended the option.
      * @retval kErrorNoBufs       The option length exceeds the buffer size.
      *
      */
-    Error InitAsPost(const Ip6::Address &aDestination, const char *aUriPath);
+    Error InitAsPost(const Ip6::Address &aDestination, Uri aUri);
 
     /**
      * This method writes header to the message. This must be called before sending the message.
@@ -956,6 +924,27 @@ private:
 #endif
     };
 
+    class ConstIterator : public ot::Message::ConstIterator
+    {
+    public:
+        using ot::Message::ConstIterator::ConstIterator;
+
+        const Message &operator*(void) { return static_cast<const Message &>(ot::Message::ConstIterator::operator*()); }
+        const Message *operator->(void)
+        {
+            return static_cast<const Message *>(ot::Message::ConstIterator::operator->());
+        }
+    };
+
+    class Iterator : public ot::Message::Iterator
+    {
+    public:
+        using ot::Message::Iterator::Iterator;
+
+        Message &operator*(void) { return static_cast<Message &>(ot::Message::Iterator::operator*()); }
+        Message *operator->(void) { return static_cast<Message *>(ot::Message::Iterator::operator->()); }
+    };
+
     static_assert(sizeof(HelpData) <= sizeof(Ip6::Header) + sizeof(Ip6::HopByHopHeader) + sizeof(Ip6::OptionMpl) +
                                           sizeof(Ip6::Udp::Header),
                   "HelpData size exceeds the size of the reserved region in the message");
@@ -963,7 +952,7 @@ private:
     const HelpData &GetHelpData(void) const
     {
         static_assert(sizeof(HelpData) + kHelpDataAlignment <= kHeadBufferDataSize,
-                      "Insufficient buffer size for CoAP processing!");
+                      "Insufficient buffer size for CoAP processing! Increase OPENTHREAD_CONFIG_MESSAGE_BUFFER_SIZE.");
 
         return *static_cast<const HelpData *>(OT_ALIGN(GetFirstData(), kHelpDataAlignment));
     }
@@ -1000,7 +989,15 @@ public:
      * @returns A pointer to the first message.
      *
      */
-    Message *GetHead(void) const { return static_cast<Message *>(ot::MessageQueue::GetHead()); }
+    Message *GetHead(void) { return static_cast<Message *>(ot::MessageQueue::GetHead()); }
+
+    /**
+     * This method returns a pointer to the first message.
+     *
+     * @returns A pointer to the first message.
+     *
+     */
+    const Message *GetHead(void) const { return static_cast<const Message *>(ot::MessageQueue::GetHead()); }
 
     /**
      * This method adds a message to the end of the queue.
@@ -1034,6 +1031,17 @@ public:
      *
      */
     void DequeueAndFree(Message &aMessage) { ot::MessageQueue::DequeueAndFree(aMessage); }
+
+    // The following methods are intended to support range-based `for`
+    // loop iteration over the queue entries and should not be used
+    // directly. The range-based `for` works correctly even if the
+    // current entry is removed from the queue during iteration.
+
+    Message::Iterator begin(void);
+    Message::Iterator end(void) { return Message::Iterator(); }
+
+    Message::ConstIterator begin(void) const;
+    Message::ConstIterator end(void) const { return Message::ConstIterator(); }
 };
 
 /**
@@ -1233,10 +1241,7 @@ DefineMapEnum(otCoapCode, Coap::Code);
  * @returns A reference to `Coap::Message` matching @p aMessage.
  *
  */
-inline Coap::Message &AsCoapMessage(otMessage *aMessage)
-{
-    return *static_cast<Coap::Message *>(aMessage);
-}
+inline Coap::Message &AsCoapMessage(otMessage *aMessage) { return *static_cast<Coap::Message *>(aMessage); }
 
 /**
  * This method casts an `otMessage` pointer to a `Coap::Message` reference.
@@ -1246,10 +1251,7 @@ inline Coap::Message &AsCoapMessage(otMessage *aMessage)
  * @returns A reference to `Coap::Message` matching @p aMessage.
  *
  */
-inline Coap::Message *AsCoapMessagePtr(otMessage *aMessage)
-{
-    return static_cast<Coap::Message *>(aMessage);
-}
+inline Coap::Message *AsCoapMessagePtr(otMessage *aMessage) { return static_cast<Coap::Message *>(aMessage); }
 
 /**
  * This method casts an `otMessage` pointer to a `Coap::Message` pointer.
