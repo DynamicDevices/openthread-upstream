@@ -42,6 +42,20 @@ set(src_libpaho
     paho/MQTTSNPacket/src/MQTTSNUnsubscribeServer.c
 )
 
+# Set floating ABI
+if(CONFIG_FPU)
+  if(CONFIG_FP_HARDABI)
+    add_compile_options(
+      -mfloat-abi=hard
+      -mcpu=cortex-m4
+      -mthumb
+      -mabi=aapcs
+      -mfpu=fpv4-sp-d16
+      -mfp16-format=ieee
+  )
+  endif()
+endif()
+
 set(libpaho_static_target "libpaho")
 
 string(REPLACE "-pedantic-errors" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
