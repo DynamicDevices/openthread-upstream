@@ -415,6 +415,7 @@ private:
 #if OPENTHREAD_CONFIG_MESH_DIAG_ENABLE && OPENTHREAD_FTD
     static void HandleMeshDiagDiscoverDone(otError aError, otMeshDiagRouterInfo *aRouterInfo, void *aContext);
     void        HandleMeshDiagDiscoverDone(otError aError, otMeshDiagRouterInfo *aRouterInfo);
+#endif
 #if OPENTHREAD_CONFIG_MQTTSN_ENABLE
     otError ProcessMqtt(Arg aArgs[]);
 #endif

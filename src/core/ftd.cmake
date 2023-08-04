@@ -47,9 +47,7 @@ target_link_libraries(openthread-ftd
         ot-config
 )
 
-if(NOT OT_EXCLUDE_TCPLP_LIB)
-    target_link_libraries(openthread-ftd PRIVATE tcplp-ftd)
-endif()
+target_link_libraries(openthread-ftd PRIVATE tcplp-ftd)
 
 if(OT_MQTT)
     target_link_libraries(openthread-ftd PRIVATE libpaho)

@@ -61,7 +61,6 @@ LINK_RAW                             ?= 0
 LOG_OUTPUT                           ?= PLATFORM_DEFINED
 MAC_FILTER                           ?= 1
 MAX_POWER_TABLE                      ?= 1
-MTD_NETDIAG                          ?= 1
 MQTT                                 ?= 1
 NEIGHBOR_DISCOVERY_AGENT             ?= 1
 NETDATA_PUBLISHER                    ?= 1

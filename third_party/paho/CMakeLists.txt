@@ -55,3 +55,19 @@ target_include_directories(${libpaho_static_target}
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/paho/MQTTSNPacket/src
 )
+
+# Set floating ABI
+if(CONFIG_FPU)
+  if(CONFIG_FP_HARDABI)
+    set(float_dir hard-float)
+  elseif(CONFIG_FP_SOFTABI)
+    set(float_dir softfp-float)
+    if(CALC_LIB_PATH_SOFT_FLOAT_FALLBACK AND DEFINED CALC_LIB_PATH_BASE_DIR)
+      list(APPEND float_dir soft-float)
+    endif()
+  else()
+    assert(0 "Unreachable code")
+  endif()
+else()
+  set(float_dir soft-float)
+endif()

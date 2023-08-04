@@ -295,7 +295,6 @@ endif
 # This config is removed but we still check and add the
 # `OPENTHREAD_CONFIG_TMF_NETWORK_DIAG_MTD_ENABLE` so to
 # get an error during build if `MTD_NETDIAG` is used.
-
 ifeq ($(MTD_NETDIAG),1)
 COMMONCFLAGS                   += -DOPENTHREAD_CONFIG_TMF_NETWORK_DIAG_MTD_ENABLE=1
 endif
