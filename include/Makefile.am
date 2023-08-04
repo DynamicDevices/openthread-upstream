@@ -70,6 +70,7 @@ openthread_headers                      = \
     openthread/logging.h                  \
     openthread/mesh_diag.h                \
     openthread/message.h                  \
+    openthread/mqttsn.h                   \
     openthread/multi_radio.h              \
     openthread/nat64.h                    \
     openthread/ncp.h                      \

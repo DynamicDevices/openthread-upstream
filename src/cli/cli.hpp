@@ -75,6 +75,9 @@
 #if OPENTHREAD_CONFIG_COAP_SECURE_API_ENABLE
 #include "cli/cli_coap_secure.hpp"
 #endif
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+#include "cli/cli_mqtt.hpp"
+#endif
 
 #include "common/array.hpp"
 #include "common/code_utils.hpp"
@@ -412,6 +415,8 @@ private:
 #if OPENTHREAD_CONFIG_MESH_DIAG_ENABLE && OPENTHREAD_FTD
     static void HandleMeshDiagDiscoverDone(otError aError, otMeshDiagRouterInfo *aRouterInfo, void *aContext);
     void        HandleMeshDiagDiscoverDone(otError aError, otMeshDiagRouterInfo *aRouterInfo);
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+    otError ProcessMqtt(Arg aArgs[]);
 #endif
 #if OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE && OPENTHREAD_CONFIG_COMMISSIONER_ENABLE
     static void HandleMlrRegResult(void               *aContext,
@@ -579,6 +584,10 @@ private:
 
 #if OPENTHREAD_CONFIG_JOINER_ENABLE
     Joiner mJoiner;
+#endif
+
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+    Mqtt mMqtt;
 #endif
 
 #if OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE

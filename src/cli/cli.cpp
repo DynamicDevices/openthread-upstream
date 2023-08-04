@@ -127,6 +127,9 @@ Interpreter::Interpreter(Instance *aInstance, otCliOutputCallback aCallback, voi
 #if OPENTHREAD_CONFIG_JOINER_ENABLE
     , mJoiner(aInstance, *this)
 #endif
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+    , mMqtt(aInstance, *this)
+#endif
 #if OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE
     , mSrpClient(aInstance, *this)
 #endif
@@ -5224,6 +5227,10 @@ exit:
     return error;
 }
 
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+template <> otError Interpreter::Process<Cmd("mqtt")>(Arg aArgs[]) { return mMqtt.Process(aArgs); }
+#endif
+
 template <> otError Interpreter::Process<Cmd("multiradio")>(Arg aArgs[])
 {
     otError error = OT_ERROR_NONE;
@@ -5288,6 +5295,13 @@ template <> otError Interpreter::Process<Cmd("multiradio")>(Arg aArgs[])
 exit:
     return error;
 }
+
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+otError Interpreter::ProcessMqtt(Arg aArgs[])
+{
+	return mMqtt.Process(aArgs);
+}
+#endif
 
 #if OPENTHREAD_CONFIG_MULTI_RADIO
 void Interpreter::OutputMultiRadioInfo(const otMultiRadioNeighborInfo &aMultiRadioInfo)
@@ -8600,6 +8614,9 @@ otError Interpreter::ProcessCommand(Arg aArgs[])
         CmdEntry("mlr"),
 #endif
         CmdEntry("mode"),
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+        CmdEntry("mqtt"),
+#endif
         CmdEntry("multiradio"),
 #if OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE || OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE
         CmdEntry("nat64"),

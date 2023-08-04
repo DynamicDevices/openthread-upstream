@@ -72,6 +72,7 @@ Done
 - [mliid](#mliid-iid)
 - [mlr](#mlr-reg-ipaddr--timeout)
 - [mode](#mode)
+- [mqtt](README_MQTT.md)
 - [multiradio](#multiradio)
 - [nat64](#nat64-cidr)
 - [neighbor](#neighbor-list)

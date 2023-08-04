@@ -145,6 +145,7 @@ typedef enum otLogRegion
     OT_LOG_REGION_BR       = 21, ///< Border Router
     OT_LOG_REGION_SRP      = 22, ///< Service Registration Protocol (SRP)
     OT_LOG_REGION_DNS      = 23, ///< DNS
+    OT_LOG_REGION_MQTTSN   = 30, ///< MQTT-SN module
 } otLogRegion;
 
 /**

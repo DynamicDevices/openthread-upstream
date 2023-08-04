@@ -37,6 +37,7 @@
 #include "openthread-core-config.h"
 
 #include "net/ip6_address.hpp"
+#include "mqttsn/mqttsn_client.hpp"
 #include "net/netif.hpp"
 
 namespace ot {

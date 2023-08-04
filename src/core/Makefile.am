@@ -46,9 +46,10 @@ if OPENTHREAD_ENABLE_RADIO_CLI
 lib_LIBRARIES                             += libopenthread-radio-cli.a
 endif
 
-CPPFLAGS_COMMON                            = \
-    -I$(top_srcdir)/include                  \
-    $(OPENTHREAD_TARGET_DEFINES)             \
+CPPFLAGS_COMMON                                           = \
+    -I$(top_srcdir)/include                                 \
+    -I$(top_srcdir)/third_party/paho/paho/MQTTSNPacket/src  \
+    $(OPENTHREAD_TARGET_DEFINES)                            \
     $(NULL)
 
 libopenthread_radio_a_CPPFLAGS             = \
@@ -153,6 +154,7 @@ SOURCES_COMMON                                  = \
     api/logging_api.cpp                           \
     api/mesh_diag_api.cpp                         \
     api/message_api.cpp                           \
+    api/mqttsn_api.cpp                            \
     api/multi_radio_api.cpp                       \
     api/nat64_api.cpp                             \
     api/netdata_api.cpp                           \
@@ -248,6 +250,9 @@ SOURCES_COMMON                                  = \
     meshcop/network_name.cpp                      \
     meshcop/panid_query_client.cpp                \
     meshcop/timestamp.cpp                         \
+    mqttsn/mqttsn_client.cpp                      \
+    mqttsn/mqttsn_gateway_list.cpp                \
+    mqttsn/mqttsn_serializer.cpp                  \
     net/checksum.cpp                              \
     net/dhcp6_client.cpp                          \
     net/dhcp6_server.cpp                          \
@@ -518,6 +523,7 @@ HEADERS_COMMON                                  = \
     config/mesh_diag.h                            \
     config/misc.h                                 \
     config/mle.h                                  \
+    config/mqttsn.h                               \
     config/nat64.h                                \
     config/netdata_publisher.h                    \
     config/network_diagnostic.h                   \
@@ -570,6 +576,9 @@ HEADERS_COMMON                                  = \
     meshcop/network_name.hpp                      \
     meshcop/panid_query_client.hpp                \
     meshcop/timestamp.hpp                         \
+    mqttsn/mqttsn_client.hpp                      \
+    mqttsn/mqttsn_gateway_list.hpp                \
+    mqttsn/mqttsn_serializer.hpp                  \
     net/checksum.hpp                              \
     net/dhcp6.hpp                                 \
     net/dhcp6_client.hpp                          \

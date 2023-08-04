@@ -70,6 +70,7 @@ MESH_DIAG                 ?= 0
 MESSAGE_USE_HEAP          ?= 0
 MLE_LONG_ROUTES           ?= 0
 MLR                       ?= 0
+MQTT                      ?= 0
 MTD_NETDIAG               ?= 0
 MULTIPLE_INSTANCE         ?= 0
 NAT64_BORDER_ROUTING      ?= 0
@@ -287,9 +288,14 @@ ifeq ($(MLR),1)
 COMMONCFLAGS                   += -DOPENTHREAD_CONFIG_MLR_ENABLE=1
 endif
 
+ifeq ($(MQTT),1)
+COMMONCFLAGS                   += -DOPENTHREAD_CONFIG_MQTTSN_ENABLE=1
+endif
+
 # This config is removed but we still check and add the
 # `OPENTHREAD_CONFIG_TMF_NETWORK_DIAG_MTD_ENABLE` so to
 # get an error during build if `MTD_NETDIAG` is used.
+
 ifeq ($(MTD_NETDIAG),1)
 COMMONCFLAGS                   += -DOPENTHREAD_CONFIG_TMF_NETWORK_DIAG_MTD_ENABLE=1
 endif

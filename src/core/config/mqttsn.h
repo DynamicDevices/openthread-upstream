@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2016, The OpenThread Authors.
+ *  Copyright (c) 2018, Vit Holasek
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -28,15 +28,31 @@
 
 /**
  * @file
- *   This file includes logging related macro/function definitions.
+ *   This file includes compile-time configurations for MQTT-SN.
+ *
  */
 
-#ifndef LOGGING_HPP_
-#define LOGGING_HPP_
+#ifndef CONFIG_MQTTSN_H_
+#define CONFIG_MQTTSN_H_
 
-#include "openthread-core-config.h"
+/**
+ * @def OPENTHREAD_CONFIG_MQTTSN_DEFAULT_PORT
+ *
+ * Default port used MQTT-SN client binding.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_MQTTSN_DEFAULT_PORT
+#define OPENTHREAD_CONFIG_MQTTSN_DEFAULT_PORT 10000
+#endif
 
-#include <openthread/logging.h>
-#include <openthread/platform/logging.h>
+/**
+ * @def OPENTHREAD_CONFIG_MQTTSN_ENABLE
+ *
+ * Define to 1 to enable the MQTT-SN client.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_MQTTSN_ENABLE
+#define OPENTHREAD_CONFIG_MQTTSN_ENABLE 0
+#endif
 
-#endif // LOGGING_HPP_
+#endif // CONFIG_MQTTSN_H_

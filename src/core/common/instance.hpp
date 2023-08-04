@@ -63,7 +63,6 @@
 #include "utils/power_calibration.hpp"
 
 #if OPENTHREAD_FTD || OPENTHREAD_MTD
-#include "backbone_router/backbone_tmf.hpp"
 #include "backbone_router/bbr_leader.hpp"
 #include "backbone_router/bbr_local.hpp"
 #include "backbone_router/bbr_manager.hpp"
@@ -83,6 +82,7 @@
 #include "meshcop/joiner_router.hpp"
 #include "meshcop/meshcop_leader.hpp"
 #include "meshcop/network_name.hpp"
+#include "mqttsn/mqttsn_client.hpp"
 #include "net/dhcp6.hpp"
 #include "net/dhcp6_client.hpp"
 #include "net/dhcp6_server.hpp"
@@ -579,6 +579,10 @@ private:
     Coap::CoapSecure mApplicationCoapSecure;
 #endif
 
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+    Mqttsn::MqttsnClient mMqttsnClient;
+#endif
+
 #if OPENTHREAD_CONFIG_PING_SENDER_ENABLE
     Utils::PingSender mPingSender;
 #endif
@@ -781,6 +785,10 @@ template <> inline Tmf::Agent &Instance::Get(void) { return mTmfAgent; }
 
 #if OPENTHREAD_CONFIG_DTLS_ENABLE
 template <> inline Tmf::SecureAgent &Instance::Get(void) { return mTmfSecureAgent; }
+#endif
+
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+template <> inline Mqttsn::MqttsnClient &Instance::Get(void) { return mMqttsnClient; }
 #endif
 
 template <> inline MeshCoP::ExtendedPanIdManager &Instance::Get(void) { return mExtendedPanIdManager; }

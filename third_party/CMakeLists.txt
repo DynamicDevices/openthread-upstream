@@ -30,4 +30,10 @@ if(NOT OT_EXTERNAL_MBEDTLS)
     add_subdirectory(mbedtls)
 endif()
 
-add_subdirectory(tcplp)
+if(NOT OT_EXCLUDE_TCPLP_LIB)
+    add_subdirectory(tcplp)
+endif()
+
+if(OT_MQTT)
+add_subdirectory(paho)
+endif()

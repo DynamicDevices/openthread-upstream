@@ -67,4 +67,11 @@ cmake-build-*/**
 /tags
 
 # Python bytecodes
+Debug
+lib
+.settings
+startup
+.cproject
+.project
+.autotools
 __pycache__

@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2016, The OpenThread Authors.
+#  Copyright (c) 2019, Vit Holasek.
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -26,35 +26,32 @@
 #  POSSIBILITY OF SUCH DAMAGE.
 #
 
-include $(abs_top_nlbuild_autotools_dir)/automake/pre.am
+project("libpaho" C)
 
-EXTRA_DIST                              = \
-    nlbuild-autotools                     \
-    $(NULL)
+set(src_libpaho
+    paho/MQTTSNPacket/src/MQTTSNConnectClient.c
+    paho/MQTTSNPacket/src/MQTTSNConnectServer.c
+    paho/MQTTSNPacket/src/MQTTSNDeserializePublish.c
+    paho/MQTTSNPacket/src/MQTTSNPacket.c
+    paho/MQTTSNPacket/src/MQTTSNSearchClient.c
+    paho/MQTTSNPacket/src/MQTTSNSearchServer.c
+    paho/MQTTSNPacket/src/MQTTSNSerializePublish.c
+    paho/MQTTSNPacket/src/MQTTSNSubscribeClient.c
+    paho/MQTTSNPacket/src/MQTTSNSubscribeServer.c
+    paho/MQTTSNPacket/src/MQTTSNUnsubscribeClient.c
+    paho/MQTTSNPacket/src/MQTTSNUnsubscribeServer.c
+)
 
-# Always package (e.g. for 'make dist') these subdirectories.
+set(libpaho_static_target "libpaho")
 
-DIST_SUBDIRS                            = \
-    jlink                                 \
-    mbedtls                               \
-    paho                                  \
-    tcplp                                 \
-    $(NULL)
+string(REPLACE "-pedantic-errors" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+string(REPLACE "-Wshadow" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+string(REPLACE "-Wextra" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+string(REPLACE "-Wsign-compare" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
 
-SUBDIRS =                                 \
-    paho                                  \
-    tcplp                                 \
-    $(NULL)
-endif
-
-if OPENTHREAD_EXAMPLES_CC1352
-SUBDIRS                                += \
-    $(NULL)
-
-if OPENTHREAD_ENABLE_BUILTIN_MBEDTLS
-SUBDIRS                                += \
-    mbedtls                               \
-    $(NULL)
-endif # OPENTHREAD_ENABLE_BUILTIN_MBEDTLS
-
-include $(abs_top_nlbuild_autotools_dir)/automake/post.am
+add_library(${libpaho_static_target} STATIC ${src_libpaho})
+set_target_properties(${libpaho_static_target} PROPERTIES OUTPUT_NAME libpaho)
+target_include_directories(${libpaho_static_target}
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/paho/MQTTSNPacket/src
+)

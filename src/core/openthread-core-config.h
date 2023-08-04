@@ -86,7 +86,7 @@
 #include "config/mesh_diag.h"
 #include "config/misc.h"
 #include "config/mle.h"
-#include "config/nat64.h"
+#include "config/mqttsn.h"
 #include "config/netdata_publisher.h"
 #include "config/network_diagnostic.h"
 #include "config/parent_search.h"

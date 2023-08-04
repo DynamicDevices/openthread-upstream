@@ -40,6 +40,7 @@ CPPFLAGS_COMMON                                                       += \
     $(NULL)
 
 LDADD_COMMON                                                          += \
+    $(top_builddir)/third_party/paho/libpaho.a                           \
     $(top_builddir)/third_party/tcplp/libtcplp.a                         \
     $(NULL)
 
@@ -57,6 +58,7 @@ SOURCES_COMMON                                                        += \
 if OPENTHREAD_ENABLE_BUILTIN_MBEDTLS
 LDADD_COMMON                                                          += \
     $(top_builddir)/third_party/mbedtls/libmbedcrypto.a                  \
+    $(top_builddir)/third_party/paho/libpaho.a                           \
     $(NULL)
 endif # OPENTHREAD_ENABLE_BUILTIN_MBEDTLS
 

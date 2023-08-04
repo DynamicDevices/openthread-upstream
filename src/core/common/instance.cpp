@@ -201,6 +201,9 @@ Instance::Instance(void)
 #if OPENTHREAD_CONFIG_COAP_SECURE_API_ENABLE
     , mApplicationCoapSecure(*this, /* aLayerTwoSecurity */ true)
 #endif
+#if OPENTHREAD_CONFIG_MQTTSN_ENABLE
+    , mMqttsnClient(*this)
+#endif
 #if OPENTHREAD_CONFIG_PING_SENDER_ENABLE
     , mPingSender(*this)
 #endif
