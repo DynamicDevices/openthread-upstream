@@ -26,6 +26,9 @@
 #  POSSIBILITY OF SUCH DAMAGE.
 #
 
+# TODO: Work out how to make this configurable via KConfig
+option(OT_MQTT "enable OpenThread MQTT-SN support" ON)
+
 option(OT_APP_CLI "enable CLI app" ON)
 option(OT_APP_NCP "enable NCP app" ON)
 option(OT_APP_RCP "enable RCP app" ON)
