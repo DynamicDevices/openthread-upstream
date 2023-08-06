@@ -1179,8 +1179,6 @@ otError MqttsnClient::Process()
     otError error = OT_ERROR_NONE;
     uint32_t now = TimerMilli::GetNow().GetValue();
 
-    LogInfo("Processing...");
-
     if (mIsRunning)
     {
         // Trigger again if client running
