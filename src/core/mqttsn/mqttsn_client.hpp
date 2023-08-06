@@ -1085,6 +1085,9 @@ private:
 
     static void HandleProcessTask(Tasklet &aTasklet);
 
+    static void HandleTimer(Timer &aTimer);
+    void        HandleTimer(void);
+
     static void HandleSubscribeTimeout(const MessageMetadata<otMqttsnSubscribedHandler> &aMetadata, void* aContext);
 
     static void HandleRegisterTimeout(const MessageMetadata<otMqttsnRegisteredHandler> &aMetadata, void* aContext);
@@ -1121,6 +1124,7 @@ private:
     bool mIsRunning;
     ActiveGatewayList mActiveGateways;
     TaskletContext mProcessTask;
+    TimerMilliContext mTimer;
     WaitingMessagesQueue<otMqttsnSubscribedHandler> mSubscribeQueue;
     WaitingMessagesQueue<otMqttsnRegisteredHandler> mRegisterQueue;
     WaitingMessagesQueue<otMqttsnUnsubscribedHandler> mUnsubscribeQueue;

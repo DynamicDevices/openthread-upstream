@@ -63,6 +63,8 @@
  */
 #define MQTTSN_DEFAULT_ADVERTISE_DURATION 1020000
 
+#define MQTTSN_PROCESS_INTERVAL_MS 1000
+
 namespace ot {
 
 namespace Mqttsn {
@@ -333,6 +335,7 @@ MqttsnClient::MqttsnClient(Instance& instance)
     , mIsRunning(false)
     , mActiveGateways()
     , mProcessTask(instance, MqttsnClient::HandleProcessTask, this)
+    , mTimer(GetInstance(), HandleTimer, this)
     , mSubscribeQueue(HandleSubscribeTimeout, this, HandleSubscribeRetransmission, this)
     , mRegisterQueue(HandleRegisterTimeout, this, HandleMessageRetransmission, this)
     , mUnsubscribeQueue(HandleUnsubscribeTimeout, this, HandleMessageRetransmission, this)
@@ -1109,6 +1112,16 @@ void MqttsnClient::SearchGwReceived(const Ip6::MessageInfo &messageInfo, const u
 #endif
 }
 
+void MqttsnClient::HandleTimer(Timer &aTimer)
+{
+    static_cast<MqttsnClient *>(static_cast<TimerMilliContext &>(aTimer).GetContext())->HandleTimer();
+}
+
+void MqttsnClient::HandleTimer(void)
+{
+    Process();
+}
+
 void MqttsnClient::HandleProcessTask(Tasklet &aTasklet)
 {
     otError error = static_cast<MqttsnClient *>(static_cast<TaskletContext &>(aTasklet).GetContext())->Process();
@@ -1130,8 +1143,9 @@ otError MqttsnClient::Start(uint16_t aPort)
     // Start listening on configured port
     SuccessOrExit(error = mSocket.Bind(sockaddr));
 
-    // Enqueue process task which will handle message queues etc.
-    mProcessTask.Post();
+    // Trigger process timer
+    mTimer.Start(MQTTSN_PROCESS_INTERVAL_MS);
+
     mIsRunning = true;
 exit:
     return error;
@@ -1153,6 +1167,10 @@ otError MqttsnClient::Stop()
             mDisconnectedCallback(kDisconnectClient, mDisconnectedContext);
         }
     }
+
+    // Stop the process timer
+    mTimer.Stop();
+
     return error;
 }
 
@@ -1161,10 +1179,12 @@ otError MqttsnClient::Process()
     otError error = OT_ERROR_NONE;
     uint32_t now = TimerMilli::GetNow().GetValue();
 
+    LogInfo("Processing...");
+
     if (mIsRunning)
     {
-        // Enqueue again if client running
-        mProcessTask.Post();
+        // Trigger again if client running
+        mTimer.Start(MQTTSN_PROCESS_INTERVAL_MS);
     }
 
     // Process keep alive and send periodical PINGREQ message
@@ -1203,10 +1223,10 @@ exit:
         }
     }
     mTimeoutRaised = false;
-    // Only enqueue process when client running and is not asleep
     if (mIsRunning && mClientState != kStateAsleep)
     {
-        mProcessTask.Post();
+        // Trigger again if client running
+        mTimer.Start(MQTTSN_PROCESS_INTERVAL_MS);
     }
     return error;
 }
@@ -1490,8 +1510,7 @@ otError MqttsnClient::Awake(uint32_t aTimeout)
 
     // Set awake state and wait for any PUBLISH messages
     mClientState = kStateAwake;
-    // Enqueue process tasklet again
-    mProcessTask.Post();
+    mTimer.Start(MQTTSN_PROCESS_INTERVAL_MS);
 exit:
     return error;
 }
@@ -1727,8 +1746,7 @@ void MqttsnClient::WakeUp(void)
     {
         mClientState = kStateActive;
     }
-    // Enqueue process tasklet again
-    mProcessTask.Post();
+    mTimer.Start(MQTTSN_PROCESS_INTERVAL_MS);
 }
 
 void MqttsnClient::HandleSubscribeTimeout(const MessageMetadata<otMqttsnSubscribedHandler> &aMetadata, void* aContext)
