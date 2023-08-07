@@ -48,3 +48,7 @@ target_link_libraries(openthread-mtd
 )
 
 target_link_libraries(openthread-mtd PRIVATE tcplp-mtd)
+
+if(OT_MQTT)
+    target_link_libraries(openthread-mtd PRIVATE libpaho)
+endif()
