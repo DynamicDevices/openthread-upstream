@@ -385,10 +385,6 @@ void MqttsnClient::HandleUdpReceive(void *aContext, otMessage *aMessage, const o
         return;
     }
 
-    if (!data)
-    {
-        return;
-    }
     message.ReadBytes(offset, data, length);
 
     LogDebg("UDP message received:");
@@ -1841,7 +1837,7 @@ void MqttsnClient::HandlePublishRetransmission(const Message &aMessage, const Ip
     uint16_t offset = aMessage.GetOffset();
     int32_t length = aMessage.GetLength() - aMessage.GetOffset();
 
-    if (length > MAX_PACKET_SIZE || !buffer)
+    if (length > MAX_PACKET_SIZE)
     {
         return;
     }
@@ -1877,7 +1873,7 @@ void MqttsnClient::HandleSubscribeRetransmission(const Message &aMessage, const 
 
     unsigned char data[MAX_PACKET_SIZE];
 
-    if (length > MAX_PACKET_SIZE || !data)
+    if (length > MAX_PACKET_SIZE)
     {
         return;
     }
