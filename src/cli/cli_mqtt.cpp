@@ -316,7 +316,7 @@ template <> otError Mqtt::Process<Cmd("gateways")>(Arg aArgs[])
         otMqttsnGatewayInfo &info = gateways[i];
         OutputFormat("gateway ");
         OutputIp6Address(*static_cast<Ip6::Address *>(&info.mGatewayAddress));
-        OutputFormat(": gateway_id=%lu\r\n", (uint32_t)info.mGatewayId);
+        OutputFormat(": gateway_id=%u\r\n", (uint16_t)info.mGatewayId);
     }
     return OT_ERROR_NONE;
 }
